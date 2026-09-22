@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
 
 const AUTH_NOT_CONFIGURED_MESSAGE =
-  "Sign-in isn't configured yet. Check that NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.";
+  "Sign-in isn't configured yet. Check that SUPABASE_URL and SUPABASE_ANON_KEY are set.";
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
