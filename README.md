@@ -57,12 +57,14 @@ page — you create your own account directly in Supabase:
    email confirmation link).
 3. Go to `/login` in the app and sign in with that email/password.
 
-Session checking happens in `middleware.ts` using the public anon key —
-that key only ever performs `.auth.*` calls (sign in, sign out, check
-session). It has no access to your projects/tasks/etc. even if used
-directly, since every table has Row Level Security enabled with no
-policies; all real data access still goes through the service-role client
-described above.
+Session checking happens in `middleware.ts` using the anon key — that key
+only ever performs `.auth.*` calls (sign in, sign out, check session). It
+has no access to your projects/tasks/etc. even if used directly, since
+every table has Row Level Security enabled with no policies; all real data
+access still goes through the service-role client described above. The
+anon key is kept server-only (no `NEXT_PUBLIC_` prefix) since this app
+never needs it in browser-side code — auth runs through Server Actions and
+edge middleware only.
 
 ## Team accounts & the Admin panel
 
@@ -404,8 +406,9 @@ Finance page's totals, since that money was genuinely received.
 3. Copy the **`service_role`** key under **Project API keys** — click "Reveal"
    first. This is a secret key with full database access; never put it in a
    `NEXT_PUBLIC_*` variable or commit it to git.
-4. Also copy the **`anon` / `public`** key from the same page — this one is
-   safe to expose to the browser (see "Logging in" above for why).
+4. Also copy the **`anon` / `public`** key from the same page (see "Logging
+   in" above for what it's used for — it's kept server-only here, not
+   exposed to the browser).
 
 ### 4. Add the environment variables
 
@@ -415,24 +418,20 @@ Finance page's totals, since that money was genuinely received.
 cp .env.example .env.local
 ```
 
-Then fill in all four values in `.env.local`:
+Then fill in all three values in `.env.local`:
 
 ```
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_ANON_KEY=your-anon-key
 ```
-
-(`SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_URL` are the same value — one is
-server-only, the other is exposed to the browser for the login flow.)
 
 `.env.local` is already gitignored, so it stays out of version control.
 
 **On Vercel (or wherever you deploy):**
 
 1. Open your project on [vercel.com](https://vercel.com) > **Settings > Environment Variables**.
-2. Add all four variables above with the same values, for the **Production**
+2. Add all three variables above with the same values, for the **Production**
    and **Preview** environments.
 3. Redeploy (or just push — the next deploy will pick them up).
 

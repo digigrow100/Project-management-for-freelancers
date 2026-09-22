@@ -20,8 +20,8 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     } = await supabase.auth.getUser();
     user = authUser;
   } catch {
-    // Auth client couldn't be created/reached (e.g. NEXT_PUBLIC_SUPABASE_URL or
-    // NEXT_PUBLIC_SUPABASE_ANON_KEY missing) — treat the same as signed out
+    // Auth client couldn't be created/reached (e.g. SUPABASE_URL or
+    // SUPABASE_ANON_KEY missing) — treat the same as signed out
     // instead of crashing every page under the (app) layout.
     return null;
   }
