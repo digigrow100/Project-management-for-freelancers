@@ -43,12 +43,17 @@ export async function POST(req: NextRequest) {
   try {
     switch (pending.actionType) {
       case "create_tasks": {
-        const payload = pending.payload as { projectId: string; tasks: { title: string; scheduledFor: string }[] };
+        const payload = pending.payload as {
+          projectId: string;
+          assigneeId?: string | null;
+          tasks: { title: string; scheduledFor: string }[];
+        };
         for (const task of payload.tasks) {
           const formData = new FormData();
           formData.set("projectId", payload.projectId);
           formData.set("title", task.title);
           formData.set("scheduledFor", task.scheduledFor);
+          if (payload.assigneeId) formData.set("assignedTo", payload.assigneeId);
           await actions.createTaskAction(formData);
         }
         await store.resolveAiPendingAction(pending.id, "confirmed");
@@ -73,6 +78,9 @@ export async function POST(req: NextRequest) {
         formData.set("dueDate", payload.dueDate);
         formData.set("status", "draft");
         const invoiceId = await actions.createInvoiceAction(formData);
+        if (!invoiceId) {
+          return NextResponse.json({ error: "The invoice could not be created — the client or items were invalid." }, { status: 422 });
+        }
         await store.resolveAiPendingAction(pending.id, "confirmed");
         return NextResponse.json({ status: "confirmed", invoiceId });
       }
@@ -85,6 +93,9 @@ export async function POST(req: NextRequest) {
         formData.set("type", payload.type);
         formData.set("description", payload.description);
         const projectId = await actions.createProjectAction(formData);
+        if (!projectId) {
+          return NextResponse.json({ error: "The project could not be created — the client or name were invalid." }, { status: 422 });
+        }
         await store.resolveAiPendingAction(pending.id, "confirmed");
         return NextResponse.json({ status: "confirmed", projectId });
       }

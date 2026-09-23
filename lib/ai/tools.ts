@@ -59,6 +59,59 @@ function addDays(dateKey: string, days: number): string {
  */
 export type AiToolHandler = (profile: Profile, args: Record<string, unknown>, conversationId: string) => Promise<unknown>;
 
+/**
+ * Entity resolution — the missing link that let the model invent or guess
+ * ids. Call this whenever the user names a client/project/team
+ * member/service and you don't already have its id from this conversation
+ * or the page context. Every other tool that takes an id assumes the
+ * caller already resolved it here (or got it from a prior tool result).
+ */
+async function resolveEntity(profile: Profile, args: Record<string, unknown>): Promise<unknown> {
+  const entityType = args.entityType;
+  const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+  if (!query) return { error: "A search term is required." };
+
+  if (entityType === "client") {
+    if (profile.role !== "admin" && !profile.canAccessFinance) return denyFinance();
+    const clients = await store.listClients();
+    const matches = clients
+      .filter((c) => c.name.toLowerCase().includes(query) || c.company.toLowerCase().includes(query))
+      .slice(0, 5)
+      .map((c) => ({ clientId: c.id, name: c.name, company: c.company }));
+    return { matches, count: matches.length };
+  }
+
+  if (entityType === "project") {
+    const projects = await store.getProjectsForProfile(profile);
+    const matches = projects
+      .filter((p) => p.name.toLowerCase().includes(query))
+      .slice(0, 5)
+      .map((p) => ({ projectId: p.id, name: p.name, type: p.type, client: p.client, archived: p.archived }));
+    return { matches, count: matches.length };
+  }
+
+  if (entityType === "team_member") {
+    const members = await store.listTeamMembers();
+    const matches = members
+      .filter((m) => m.name.toLowerCase().includes(query) || m.email.toLowerCase().includes(query))
+      .slice(0, 5)
+      .map((m) => ({ memberId: m.id, name: m.name, email: m.email, role: m.role }));
+    return { matches, count: matches.length };
+  }
+
+  if (entityType === "service") {
+    if (profile.role !== "admin" && !profile.canAccessFinance) return denyFinance();
+    const services = await store.listServices();
+    const matches = services
+      .filter((s) => s.isActive && s.name.toLowerCase().includes(query))
+      .slice(0, 5)
+      .map((s) => ({ serviceId: s.id, name: s.name, price: s.price, currency: s.currency, billingFrequency: s.billingFrequency }));
+    return { matches, count: matches.length };
+  }
+
+  return { error: `Unknown entityType: ${String(entityType)}` };
+}
+
 async function getTeamReport(profile: Profile, args: Record<string, unknown>): Promise<unknown> {
   const period = args.period === "today" ? "today" : "this_week";
   const memberName = typeof args.memberName === "string" ? args.memberName.trim().toLowerCase() : "";
@@ -70,12 +123,14 @@ async function getTeamReport(profile: Profile, args: Record<string, unknown>): P
     members,
     store.todayDateKey(),
   );
+  const memberIdByName = new Map(members.map((m) => [m.name, m.id]));
 
   const filtered = memberName
     ? performance.filter((p) => p.memberName.toLowerCase().includes(memberName))
     : performance;
 
   return filtered.map((p) => ({
+    memberId: memberIdByName.get(p.memberName) ?? null,
     member: p.memberName,
     completed: period === "today" ? p.completedToday : p.completedThisWeek,
     projects: period === "today" ? p.projectNamesToday : undefined,
@@ -95,6 +150,7 @@ async function getClientSummary(profile: Profile, args: Record<string, unknown>)
   ]);
 
   return {
+    clientId: client.id,
     client: client.name || client.company,
     balance,
     activeProjects: projects
@@ -117,6 +173,7 @@ async function getProjectStatus(profile: Profile, args: Record<string, unknown>)
   const openTasks = tasks.filter((t) => t.status !== "done");
 
   return {
+    projectId: project.id,
     project: project.name,
     type: project.type,
     archived: project.archived,
@@ -186,6 +243,7 @@ async function getPendingTasks(profile: Profile, args: Record<string, unknown>):
 
   return tasks.slice(0, 25).map((t) => ({
     title: t.title,
+    projectId: t.projectId,
     project: projectNameById.get(t.projectId) ?? null,
     status: t.status,
     priority: t.priority,
@@ -229,7 +287,19 @@ async function proposeTaskSchedule(profile: Profile, args: Record<string, unknow
 
   const rawTasks = Array.isArray(args.tasks) ? (args.tasks as RawTaskInput[]) : [];
   const titles = rawTasks.map((t) => String(t?.title ?? "").trim()).filter(Boolean);
-  if (titles.length === 0) return { error: "No tasks provided." };
+  if (titles.length === 0) return { error: "No tasks provided. Ask the user what tasks they want before proposing anything." };
+
+  let assigneeId: string | null = null;
+  let assigneeName: string | null = null;
+  if (typeof args.assigneeId === "string" && args.assigneeId) {
+    const members = await store.listTeamMembers();
+    const member = members.find((m) => m.id === args.assigneeId);
+    if (!member) {
+      return { error: "That team member id doesn't match anyone on the team. Use resolve_entity with entityType 'team_member' to find the right id first." };
+    }
+    assigneeId = member.id;
+    assigneeName = member.name;
+  }
 
   const days = Math.max(1, Math.min(90, Math.round(Number(args.days)) || 1));
   const startDate = typeof args.startDate === "string" && args.startDate ? args.startDate : store.todayDateKey();
@@ -239,16 +309,21 @@ async function proposeTaskSchedule(profile: Profile, args: Record<string, unknow
     scheduledFor: addDays(startDate, Math.floor((i * days) / titles.length)),
   }));
 
-  const summary = `${scheduled.length} task${scheduled.length === 1 ? "" : "s"} for "${project.name}", spread across ${days} day${days === 1 ? "" : "s"} starting ${startDate}.`;
+  const summary = `${scheduled.length} task${scheduled.length === 1 ? "" : "s"} for "${project.name}", spread across ${days} day${days === 1 ? "" : "s"} starting ${startDate}${assigneeName ? `, assigned to ${assigneeName}` : ""}.`;
   const pending = await store.createAiPendingAction({
     conversationId,
     createdBy: profile.id,
     actionType: "create_tasks",
-    payload: { projectId, tasks: scheduled },
+    payload: { projectId, assigneeId, tasks: scheduled },
     summary,
   });
 
-  return { pendingActionId: pending.id, actionType: "create_tasks", summary, preview: scheduled };
+  return {
+    pendingActionId: pending.id,
+    actionType: "create_tasks",
+    summary,
+    preview: { projectId, assignee: assigneeName, tasks: scheduled },
+  };
 }
 
 interface RawInvoiceItemInput {
@@ -271,8 +346,13 @@ async function proposeInvoice(profile: Profile, args: Record<string, unknown>, c
       quantity: Number(i?.quantity) || 1,
       unitPrice: Number(i?.unitPrice) || 0,
     }))
-    .filter((i) => i.description);
-  if (items.length === 0) return { error: "No invoice items provided." };
+    .filter((i) => i.description && i.unitPrice > 0);
+  if (items.length === 0) {
+    return {
+      error:
+        "No priced invoice items provided. Ask the user what to bill for and the amount — or use resolve_entity with entityType 'service' if they named a service/package — before proposing an invoice.",
+    };
+  }
 
   const currency = typeof args.currency === "string" && args.currency ? args.currency : "PKR";
   const issueDate = typeof args.issueDate === "string" && args.issueDate ? args.issueDate : store.todayDateKey();
@@ -294,7 +374,7 @@ async function proposeInvoice(profile: Profile, args: Record<string, unknown>, c
     pendingActionId: pending.id,
     actionType: "create_invoice",
     summary,
-    preview: { client: clientLabel, items, currency, total, issueDate, dueDate },
+    preview: { clientId: client.id, client: clientLabel, items, currency, total, issueDate, dueDate },
   };
 }
 
@@ -322,7 +402,12 @@ async function proposeProject(profile: Profile, args: Record<string, unknown>, c
     summary,
   });
 
-  return { pendingActionId: pending.id, actionType: "create_project", summary, preview: { client: clientLabel, name, type, description } };
+  return {
+    pendingActionId: pending.id,
+    actionType: "create_project",
+    summary,
+    preview: { clientId: client.id, client: clientLabel, name, type, description },
+  };
 }
 
 async function proposeSeoReport(profile: Profile, args: Record<string, unknown>, conversationId: string): Promise<unknown> {
@@ -348,10 +433,16 @@ async function proposeSeoReport(profile: Profile, args: Record<string, unknown>,
     summary,
   });
 
-  return { pendingActionId: pending.id, actionType: "create_seo_report", summary, preview: { project: project.name, period, periodType, ...draft } };
+  return {
+    pendingActionId: pending.id,
+    actionType: "create_seo_report",
+    summary,
+    preview: { projectId: project.id, project: project.name, period, periodType, ...draft },
+  };
 }
 
 export const AI_TOOL_HANDLERS: Record<string, AiToolHandler> = {
+  resolve_entity: resolveEntity,
   get_team_report: getTeamReport,
   get_client_summary: getClientSummary,
   get_project_status: getProjectStatus,

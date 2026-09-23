@@ -9,6 +9,7 @@ import {
   countUnseenProjects,
   countUnseenTasks,
   getProjectsForProfile,
+  listClients,
   listDomainClients,
   listDomains,
   listRenewals,
@@ -20,7 +21,8 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
-  const [projects, unseenProjects, unseenNotes, unseenTasks, domains, domainClients, renewals] = await Promise.all([
+  const canSeeClients = isAdmin || !!profile?.canAccessFinance;
+  const [projects, unseenProjects, unseenNotes, unseenTasks, domains, domainClients, renewals, clients] = await Promise.all([
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     profile ? countUnseenProjects(profile.id, isAdmin) : Promise.resolve(0),
     profile ? countUnseenNotes(profile.id) : Promise.resolve(0),
@@ -28,6 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     isAdmin ? listDomains() : Promise.resolve([]),
     isAdmin ? listDomainClients() : Promise.resolve([]),
     isAdmin ? listRenewals() : Promise.resolve([]),
+    canSeeClients ? listClients() : Promise.resolve([]),
   ]);
 
   const tickerItems = isAdmin ? buildExpiryTickerItems(domains, domainClients, renewals) : [];
@@ -49,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
       <DomainExpiryTicker items={tickerItems} />
-      {profile && <AiAssistant projects={projects} />}
+      {profile && <AiAssistant projects={projects} clients={clients} />}
     </div>
   );
 }
