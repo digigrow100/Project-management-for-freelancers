@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
           result = { error: `Unknown tool: ${call.name}` };
         } else {
           try {
-            result = await handler(profile, args);
+            result = await handler(profile, args, conversation.id);
           } catch (err) {
             result = { error: err instanceof Error ? err.message : "Tool failed." };
           }

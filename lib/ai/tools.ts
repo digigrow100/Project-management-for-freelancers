@@ -44,7 +44,20 @@ function currentPeriod(periodType: "daily" | "weekly" | "monthly"): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 }
 
-export type AiToolHandler = (profile: Profile, args: Record<string, unknown>) => Promise<unknown>;
+function addDays(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days));
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * `conversationId` is only used by the propose_* tools below, to stage the
+ * pending action against the current conversation — read-only tools ignore
+ * it. No tool ever writes application data directly; propose_* tools only
+ * ever insert an ai_pending_actions row (see app/api/ai/confirm for the
+ * actual execution, which always goes through an existing Server Action).
+ */
+export type AiToolHandler = (profile: Profile, args: Record<string, unknown>, conversationId: string) => Promise<unknown>;
 
 async function getTeamReport(profile: Profile, args: Record<string, unknown>): Promise<unknown> {
   const period = args.period === "today" ? "today" : "this_week";
@@ -196,6 +209,148 @@ async function getDashboardActivityTool(profile: Profile, args: Record<string, u
   }));
 }
 
+/* -------------------------------------------------------------------- */
+/* Write proposals (Phase 6.2/6.3) — stage a pending_action, never write  */
+/* application data directly. The chat UI renders the returned preview   */
+/* as a card; only a confirmed click (app/api/ai/confirm) executes the   */
+/* real, existing Server Action.                                         */
+/* -------------------------------------------------------------------- */
+
+interface RawTaskInput {
+  title?: unknown;
+}
+
+async function proposeTaskSchedule(profile: Profile, args: Record<string, unknown>, conversationId: string): Promise<unknown> {
+  const projectId = String(args.projectId ?? "");
+  if (!projectId || !(await assertProjectAccess(profile, projectId))) return denyProject();
+
+  const project = await store.getProject(projectId);
+  if (!project) return { error: "Project not found." };
+
+  const rawTasks = Array.isArray(args.tasks) ? (args.tasks as RawTaskInput[]) : [];
+  const titles = rawTasks.map((t) => String(t?.title ?? "").trim()).filter(Boolean);
+  if (titles.length === 0) return { error: "No tasks provided." };
+
+  const days = Math.max(1, Math.min(90, Math.round(Number(args.days)) || 1));
+  const startDate = typeof args.startDate === "string" && args.startDate ? args.startDate : store.todayDateKey();
+
+  const scheduled = titles.map((title, i) => ({
+    title,
+    scheduledFor: addDays(startDate, Math.floor((i * days) / titles.length)),
+  }));
+
+  const summary = `${scheduled.length} task${scheduled.length === 1 ? "" : "s"} for "${project.name}", spread across ${days} day${days === 1 ? "" : "s"} starting ${startDate}.`;
+  const pending = await store.createAiPendingAction({
+    conversationId,
+    createdBy: profile.id,
+    actionType: "create_tasks",
+    payload: { projectId, tasks: scheduled },
+    summary,
+  });
+
+  return { pendingActionId: pending.id, actionType: "create_tasks", summary, preview: scheduled };
+}
+
+interface RawInvoiceItemInput {
+  description?: unknown;
+  quantity?: unknown;
+  unitPrice?: unknown;
+}
+
+async function proposeInvoice(profile: Profile, args: Record<string, unknown>, conversationId: string): Promise<unknown> {
+  if (profile.role !== "admin" && !profile.canAccessFinance) return denyFinance();
+
+  const clientId = String(args.clientId ?? "");
+  const client = clientId ? await store.getClient(clientId) : null;
+  if (!client) return { error: "Client not found." };
+
+  const rawItems = Array.isArray(args.items) ? (args.items as RawInvoiceItemInput[]) : [];
+  const items = rawItems
+    .map((i) => ({
+      description: String(i?.description ?? "").trim(),
+      quantity: Number(i?.quantity) || 1,
+      unitPrice: Number(i?.unitPrice) || 0,
+    }))
+    .filter((i) => i.description);
+  if (items.length === 0) return { error: "No invoice items provided." };
+
+  const currency = typeof args.currency === "string" && args.currency ? args.currency : "PKR";
+  const issueDate = typeof args.issueDate === "string" && args.issueDate ? args.issueDate : store.todayDateKey();
+  const dueDate = typeof args.dueDate === "string" && args.dueDate ? args.dueDate : issueDate;
+  const projectId = typeof args.projectId === "string" && args.projectId ? args.projectId : null;
+  const total = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const clientLabel = client.name || client.company;
+
+  const summary = `Invoice draft for ${clientLabel}: ${items.length} item${items.length === 1 ? "" : "s"}, ${currency} ${total.toFixed(2)}, due ${dueDate}.`;
+  const pending = await store.createAiPendingAction({
+    conversationId,
+    createdBy: profile.id,
+    actionType: "create_invoice",
+    payload: { clientId, projectId, items, currency, issueDate, dueDate },
+    summary,
+  });
+
+  return {
+    pendingActionId: pending.id,
+    actionType: "create_invoice",
+    summary,
+    preview: { client: clientLabel, items, currency, total, issueDate, dueDate },
+  };
+}
+
+async function proposeProject(profile: Profile, args: Record<string, unknown>, conversationId: string): Promise<unknown> {
+  if (profile.role !== "admin") return denyAdmin();
+
+  const clientId = String(args.clientId ?? "");
+  const client = clientId ? await store.getClient(clientId) : null;
+  if (!client) return { error: "Client not found." };
+
+  const name = String(args.name ?? "").trim();
+  if (!name) return { error: "A project name is required." };
+
+  const validTypes = ["seo", "web_dev", "web_app", "digital_marketing", "other"];
+  const type = validTypes.includes(args.type as string) ? (args.type as string) : "other";
+  const description = typeof args.description === "string" ? args.description : "";
+  const clientLabel = client.name || client.company;
+
+  const summary = `New ${type} project "${name}" for ${clientLabel}.`;
+  const pending = await store.createAiPendingAction({
+    conversationId,
+    createdBy: profile.id,
+    actionType: "create_project",
+    payload: { clientId, name, type, description },
+    summary,
+  });
+
+  return { pendingActionId: pending.id, actionType: "create_project", summary, preview: { client: clientLabel, name, type, description } };
+}
+
+async function proposeSeoReport(profile: Profile, args: Record<string, unknown>, conversationId: string): Promise<unknown> {
+  const projectId = String(args.projectId ?? "");
+  if (!projectId || !(await assertProjectAccess(profile, projectId))) return denyProject();
+
+  const project = await store.getProject(projectId);
+  if (!project) return { error: "Project not found." };
+  if (project.type !== "seo") return { error: "This project is not an SEO project." };
+
+  const periodType = (["daily", "weekly", "monthly"] as const).includes(args.periodType as "daily" | "weekly" | "monthly")
+    ? (args.periodType as "daily" | "weekly" | "monthly")
+    : "monthly";
+  const period = typeof args.period === "string" && args.period ? args.period : currentPeriod(periodType);
+
+  const draft = await store.buildSeoReportDraft(project.id, period, periodType);
+  const summary = `${periodType} SEO report draft for "${project.name}" — ${period}. Never sent automatically; review and approve it on the Reporting tab after creating.`;
+  const pending = await store.createAiPendingAction({
+    conversationId,
+    createdBy: profile.id,
+    actionType: "create_seo_report",
+    payload: { projectId, period, periodType },
+    summary,
+  });
+
+  return { pendingActionId: pending.id, actionType: "create_seo_report", summary, preview: { project: project.name, period, periodType, ...draft } };
+}
+
 export const AI_TOOL_HANDLERS: Record<string, AiToolHandler> = {
   get_team_report: getTeamReport,
   get_client_summary: getClientSummary,
@@ -204,4 +359,8 @@ export const AI_TOOL_HANDLERS: Record<string, AiToolHandler> = {
   get_invoice_status: getInvoiceStatus,
   get_pending_tasks: getPendingTasks,
   get_dashboard_activity: getDashboardActivityTool,
+  propose_task_schedule: proposeTaskSchedule,
+  propose_invoice: proposeInvoice,
+  propose_project: proposeProject,
+  propose_seo_report: proposeSeoReport,
 };

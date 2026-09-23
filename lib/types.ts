@@ -821,3 +821,23 @@ export interface AiMessage {
   toolCalls: AiToolCallRecord[];
   createdAt: string;
 }
+
+/**
+ * A write the AI has proposed but not executed. The chat UI renders one of
+ * these as a preview card; only a human clicking Confirm triggers the real
+ * Server Action (see app/api/ai/confirm). Reject/expire never touch app data.
+ */
+export type AiActionType = "create_tasks" | "create_invoice" | "create_project" | "create_seo_report";
+export type AiPendingActionStatus = "pending" | "confirmed" | "rejected";
+
+export interface AiPendingAction {
+  id: string;
+  conversationId: string;
+  createdBy: string;
+  actionType: AiActionType;
+  payload: Record<string, unknown>;
+  summary: string;
+  status: AiPendingActionStatus;
+  resolvedAt: string | null;
+  createdAt: string;
+}
