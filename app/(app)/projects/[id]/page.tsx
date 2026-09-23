@@ -19,6 +19,7 @@ import {
   listProjectAttachments,
   listSeoReports,
   listTechnicalIssues,
+  getReportPreferences,
   getProject,
   getProjectProgress,
   isProjectAssignedToUser,
@@ -113,6 +114,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const technicalIssues = project.type === "seo" ? await listTechnicalIssues(project.id) : [];
   const contentItems = project.type === "seo" ? await listContentItems(project.id) : [];
   const seoReports = project.type === "seo" ? await listSeoReports(project.id) : [];
+  const reportPreferences = project.type === "seo" ? await getReportPreferences(project.id) : undefined;
 
   const tasksByPage: Record<string, typeof tasks> = {};
   const tasksByContentItem: Record<string, typeof tasks> = {};
@@ -309,7 +311,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               isAdmin={isAdmin}
             />
           }
-          reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} />}
+          reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} preferences={reportPreferences} />}
           clientDetails={clientDetailsTab}
         />
       ) : (

@@ -623,17 +623,29 @@ export interface ContentItem {
  * time from existing data, not stored here — `summary` is the one thing a
  * human writes.
  */
+export type ReportPeriodType = "daily" | "weekly" | "monthly";
+
 export interface SeoReport {
   id: string;
   projectId: string;
-  /** 'YYYY-MM' */
+  /** 'YYYY-MM-DD' for daily, 'YYYY-Www' (ISO week) for weekly, 'YYYY-MM' for monthly. */
   period: string;
+  periodType: ReportPeriodType;
   summary: string;
   generatedBy: string | null;
   generatedByName: string | null;
   sentToClient: boolean;
   sentAt: string | null;
   createdAt: string;
+}
+
+/** Storage-only auto-report toggles per SEO project. No scheduling/email/AI reads this yet — Phase 6. */
+export interface ReportPreferences {
+  projectId: string;
+  dailyEnabled: boolean;
+  weeklyEnabled: boolean;
+  monthlyEnabled: boolean;
+  updatedAt: string;
 }
 
 export type BillingFrequency = "one_time" | "monthly" | "quarterly" | "yearly";
@@ -711,4 +723,56 @@ export interface ClientBalance {
   totalPaid: number;
   outstanding: number;
   currency: string;
+}
+
+/**
+ * Phase 5: dashboard/reporting activity, computed at read time from existing
+ * tables (tasks, keywords, backlinks, content, technical issues) — never
+ * persisted. `eventType`/`source` are carried as plain metadata so Phase 6
+ * (AI) can consume these objects directly without a schema change.
+ */
+export type ActivityEventType =
+  | "task_completed"
+  | "keyword_rank_improved"
+  | "keyword_rank_dropped"
+  | "backlink_created"
+  | "content_published"
+  | "technical_fixed";
+
+export type ActivitySource = "tasks" | "keywords" | "backlinks" | "content" | "technical_issues";
+
+export interface ActivityEvent {
+  id: string;
+  eventType: ActivityEventType;
+  source: ActivitySource;
+  at: string;
+  projectId: string;
+  projectName: string;
+  personName: string | null;
+  title: string;
+  detail: string;
+}
+
+/** Per-member completed-task rollup for the Team Activity dashboard section. */
+export interface TeamPerformance {
+  memberId: string;
+  memberName: string;
+  completedToday: number;
+  completedThisWeek: number;
+  projectNamesToday: string[];
+}
+
+/**
+ * Computed SEO metrics for a report period — pulled from existing tables at
+ * generate time, never persisted itself (same pattern as SeoReportDraft's
+ * rankMovements/completedTaskTitles/backlinksCreated, which this extends).
+ */
+export interface SeoReportMetrics {
+  keywordsTracked: number;
+  keywordsImproved: number;
+  keywordsDropped: number;
+  backlinksCreated: number;
+  backlinksLive: number;
+  contentPublished: number;
+  technicalFixed: number;
 }

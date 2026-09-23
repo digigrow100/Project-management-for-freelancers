@@ -52,6 +52,8 @@ import type {
   Profile,
   Project,
   ProjectType,
+  ReportPeriodType,
+  ReportPreferences,
   ResaleDomainStatus,
   RichContent,
   Role,
@@ -59,6 +61,7 @@ import type {
   Service,
   SeoModule,
   SeoReport,
+  SeoReportMetrics,
   Stage,
   Task,
   TaskFile,
@@ -3486,6 +3489,7 @@ interface SeoReportRow {
   id: string;
   project_id: string;
   period: string;
+  period_type?: ReportPeriodType | null;
   summary: string;
   generated_by: string | null;
   sent_to_client: boolean;
@@ -3498,6 +3502,7 @@ function toSeoReport(row: SeoReportRow, nameById: Map<string, string>): SeoRepor
     id: row.id,
     projectId: row.project_id,
     period: row.period,
+    periodType: row.period_type ?? "monthly",
     summary: row.summary,
     generatedBy: row.generated_by,
     generatedByName: row.generated_by ? (nameById.get(row.generated_by) ?? "Unknown") : null,
@@ -3526,19 +3531,25 @@ export async function listSeoReports(projectId: string): Promise<SeoReport[]> {
 }
 
 /** Creates (or returns the existing) report row for a period, so "Generate" is safe to click more than once. */
-export async function getOrCreateSeoReport(projectId: string, period: string, generatedBy: string): Promise<SeoReport> {
+export async function getOrCreateSeoReport(
+  projectId: string,
+  period: string,
+  generatedBy: string,
+  periodType: ReportPeriodType = "monthly",
+): Promise<SeoReport> {
   const { data: existing, error: existingError } = await getSupabase()
     .from("freelance_hq_seo_reports")
     .select("*")
     .eq("project_id", projectId)
     .eq("period", period)
+    .eq("period_type", periodType)
     .maybeSingle();
   if (existingError) throw existingError;
   if (existing) return toSeoReport(existing as SeoReportRow, await taskNameLookup());
 
   const { data, error } = await getSupabase()
     .from("freelance_hq_seo_reports")
-    .insert({ project_id: projectId, period, generated_by: generatedBy })
+    .insert({ project_id: projectId, period, period_type: periodType, generated_by: generatedBy })
     .select()
     .single();
   if (error) throw error;
@@ -3562,20 +3573,28 @@ export async function updateSeoReport(
 /**
  * Computed draft data for a report period — pulled from existing tables at
  * generate time, never persisted itself. Powers the pre-filled summary a
- * human then edits before marking the report sent.
+ * human then edits before marking the report sent. `metrics` extends the
+ * original rankMovements/completedTaskTitles/backlinksCreated set with the
+ * full SEO metric block (keywords tracked/improved/dropped, backlinks
+ * created/live, content published, technical fixes).
  */
 export interface SeoReportDraft {
   rankMovements: { keyword: string; from: number | null; to: number | null }[];
   completedTaskTitles: string[];
   backlinksCreated: number;
+  metrics: SeoReportMetrics;
 }
 
-export async function buildSeoReportDraft(projectId: string, period: string): Promise<SeoReportDraft> {
-  const [start, end] = monthBounds(period);
+export async function buildSeoReportDraft(
+  projectId: string,
+  period: string,
+  periodType: ReportPeriodType = "monthly",
+): Promise<SeoReportDraft> {
+  const [start, end] = periodBounds(period, periodType);
 
   const keywords = await listKeywords(projectId);
   const rankHistory = await listKeywordRankHistory(keywords.map((k) => k.id));
-  const rankMovements = keywords
+  const movements = keywords
     .map((keyword) => {
       const history = (rankHistory[keyword.id] ?? []).filter((h) => h.recordedOn >= start && h.recordedOn < end);
       if (history.length === 0) return null;
@@ -3586,6 +3605,9 @@ export async function buildSeoReportDraft(projectId: string, period: string): Pr
       return { keyword: keyword.keyword, from: first.rank, to: last.rank };
     })
     .filter((m): m is { keyword: string; from: number | null; to: number | null } => m !== null);
+
+  const keywordsImproved = movements.filter((m) => m.from !== null && m.to !== null && m.to < m.from).length;
+  const keywordsDropped = movements.filter((m) => m.from !== null && m.to !== null && m.to > m.from).length;
 
   const { data: completedTasks, error: taskError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -3598,24 +3620,58 @@ export async function buildSeoReportDraft(projectId: string, period: string): Pr
 
   const categories = await listBacklinkCategories(projectId);
   let backlinksCreated = 0;
+  let backlinksLive = 0;
   if (categories.length > 0) {
-    const { count, error: backlinkError } = await getSupabase()
+    const categoryIds = categories.map((c) => c.id);
+    const { count: createdCount, error: backlinkError } = await getSupabase()
       .from("freelance_hq_backlink_entries")
       .select("*", { count: "exact", head: true })
-      .in(
-        "category_id",
-        categories.map((c) => c.id),
-      )
+      .in("category_id", categoryIds)
       .gte("created_at", start)
       .lt("created_at", end);
     if (backlinkError) throw backlinkError;
-    backlinksCreated = count ?? 0;
+    backlinksCreated = createdCount ?? 0;
+
+    const { count: liveCount, error: liveError } = await getSupabase()
+      .from("freelance_hq_backlink_entries")
+      .select("*", { count: "exact", head: true })
+      .in("category_id", categoryIds)
+      .eq("status", "live");
+    if (liveError) throw liveError;
+    backlinksLive = liveCount ?? 0;
   }
 
+  const { count: contentPublished, error: contentError } = await getSupabase()
+    .from("freelance_hq_content_items")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("status", "published")
+    .gte("updated_at", start)
+    .lt("updated_at", end);
+  if (contentError) throw contentError;
+
+  const { count: technicalFixed, error: technicalError } = await getSupabase()
+    .from("freelance_hq_technical_issues")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("status", "fixed")
+    .gte("updated_at", start)
+    .lt("updated_at", end);
+  if (technicalError) throw technicalError;
+
   return {
-    rankMovements,
+    rankMovements: movements,
     completedTaskTitles: ((completedTasks ?? []) as { title: string }[]).map((t) => t.title),
     backlinksCreated,
+    metrics: {
+      keywordsTracked: keywords.filter((k) => k.isTracked).length,
+      keywordsImproved,
+      keywordsDropped,
+      backlinksCreated,
+      backlinksLive,
+      contentPublished: contentPublished ?? 0,
+      technicalFixed: technicalFixed ?? 0,
+    },
   };
 }
 
@@ -3628,6 +3684,93 @@ function monthBounds(period: string): [string, string] {
   const endDate = new Date(Date.UTC(year, month, 1));
   const end = endDate.toISOString().slice(0, 10);
   return [start, end];
+}
+
+/** [period, period+1day) for a 'YYYY-MM-DD' day key. */
+function dayBounds(period: string): [string, string] {
+  const [year, month, day] = period.split("-").map(Number);
+  const start = period;
+  const endDate = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, (day ?? 1) + 1));
+  return [start, endDate.toISOString().slice(0, 10)];
+}
+
+/** [Monday, next Monday) for a 'YYYY-Www' ISO week key. */
+function weekBounds(period: string): [string, string] {
+  const [yearStr, weekStr] = period.split("-W");
+  const year = Number(yearStr);
+  const week = Number(weekStr);
+  // ISO week 1 is the week containing the year's first Thursday.
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1);
+  const monday = new Date(week1Monday);
+  monday.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
+  const nextMonday = new Date(monday);
+  nextMonday.setUTCDate(monday.getUTCDate() + 7);
+  return [monday.toISOString().slice(0, 10), nextMonday.toISOString().slice(0, 10)];
+}
+
+function periodBounds(period: string, periodType: ReportPeriodType): [string, string] {
+  if (periodType === "daily") return dayBounds(period);
+  if (periodType === "weekly") return weekBounds(period);
+  return monthBounds(period);
+}
+
+interface ReportPreferencesRow {
+  project_id: string;
+  daily_enabled: boolean;
+  weekly_enabled: boolean;
+  monthly_enabled: boolean;
+  updated_at: string;
+}
+
+function toReportPreferences(row: ReportPreferencesRow): ReportPreferences {
+  return {
+    projectId: row.project_id,
+    dailyEnabled: row.daily_enabled,
+    weeklyEnabled: row.weekly_enabled,
+    monthlyEnabled: row.monthly_enabled,
+    updatedAt: row.updated_at,
+  };
+}
+
+const DEFAULT_REPORT_PREFERENCES = (projectId: string): ReportPreferences => ({
+  projectId,
+  dailyEnabled: false,
+  weeklyEnabled: false,
+  monthlyEnabled: false,
+  updatedAt: nowIso(),
+});
+
+export async function getReportPreferences(projectId: string): Promise<ReportPreferences> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_report_preferences")
+      .select("*")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? toReportPreferences(data as ReportPreferencesRow) : DEFAULT_REPORT_PREFERENCES(projectId);
+  } catch (error) {
+    if (isMissingTableError(error)) return DEFAULT_REPORT_PREFERENCES(projectId);
+    throw error;
+  }
+}
+
+export async function setReportPreferences(
+  projectId: string,
+  patch: Partial<{ dailyEnabled: boolean; weeklyEnabled: boolean; monthlyEnabled: boolean }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { project_id: projectId, updated_at: nowIso() };
+  if (patch.dailyEnabled !== undefined) update.daily_enabled = patch.dailyEnabled;
+  if (patch.weeklyEnabled !== undefined) update.weekly_enabled = patch.weeklyEnabled;
+  if (patch.monthlyEnabled !== undefined) update.monthly_enabled = patch.monthlyEnabled;
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_report_preferences")
+    .upsert(update, { onConflict: "project_id" });
+  if (error) throw error;
 }
 
 export async function getProjectByShareToken(token: string): Promise<Project | null> {
