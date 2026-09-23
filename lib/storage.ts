@@ -59,3 +59,10 @@ export async function uploadProjectAttachment(
   if (!url || !file) return null;
   return { url, name: file.name, type: file.type || "application/octet-stream", size: file.size };
 }
+
+/** Uploads a screenshot/file attached to a backlink asset to the "backlink-files" bucket. */
+export async function uploadBacklinkFile(file: File | null, entryId: string): Promise<TaskFile | null> {
+  const url = await uploadToBucket(file, "backlink-files", `backlinks/${entryId}`, MAX_TASK_FILE_BYTES);
+  if (!url || !file) return null;
+  return { url, name: file.name, type: file.type || "application/octet-stream", size: file.size };
+}

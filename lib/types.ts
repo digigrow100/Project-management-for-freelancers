@@ -54,6 +54,8 @@ export interface Task {
   keywordId: string | null;
   pageId: string | null;
   contentItemId: string | null;
+  backlinkEntryId: string | null;
+  outreachProspectId: string | null;
 }
 
 export type SeoModule = "on_page" | "technical" | "off_page" | "content" | "reporting";
@@ -63,6 +65,7 @@ export interface ClientDetails {
   company: string;
   email: string;
   phone: string;
+  address: string;
   notes: string;
   logoUrl: string;
 }
@@ -74,6 +77,7 @@ export interface Client {
   company: string;
   email: string;
   phone: string;
+  address: string;
   notes: string;
   logoUrl: string;
   createdAt: string;
@@ -126,6 +130,8 @@ export interface Profile {
   role: Role;
   /** Members (non-admins) can be individually granted access to the Renewals tab. Admins always have access. */
   canAccessRenewals: boolean;
+  /** Members (non-admins) can be individually granted permission to reveal backlink credentials. Admins always have access; project assignment alone is never enough. */
+  canAccessBacklinkCredentials: boolean;
   createdAt: string;
 }
 
@@ -234,12 +240,22 @@ export interface KeywordPage {
  * real Off-Page CRM (citations, web 2.0, guest posts, outreach, etc.) on
  * top of this; this field just lets it slot under the Off-Page tab today.
  */
+export type BacklinkCategoryType =
+  | "local_citation"
+  | "web2"
+  | "guest_post"
+  | "outreach"
+  | "competitor"
+  | "social"
+  | "other";
+
 export interface BacklinkCategory {
   id: string;
   projectId: string;
   name: string;
   order: number;
   seoModule: SeoModule;
+  categoryType: BacklinkCategoryType;
   createdAt: string;
 }
 
@@ -248,7 +264,10 @@ export interface BacklinkLink {
   label: string;
 }
 
-/** A platform/site login and posting record. `hasPassword` never carries the actual value. */
+export type BacklinkStatus = "not_started" | "account_created" | "submitted" | "verification_pending" | "live" | "rejected";
+export type LoginMethod = "email" | "google" | "other";
+
+/** A platform/site login and posting record — a managed SEO asset. `hasPassword` never carries the actual value. */
 export interface BacklinkEntry {
   id: string;
   categoryId: string;
@@ -258,11 +277,82 @@ export interface BacklinkEntry {
   username: string;
   email: string;
   hasPassword: boolean;
+  loginMethod: LoginMethod;
   postsPerMonth: number | null;
+  status: BacklinkStatus;
+  /** Optional link to an existing keyword — reuses its rank history for "ranking tracking" instead of duplicating it (Web 2.0 assets). */
+  keywordId: string | null;
+  indexed: boolean | null;
+  listedOn: string | null;
+  files: TaskFile[];
   notes: string;
   links: BacklinkLink[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** Guest Post / Outreach CRM: a pipeline of prospects, most of whom never get credentials. */
+export type OutreachStatus =
+  | "prospect_found"
+  | "contacted"
+  | "follow_up_1"
+  | "follow_up_2"
+  | "accepted"
+  | "article_sent"
+  | "published"
+  | "live";
+
+export interface OutreachProspect {
+  id: string;
+  projectId: string;
+  website: string;
+  contactPerson: string;
+  contactEmail: string;
+  drDa: number | null;
+  price: number | null;
+  contactDate: string | null;
+  lastFollowUp: string | null;
+  nextFollowUp: string | null;
+  response: string;
+  status: OutreachStatus;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Competitor backlink intel — not your asset, no login concept. */
+export interface CompetitorBacklink {
+  id: string;
+  projectId: string;
+  competitorUrl: string;
+  sourceBacklinkUrl: string;
+  opportunityNotes: string;
+  targetPageId: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A reusable, named set of platforms importable into any project. Never
+ * stores credentials — imported entries always need fresh, client-specific
+ * logins.
+ */
+export interface BacklinkTemplate {
+  id: string;
+  name: string;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface BacklinkTemplateItem {
+  id: string;
+  templateId: string;
+  categoryType: BacklinkCategoryType;
+  platformName: string;
+  defaultUrl: string;
+  order: number;
 }
 
 /** A file attached to a project as a whole (not tied to a single task). */

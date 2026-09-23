@@ -4,12 +4,17 @@ import { PROJECT_TEMPLATES } from "./templates";
 import { decryptSecret, encryptSecret, hashVaultPassword, verifyVaultPassword } from "./backlinkCrypto";
 import type {
   BacklinkCategory,
+  BacklinkCategoryType,
   BacklinkEntry,
   BacklinkLink,
+  BacklinkStatus,
+  BacklinkTemplate,
+  BacklinkTemplateItem,
   BusinessProfile,
   ChecklistItem,
   Client,
   ClientDetails,
+  CompetitorBacklink,
   ContentItem,
   ContentStatus,
   DnsRecordType,
@@ -24,9 +29,12 @@ import type {
   KeywordPage,
   KeywordRankHistoryEntry,
   KeywordStatus,
+  LoginMethod,
   Note,
   NoteFolder,
   OnPageStatus,
+  OutreachProspect,
+  OutreachStatus,
   PageType,
   ProjectAttachment,
   Payment,
@@ -116,6 +124,8 @@ interface TaskRow {
   keyword_id: string | null;
   page_id: string | null;
   content_item_id: string | null;
+  backlink_entry_id: string | null;
+  outreach_prospect_id: string | null;
 }
 
 /** Normalizes legacy plain-string image URLs (from before file attachments were
@@ -156,6 +166,8 @@ function toTask(row: TaskRow, nameById?: Map<string, string>): Task {
     keywordId: row.keyword_id,
     pageId: row.page_id,
     contentItemId: row.content_item_id,
+    backlinkEntryId: row.backlink_entry_id,
+    outreachProspectId: row.outreach_prospect_id,
   };
 }
 
@@ -306,6 +318,7 @@ export async function createProject(input: {
     company: client.company,
     email: client.email,
     phone: client.phone,
+    address: client.address,
     notes: client.notes,
     logoUrl: client.logoUrl,
   };
@@ -378,6 +391,7 @@ interface ClientRow {
   company: string;
   email: string;
   phone: string;
+  address: string;
   notes: string;
   logo_url: string;
   created_at: string;
@@ -390,6 +404,7 @@ function toClient(row: ClientRow): Client {
     company: row.company,
     email: row.email,
     phone: row.phone,
+    address: row.address ?? "",
     notes: row.notes,
     logoUrl: row.logo_url,
     createdAt: row.created_at,
@@ -423,6 +438,7 @@ export async function createClient(input: {
   company: string;
   email: string;
   phone: string;
+  address?: string;
   notes: string;
 }): Promise<Client> {
   const { data, error } = await getSupabase()
@@ -432,6 +448,7 @@ export async function createClient(input: {
       company: input.company,
       email: input.email,
       phone: input.phone,
+      address: input.address ?? "",
       notes: input.notes,
       logo_url: "",
     })
@@ -443,13 +460,14 @@ export async function createClient(input: {
 
 export async function updateClient(
   id: string,
-  patch: Partial<Pick<Client, "name" | "company" | "email" | "phone" | "notes" | "logoUrl">>,
+  patch: Partial<Pick<Client, "name" | "company" | "email" | "phone" | "address" | "notes" | "logoUrl">>,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.name !== undefined) update.name = patch.name;
   if (patch.company !== undefined) update.company = patch.company;
   if (patch.email !== undefined) update.email = patch.email;
   if (patch.phone !== undefined) update.phone = patch.phone;
+  if (patch.address !== undefined) update.address = patch.address;
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (patch.logoUrl !== undefined) update.logo_url = patch.logoUrl;
 
@@ -591,6 +609,8 @@ export async function createTask(input: {
   keywordId?: string | null;
   pageId?: string | null;
   contentItemId?: string | null;
+  backlinkEntryId?: string | null;
+  outreachProspectId?: string | null;
 }): Promise<Task> {
   const { count, error: countError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -620,6 +640,8 @@ export async function createTask(input: {
       keyword_id: input.keywordId ?? null,
       page_id: input.pageId ?? null,
       content_item_id: input.contentItemId ?? null,
+      backlink_entry_id: input.backlinkEntryId ?? null,
+      outreach_prospect_id: input.outreachProspectId ?? null,
     })
     .select()
     .single();
@@ -680,6 +702,8 @@ export async function updateTaskDetails(
     keywordId?: string | null;
     pageId?: string | null;
     contentItemId?: string | null;
+    backlinkEntryId?: string | null;
+    outreachProspectId?: string | null;
   },
 ): Promise<void> {
   const status = patch.status === "done" && !isChecklistComplete(patch.checklist) ? "in_progress" : patch.status;
@@ -705,6 +729,8 @@ export async function updateTaskDetails(
   if (patch.keywordId !== undefined) update.keyword_id = patch.keywordId;
   if (patch.pageId !== undefined) update.page_id = patch.pageId;
   if (patch.contentItemId !== undefined) update.content_item_id = patch.contentItemId;
+  if (patch.backlinkEntryId !== undefined) update.backlink_entry_id = patch.backlinkEntryId;
+  if (patch.outreachProspectId !== undefined) update.outreach_prospect_id = patch.outreachProspectId;
 
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -898,6 +924,7 @@ interface ProfileRow {
   name: string;
   role: Role;
   can_access_renewals: boolean | null;
+  can_access_backlink_credentials: boolean | null;
   created_at: string;
 }
 
@@ -908,6 +935,7 @@ function toProfile(row: ProfileRow): Profile {
     name: row.name,
     role: row.role,
     canAccessRenewals: row.can_access_renewals ?? false,
+    canAccessBacklinkCredentials: row.can_access_backlink_credentials ?? false,
     createdAt: row.created_at,
   };
 }
@@ -961,6 +989,19 @@ export async function setMemberRenewalsAccess(userId: string, allowed: boolean):
     const { error } = await getSupabase()
       .from("freelance_hq_profiles")
       .update({ can_access_renewals: allowed, updated_at: nowIso() })
+      .eq("id", userId);
+    if (error) throw error;
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
+/** Fails open when the can_access_backlink_credentials column doesn't exist yet (migration 042 not run). */
+export async function setMemberBacklinkCredentialAccess(userId: string, allowed: boolean): Promise<void> {
+  try {
+    const { error } = await getSupabase()
+      .from("freelance_hq_profiles")
+      .update({ can_access_backlink_credentials: allowed, updated_at: nowIso() })
       .eq("id", userId);
     if (error) throw error;
   } catch (error) {
@@ -1877,11 +1918,11 @@ export async function removeProjectAttachment(id: string): Promise<void> {
   if (error) throw error;
 }
 
-const DEFAULT_BACKLINK_CATEGORIES = [
-  "Social Media Profiles",
-  "Local Listing Backlinks",
-  "Web 2.0 Backlinks",
-  "Guest Posting",
+const DEFAULT_BACKLINK_CATEGORIES: { name: string; categoryType: BacklinkCategoryType }[] = [
+  { name: "Social Media Profiles", categoryType: "social" },
+  { name: "Local Listing Backlinks", categoryType: "local_citation" },
+  { name: "Web 2.0 Backlinks", categoryType: "web2" },
+  { name: "Guest Posting", categoryType: "guest_post" },
 ];
 
 interface BacklinkCategoryRow {
@@ -1890,6 +1931,7 @@ interface BacklinkCategoryRow {
   name: string;
   order: number;
   seo_module: SeoModule;
+  category_type: BacklinkCategoryType;
   created_at: string;
 }
 
@@ -1900,6 +1942,7 @@ function toBacklinkCategory(row: BacklinkCategoryRow): BacklinkCategory {
     name: row.name,
     order: row.order,
     seoModule: row.seo_module ?? "off_page",
+    categoryType: row.category_type ?? "other",
     createdAt: row.created_at,
   };
 }
@@ -1918,7 +1961,14 @@ export async function listBacklinkCategories(projectId: string): Promise<Backlin
     if (rows.length === 0) {
       const { data: seeded, error: seedError } = await getSupabase()
         .from("freelance_hq_backlink_categories")
-        .insert(DEFAULT_BACKLINK_CATEGORIES.map((name, order) => ({ project_id: projectId, name, order })))
+        .insert(
+          DEFAULT_BACKLINK_CATEGORIES.map(({ name, categoryType }, order) => ({
+            project_id: projectId,
+            name,
+            order,
+            category_type: categoryType,
+          })),
+        )
         .select();
       if (seedError) throw seedError;
       rows = (seeded ?? []) as BacklinkCategoryRow[];
@@ -1930,18 +1980,28 @@ export async function listBacklinkCategories(projectId: string): Promise<Backlin
   }
 }
 
-export async function createBacklinkCategory(projectId: string, name: string): Promise<BacklinkCategory> {
+export async function createBacklinkCategory(
+  projectId: string,
+  name: string,
+  categoryType: BacklinkCategoryType = "other",
+): Promise<BacklinkCategory> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_backlink_categories")
-    .insert({ project_id: projectId, name })
+    .insert({ project_id: projectId, name, category_type: categoryType })
     .select()
     .single();
   if (error) throw error;
   return toBacklinkCategory(data as BacklinkCategoryRow);
 }
 
-export async function updateBacklinkCategory(id: string, name: string): Promise<void> {
-  const { error } = await getSupabase().from("freelance_hq_backlink_categories").update({ name }).eq("id", id);
+export async function updateBacklinkCategory(
+  id: string,
+  patch: { name?: string; categoryType?: BacklinkCategoryType },
+): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (patch.name !== undefined) update.name = patch.name;
+  if (patch.categoryType !== undefined) update.category_type = patch.categoryType;
+  const { error } = await getSupabase().from("freelance_hq_backlink_categories").update(update).eq("id", id);
   if (error) throw error;
 }
 
@@ -1959,7 +2019,13 @@ interface BacklinkEntryRow {
   username: string;
   email: string;
   password_encrypted: string | null;
+  login_method: LoginMethod;
   posts_per_month: number | null;
+  status: BacklinkStatus;
+  keyword_id: string | null;
+  indexed: boolean | null;
+  listed_on: string | null;
+  files: TaskFile[] | null;
   notes: string;
   links: BacklinkLink[] | null;
   created_at: string;
@@ -1976,7 +2042,13 @@ function toBacklinkEntry(row: BacklinkEntryRow): BacklinkEntry {
     username: row.username,
     email: row.email,
     hasPassword: Boolean(row.password_encrypted),
+    loginMethod: row.login_method ?? "email",
     postsPerMonth: row.posts_per_month,
+    status: row.status ?? "not_started",
+    keywordId: row.keyword_id,
+    indexed: row.indexed,
+    listedOn: row.listed_on,
+    files: normalizeFiles(row.files),
     notes: row.notes,
     links: row.links ?? [],
     createdAt: row.created_at,
@@ -2017,7 +2089,13 @@ export interface BacklinkEntryInput {
   username: string;
   email: string;
   password: string | null;
+  loginMethod: LoginMethod;
   postsPerMonth: number | null;
+  status: BacklinkStatus;
+  keywordId: string | null;
+  indexed: boolean | null;
+  listedOn: string | null;
+  files: TaskFile[];
   notes: string;
   links: BacklinkLink[];
 }
@@ -2033,7 +2111,13 @@ export async function createBacklinkEntry(input: BacklinkEntryInput): Promise<Ba
       username: input.username,
       email: input.email,
       password_encrypted: input.password ? encryptSecret(input.password) : null,
+      login_method: input.loginMethod,
       posts_per_month: input.postsPerMonth,
+      status: input.status,
+      keyword_id: input.keywordId,
+      indexed: input.indexed,
+      listed_on: input.listedOn,
+      files: input.files,
       notes: input.notes,
       links: input.links,
     })
@@ -2052,7 +2136,13 @@ export async function updateBacklinkEntry(
   if (patch.url !== undefined) update.url = patch.url;
   if (patch.username !== undefined) update.username = patch.username;
   if (patch.email !== undefined) update.email = patch.email;
+  if (patch.loginMethod !== undefined) update.login_method = patch.loginMethod;
   if (patch.postsPerMonth !== undefined) update.posts_per_month = patch.postsPerMonth;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.keywordId !== undefined) update.keyword_id = patch.keywordId;
+  if (patch.indexed !== undefined) update.indexed = patch.indexed;
+  if (patch.listedOn !== undefined) update.listed_on = patch.listedOn;
+  if (patch.files !== undefined) update.files = patch.files;
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (patch.links !== undefined) update.links = patch.links;
   if (patch.clearPassword) update.password_encrypted = null;
@@ -2060,6 +2150,21 @@ export async function updateBacklinkEntry(
 
   const { error } = await getSupabase().from("freelance_hq_backlink_entries").update(update).eq("id", id);
   if (error) throw error;
+}
+
+export async function addBacklinkFile(entryId: string, file: TaskFile): Promise<void> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_backlink_entries")
+    .select("files")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error) throw error;
+  const files = normalizeFiles((data as { files: TaskFile[] | null } | null)?.files);
+  const { error: updateError } = await getSupabase()
+    .from("freelance_hq_backlink_entries")
+    .update({ files: [...files, file] })
+    .eq("id", entryId);
+  if (updateError) throw updateError;
 }
 
 export async function deleteBacklinkEntry(id: string): Promise<void> {
@@ -2136,6 +2241,387 @@ export async function revealBacklinkPassword(
   const encrypted = (data as { password_encrypted: string | null } | null)?.password_encrypted ?? null;
   if (!encrypted) throw new Error("NO_PASSWORD_SET");
   return decryptSecret(encrypted);
+}
+
+/** Guest Post / Outreach CRM: a pipeline of prospects, kept separate from the credential vault table (see migration 046). */
+interface OutreachProspectRow {
+  id: string;
+  project_id: string;
+  website: string;
+  contact_person: string;
+  contact_email: string;
+  dr_da: number | null;
+  price: number | null;
+  contact_date: string | null;
+  last_follow_up: string | null;
+  next_follow_up: string | null;
+  response: string;
+  status: OutreachStatus;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function toOutreachProspect(row: OutreachProspectRow): OutreachProspect {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    website: row.website,
+    contactPerson: row.contact_person,
+    contactEmail: row.contact_email,
+    drDa: row.dr_da,
+    price: row.price,
+    contactDate: row.contact_date,
+    lastFollowUp: row.last_follow_up,
+    nextFollowUp: row.next_follow_up,
+    response: row.response,
+    status: row.status,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listOutreachProspects(projectId: string): Promise<OutreachProspect[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_outreach_prospects")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as OutreachProspectRow[]).map(toOutreachProspect);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createOutreachProspect(input: {
+  projectId: string;
+  website: string;
+  contactPerson: string;
+  contactEmail: string;
+  drDa: number | null;
+  price: number | null;
+}): Promise<OutreachProspect> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_outreach_prospects")
+    .insert({
+      project_id: input.projectId,
+      website: input.website,
+      contact_person: input.contactPerson,
+      contact_email: input.contactEmail,
+      dr_da: input.drDa,
+      price: input.price,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toOutreachProspect(data as OutreachProspectRow);
+}
+
+export async function updateOutreachProspect(
+  id: string,
+  patch: Partial<{
+    website: string;
+    contactPerson: string;
+    contactEmail: string;
+    drDa: number | null;
+    price: number | null;
+    contactDate: string | null;
+    lastFollowUp: string | null;
+    nextFollowUp: string | null;
+    response: string;
+    status: OutreachStatus;
+    notes: string;
+  }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.website !== undefined) update.website = patch.website;
+  if (patch.contactPerson !== undefined) update.contact_person = patch.contactPerson;
+  if (patch.contactEmail !== undefined) update.contact_email = patch.contactEmail;
+  if (patch.drDa !== undefined) update.dr_da = patch.drDa;
+  if (patch.price !== undefined) update.price = patch.price;
+  if (patch.contactDate !== undefined) update.contact_date = patch.contactDate;
+  if (patch.lastFollowUp !== undefined) update.last_follow_up = patch.lastFollowUp;
+  if (patch.nextFollowUp !== undefined) update.next_follow_up = patch.nextFollowUp;
+  if (patch.response !== undefined) update.response = patch.response;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+  const { error } = await getSupabase().from("freelance_hq_outreach_prospects").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteOutreachProspect(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_outreach_prospects").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Competitor backlink intel — not your asset, no login concept. */
+interface CompetitorBacklinkRow {
+  id: string;
+  project_id: string;
+  competitor_url: string;
+  source_backlink_url: string;
+  opportunity_notes: string;
+  target_page_id: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function toCompetitorBacklink(row: CompetitorBacklinkRow): CompetitorBacklink {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    competitorUrl: row.competitor_url,
+    sourceBacklinkUrl: row.source_backlink_url,
+    opportunityNotes: row.opportunity_notes,
+    targetPageId: row.target_page_id,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listCompetitorBacklinks(projectId: string): Promise<CompetitorBacklink[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_competitor_backlinks")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as CompetitorBacklinkRow[]).map(toCompetitorBacklink);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createCompetitorBacklink(input: {
+  projectId: string;
+  competitorUrl: string;
+  sourceBacklinkUrl: string;
+  opportunityNotes: string;
+  targetPageId: string | null;
+}): Promise<CompetitorBacklink> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_competitor_backlinks")
+    .insert({
+      project_id: input.projectId,
+      competitor_url: input.competitorUrl,
+      source_backlink_url: input.sourceBacklinkUrl,
+      opportunity_notes: input.opportunityNotes,
+      target_page_id: input.targetPageId,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toCompetitorBacklink(data as CompetitorBacklinkRow);
+}
+
+export async function updateCompetitorBacklink(
+  id: string,
+  patch: Partial<{
+    competitorUrl: string;
+    sourceBacklinkUrl: string;
+    opportunityNotes: string;
+    targetPageId: string | null;
+    status: string;
+  }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.competitorUrl !== undefined) update.competitor_url = patch.competitorUrl;
+  if (patch.sourceBacklinkUrl !== undefined) update.source_backlink_url = patch.sourceBacklinkUrl;
+  if (patch.opportunityNotes !== undefined) update.opportunity_notes = patch.opportunityNotes;
+  if (patch.targetPageId !== undefined) update.target_page_id = patch.targetPageId;
+  if (patch.status !== undefined) update.status = patch.status;
+  const { error } = await getSupabase().from("freelance_hq_competitor_backlinks").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteCompetitorBacklink(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_competitor_backlinks").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Backlink templates: a reusable, named set of platforms. NEVER stores
+ * credentials — only platform_name/category_type/default_url. Importing
+ * creates fresh, credential-free entries a team member fills in themselves.
+ */
+interface BacklinkTemplateRow {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+interface BacklinkTemplateItemRow {
+  id: string;
+  template_id: string;
+  category_type: BacklinkCategoryType;
+  platform_name: string;
+  default_url: string;
+  order: number;
+}
+
+function toBacklinkTemplateItem(row: BacklinkTemplateItemRow): BacklinkTemplateItem {
+  return {
+    id: row.id,
+    templateId: row.template_id,
+    categoryType: row.category_type,
+    platformName: row.platform_name,
+    defaultUrl: row.default_url,
+    order: row.order,
+  };
+}
+
+export async function listBacklinkTemplates(): Promise<BacklinkTemplate[]> {
+  try {
+    const [{ data, error }, nameById] = await Promise.all([
+      getSupabase().from("freelance_hq_backlink_templates").select("*").order("created_at", { ascending: false }),
+      taskNameLookup(),
+    ]);
+    if (error) throw error;
+    return ((data ?? []) as BacklinkTemplateRow[]).map((row) => ({
+      id: row.id,
+      name: row.name,
+      createdBy: row.created_by,
+      createdByName: row.created_by ? (nameById.get(row.created_by) ?? "Unknown") : null,
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function listBacklinkTemplateItems(templateId: string): Promise<BacklinkTemplateItem[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_backlink_template_items")
+      .select("*")
+      .eq("template_id", templateId)
+      .order("order", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as BacklinkTemplateItemRow[]).map(toBacklinkTemplateItem);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+/** Saves a project's current categories/entries as a reusable template — platform name + category type + URL only, never credentials. */
+export async function saveBacklinksAsTemplate(
+  projectId: string,
+  name: string,
+  createdBy: string,
+): Promise<BacklinkTemplate> {
+  const categories = await listBacklinkCategories(projectId);
+  const entriesByCategory = await listBacklinkEntries(categories.map((c) => c.id));
+
+  const { data: templateRow, error: templateError } = await getSupabase()
+    .from("freelance_hq_backlink_templates")
+    .insert({ name, created_by: createdBy })
+    .select()
+    .single();
+  if (templateError) throw templateError;
+  const template = templateRow as BacklinkTemplateRow;
+
+  const items = categories.flatMap((category) =>
+    (entriesByCategory[category.id] ?? []).map((entry, i) => ({
+      template_id: template.id,
+      category_type: category.categoryType,
+      platform_name: entry.name,
+      default_url: entry.url,
+      order: i,
+    })),
+  );
+  if (items.length > 0) {
+    const { error: itemsError } = await getSupabase().from("freelance_hq_backlink_template_items").insert(items);
+    if (itemsError) throw itemsError;
+  }
+
+  return {
+    id: template.id,
+    name: template.name,
+    createdBy: template.created_by,
+    createdByName: null,
+    createdAt: template.created_at,
+  };
+}
+
+export async function deleteBacklinkTemplate(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_backlink_templates").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Imports selected template items into a project: creates (or reuses) a
+ * category per category_type, then a fresh, credential-free entry per item,
+ * with the client's business details pre-filled into notes — all editable
+ * immediately after. Never copies a credential, because templates never
+ * store one.
+ */
+export async function importBacklinkTemplateItems(
+  projectId: string,
+  itemIds: string[],
+): Promise<number> {
+  if (itemIds.length === 0) return 0;
+
+  const { data: itemRows, error: itemsError } = await getSupabase()
+    .from("freelance_hq_backlink_template_items")
+    .select("*")
+    .in("id", itemIds);
+  if (itemsError) throw itemsError;
+  const items = (itemRows ?? []) as BacklinkTemplateItemRow[];
+  if (items.length === 0) return 0;
+
+  const project = await getProject(projectId);
+  const client = project?.clientDetails;
+  const businessDetailsNote = client
+    ? [
+        client.company || client.name,
+        client.phone,
+        client.email,
+        project?.websiteUrl,
+        client.address,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
+  const existingCategories = await listBacklinkCategories(projectId);
+  const categoryIdByType = new Map(existingCategories.map((c) => [c.categoryType, c.id]));
+
+  let created = 0;
+  for (const item of items) {
+    let categoryId = categoryIdByType.get(item.category_type);
+    if (!categoryId) {
+      const label = item.category_type
+        .split("_")
+        .map((w) => w[0]?.toUpperCase() + w.slice(1))
+        .join(" ");
+      const newCategory = await createBacklinkCategory(projectId, label, item.category_type);
+      categoryId = newCategory.id;
+      categoryIdByType.set(item.category_type, categoryId);
+    }
+
+    const { error } = await getSupabase().from("freelance_hq_backlink_entries").insert({
+      category_id: categoryId,
+      project_id: projectId,
+      name: item.platform_name,
+      url: item.default_url,
+      notes: businessDetailsNote,
+    });
+    if (error) throw error;
+    created += 1;
+  }
+
+  return created;
 }
 
 /**

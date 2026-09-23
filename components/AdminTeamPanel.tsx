@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { UserPlus, Trash2, ChevronDown, ShieldCheck, RefreshCcw } from "lucide-react";
+import { UserPlus, Trash2, ChevronDown, ShieldCheck, RefreshCcw, KeyRound } from "lucide-react";
 import type { Profile, Project } from "@/lib/types";
 import {
   assignProjectsAction,
   inviteTeamMemberAction,
   removeMemberAction,
+  setMemberBacklinkCredentialAccessAction,
   setMemberRenewalsAccessAction,
   updateMemberRoleAction,
 } from "@/lib/actions";
@@ -198,6 +199,31 @@ function MemberRow({
             >
               <RefreshCcw size={13} />
               Domains {member.canAccessRenewals ? "on" : "off"}
+            </button>
+          )}
+          {member.role === "member" && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
+                startTransition(() =>
+                  setMemberBacklinkCredentialAccessAction(member.id, !member.canAccessBacklinkCredentials),
+                )
+              }
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-50",
+                member.canAccessBacklinkCredentials
+                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                  : "border-base-600 text-neutral-300 hover:border-accent-500/60 hover:text-accent-300",
+              )}
+              title={
+                member.canAccessBacklinkCredentials
+                  ? "Revoke backlink credential reveal access"
+                  : "Grant backlink credential reveal access"
+              }
+            >
+              <KeyRound size={13} />
+              Backlink creds {member.canAccessBacklinkCredentials ? "on" : "off"}
             </button>
           )}
           {!isSelf && (

@@ -13,6 +13,8 @@ export function NewTaskForm({
   keywordId,
   pageId,
   contentItemId,
+  backlinkEntryId,
+  outreachProspectId,
 }: {
   projectId: string;
   stageId: string | null;
@@ -22,6 +24,8 @@ export function NewTaskForm({
   keywordId?: string;
   pageId?: string;
   contentItemId?: string;
+  backlinkEntryId?: string;
+  outreachProspectId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -58,6 +62,8 @@ export function NewTaskForm({
       {keywordId && <input type="hidden" name="keywordId" value={keywordId} />}
       {pageId && <input type="hidden" name="pageId" value={pageId} />}
       {contentItemId && <input type="hidden" name="contentItemId" value={contentItemId} />}
+      {backlinkEntryId && <input type="hidden" name="backlinkEntryId" value={backlinkEntryId} />}
+      {outreachProspectId && <input type="hidden" name="outreachProspectId" value={outreachProspectId} />}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-neutral-400">New task</span>
         <button
