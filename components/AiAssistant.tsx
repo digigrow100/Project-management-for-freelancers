@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sparkles, Send, X, Loader2, Check, ThumbsDown } from "lucide-react";
-import type { AiMessage, Project } from "@/lib/types";
+import type { AiMessage, Client, Project } from "@/lib/types";
 import { cn, formatMoney } from "@/lib/utils";
 
 interface ProposalPreview {
@@ -39,7 +39,13 @@ function extractProposals(message: AiMessage): ProposalPreview[] {
     }));
 }
 
-export function AiAssistant({ projects }: { projects: Pick<Project, "id" | "name" | "type" | "archived">[] }) {
+export function AiAssistant({
+  projects,
+  clients = [],
+}: {
+  projects: Pick<Project, "id" | "name" | "type" | "archived">[];
+  clients?: Pick<Client, "id" | "name" | "company">[];
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -55,6 +61,11 @@ export function AiAssistant({ projects }: { projects: Pick<Project, "id" | "name
     projectMatch && projectMatch[1] !== "new" && projectMatch[1] !== "closed"
       ? projects.find((p) => p.id === projectMatch[1])
       : undefined;
+
+  const clientMatch = pathname?.match(/^\/clients\/([^/]+)/);
+  const currentClient =
+    clientMatch && clientMatch[1] !== "new" ? clients.find((c) => c.id === clientMatch[1]) : undefined;
+  const currentContextLabel = currentProject?.name ?? (currentClient ? currentClient.name || currentClient.company : undefined);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -73,9 +84,17 @@ export function AiAssistant({ projects }: { projects: Pick<Project, "id" | "name
         body: JSON.stringify({
           message: trimmed,
           conversationId,
-          context: currentProject
-            ? { projectId: currentProject.id, projectName: currentProject.name, projectType: currentProject.type }
-            : undefined,
+          context:
+            currentProject || currentClient
+              ? {
+                  ...(currentProject
+                    ? { projectId: currentProject.id, projectName: currentProject.name, projectType: currentProject.type }
+                    : {}),
+                  ...(currentClient
+                    ? { clientId: currentClient.id, clientName: currentClient.name || currentClient.company }
+                    : {}),
+                }
+              : undefined,
         }),
       });
       const data: { conversationId?: string; message?: AiMessage; error?: string } = await res.json();
@@ -147,9 +166,9 @@ export function AiAssistant({ projects }: { projects: Pick<Project, "id" | "name
               </button>
             </div>
 
-            {currentProject && (
+            {currentContextLabel && (
               <p className="border-b border-base-700/60 bg-base-850/60 px-4 py-2 text-[11px] text-neutral-500">
-                Context: <span className="text-accent-300">{currentProject.name}</span>
+                Context: <span className="text-accent-300">{currentContextLabel}</span>
               </p>
             )}
 
@@ -283,17 +302,21 @@ function ProposalCard({
 
 function ProposalPreviewContent({ proposal }: { proposal: ProposalPreview }) {
   if (proposal.actionType === "create_tasks") {
-    const tasks = (proposal.preview as { title: string; scheduledFor: string }[]) ?? [];
+    const p = proposal.preview as { assignee?: string | null; tasks: { title: string; scheduledFor: string }[] };
+    const tasks = p?.tasks ?? [];
     return (
-      <ul className="flex flex-col gap-1 text-xs text-neutral-400">
-        {tasks.slice(0, 12).map((t, i) => (
-          <li key={i} className="flex justify-between gap-2">
-            <span className="truncate">{t.title}</span>
-            <span className="shrink-0 text-neutral-500">{t.scheduledFor}</span>
-          </li>
-        ))}
-        {tasks.length > 12 && <li className="text-neutral-500">…and {tasks.length - 12} more</li>}
-      </ul>
+      <div className="text-xs text-neutral-400">
+        {p?.assignee && <p className="mb-1 text-neutral-300">Assigned to {p.assignee}</p>}
+        <ul className="flex flex-col gap-1">
+          {tasks.slice(0, 12).map((t, i) => (
+            <li key={i} className="flex justify-between gap-2">
+              <span className="truncate">{t.title}</span>
+              <span className="shrink-0 text-neutral-500">{t.scheduledFor}</span>
+            </li>
+          ))}
+          {tasks.length > 12 && <li className="text-neutral-500">…and {tasks.length - 12} more</li>}
+        </ul>
+      </div>
     );
   }
 
