@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
 import { DomainExpiryTicker } from "@/components/DomainExpiryTicker";
+import { AiAssistant } from "@/components/AiAssistant";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
       <DomainExpiryTicker items={tickerItems} />
+      {profile && <AiAssistant projects={projects} />}
     </div>
   );
 }

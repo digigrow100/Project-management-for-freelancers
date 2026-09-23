@@ -789,3 +789,35 @@ export interface SeoReportMetrics {
   contentPublished: number;
   technicalFixed: number;
 }
+
+/**
+ * Phase 6: AI assistant chat. Persisted so a reload resumes the same
+ * conversation and `lastResponseId` lets the next turn chain via OpenAI's
+ * previous_response_id instead of resending the whole transcript.
+ */
+export interface AiConversation {
+  id: string;
+  userId: string;
+  title: string;
+  lastResponseId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AiMessageRole = "user" | "assistant";
+
+/** One tool call the assistant made while answering, kept for transparency — not a separate activity log. */
+export interface AiToolCallRecord {
+  name: string;
+  arguments: Record<string, unknown>;
+  result: unknown;
+}
+
+export interface AiMessage {
+  id: string;
+  conversationId: string;
+  role: AiMessageRole;
+  content: string;
+  toolCalls: AiToolCallRecord[];
+  createdAt: string;
+}

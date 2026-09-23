@@ -3,6 +3,10 @@ import { getSupabase } from "./supabaseClient";
 import { PROJECT_TEMPLATES } from "./templates";
 import { decryptSecret, encryptSecret, hashVaultPassword, verifyVaultPassword } from "./backlinkCrypto";
 import type {
+  AiConversation,
+  AiMessage,
+  AiMessageRole,
+  AiToolCallRecord,
   BacklinkCategory,
   BacklinkCategoryType,
   BacklinkEntry,
@@ -5016,4 +5020,136 @@ export async function setWebsiteOfflineForDomain(domainId: string, offline: bool
     .update({ is_offline: offline, updated_at: nowIso() })
     .eq("domain_id", domainId);
   if (error) throw error;
+}
+
+/* ------------------------------------------------------------------ */
+/* Phase 6: AI Assistant conversations                                 */
+/* ------------------------------------------------------------------ */
+
+interface AiConversationRow {
+  id: string;
+  user_id: string;
+  title: string;
+  last_response_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toAiConversation(row: AiConversationRow): AiConversation {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    lastResponseId: row.last_response_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function createAiConversation(userId: string, title: string): Promise<AiConversation> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_ai_conversations")
+    .insert({ user_id: userId, title })
+    .select()
+    .single();
+  if (error) throw error;
+  return toAiConversation(data as AiConversationRow);
+}
+
+export async function listAiConversations(userId: string): Promise<AiConversation[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_ai_conversations")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as AiConversationRow[]).map(toAiConversation);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+/** Returns the conversation only if it belongs to `userId` — callers must not trust a bare conversation id from the client. */
+export async function getAiConversationForUser(id: string, userId: string): Promise<AiConversation | null> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_ai_conversations")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toAiConversation(data as AiConversationRow) : null;
+}
+
+export async function updateAiConversation(
+  id: string,
+  patch: Partial<{ title: string; lastResponseId: string | null }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.title !== undefined) update.title = patch.title;
+  if (patch.lastResponseId !== undefined) update.last_response_id = patch.lastResponseId;
+  const { error } = await getSupabase().from("freelance_hq_ai_conversations").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteAiConversation(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_ai_conversations").delete().eq("id", id);
+  if (error) throw error;
+}
+
+interface AiMessageRow {
+  id: string;
+  conversation_id: string;
+  role: AiMessageRole;
+  content: string;
+  tool_calls: AiToolCallRecord[] | null;
+  created_at: string;
+}
+
+function toAiMessage(row: AiMessageRow): AiMessage {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    role: row.role,
+    content: row.content,
+    toolCalls: row.tool_calls ?? [],
+    createdAt: row.created_at,
+  };
+}
+
+export async function listAiMessages(conversationId: string): Promise<AiMessage[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_ai_messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as AiMessageRow[]).map(toAiMessage);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function addAiMessage(input: {
+  conversationId: string;
+  role: AiMessageRole;
+  content: string;
+  toolCalls?: AiToolCallRecord[];
+}): Promise<AiMessage> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_ai_messages")
+    .insert({
+      conversation_id: input.conversationId,
+      role: input.role,
+      content: input.content,
+      tool_calls: input.toolCalls ?? [],
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toAiMessage(data as AiMessageRow);
 }
