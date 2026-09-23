@@ -92,11 +92,15 @@ export async function updatePasswordAction(formData: FormData) {
   const { error } = await supabase.auth.updateUser({ password });
 
   if (error) {
-    // Most commonly: the recovery link expired before the user finished
-    // this form, so there's no session to update. Send them back to request
-    // a fresh link rather than showing a dead-end error here.
-    redirect(`/login/forgot-password?error=${encodeURIComponent(error.message)}`);
+    // Keep them on this form — the recovery session is usually still valid
+    // (this is often just a password-policy rejection), so bouncing to
+    // "request a new link" would throw away a perfectly good session along
+    // with whatever they'd already typed.
+    redirect(`/login/reset-password?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect(`/login?error=${encodeURIComponent("Password updated. Sign in with your new password.")}`);
+  // verifyOtp already signed them in via the recovery link, so they're
+  // authenticated now — middleware would bounce a plain "/login" redirect
+  // straight to "/" anyway, silently dropping any message set here.
+  redirect("/");
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { updatePasswordAction } from "../actions";
 
@@ -55,6 +56,13 @@ export default function ResetPasswordPage({ searchParams }: { searchParams: { er
             Update password
           </button>
         </form>
+
+        <Link
+          href="/login/forgot-password"
+          className="mt-4 block text-center text-xs text-neutral-400 hover:text-neutral-200"
+        >
+          Link expired? Request a new one
+        </Link>
       </div>
     </div>
   );
