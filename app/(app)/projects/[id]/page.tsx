@@ -17,6 +17,7 @@ import {
   isProjectAssignedToUser,
   listPaymentsForProject,
   getTasksByProject,
+  listTeamMembers,
   listWebAppFeatures,
   listWebAppSubFeatures,
 } from "@/lib/store";
@@ -53,13 +54,14 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   const isAdmin = profile.role === "admin";
 
-  const [tasks, progress, businessProfile, paymentPlans, payments, keywords] = await Promise.all([
+  const [tasks, progress, businessProfile, paymentPlans, payments, keywords, assignableMembers] = await Promise.all([
     getTasksByProject(project.id),
     getProjectProgress(project.id),
     getBusinessProfile(),
     isAdmin ? listPaymentPlansForProject(project.id) : Promise.resolve([]),
     isAdmin ? listPaymentsForProject(project.id) : Promise.resolve([]),
     project.type === "seo" ? listKeywords(project.id) : Promise.resolve([]),
+    listTeamMembers(),
   ]);
 
   const keywordRankHistory =
@@ -145,9 +147,9 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
           {project.type === "seo" ? "SEO Checklist" : "Stages & Tasks"}
         </h2>
         {project.type === "seo" ? (
-          <SeoStageTabs project={project} tasks={tasks} />
+          <SeoStageTabs project={project} tasks={tasks} assignableMembers={assignableMembers} />
         ) : (
-          <StageBoard project={project} tasks={tasks} />
+          <StageBoard project={project} tasks={tasks} assignableMembers={assignableMembers} />
         )}
       </section>
 
@@ -165,7 +167,13 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             </p>
           )}
           {completed.map((task) => (
-            <TaskRow key={task.id} task={task} stageName={stageName(task.stageId)} stages={project.stages} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              stageName={stageName(task.stageId)}
+              stages={project.stages}
+              assignableMembers={assignableMembers}
+            />
           ))}
         </div>
       </section>

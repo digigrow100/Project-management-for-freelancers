@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -16,6 +16,7 @@ const PRIMARY_NAV = [
 ];
 
 const COMMON_MORE_NAV = [
+  { href: "/my-tasks", label: "My Tasks", icon: ListTodo },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
 ];
@@ -38,16 +39,22 @@ export function MobileNav({
   profile,
   unseenProjects = 0,
   unseenNotes = 0,
+  unseenTasks = 0,
 }: {
   profile: Profile | null;
   unseenProjects?: number;
   unseenNotes?: number;
+  unseenTasks?: number;
 }) {
   const pathname = usePathname();
   const isAdmin = profile?.role === "admin";
   const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
   const [moreOpen, setMoreOpen] = useState(false);
-  const badgeByHref: Record<string, number> = { "/projects": unseenProjects, "/notes": unseenNotes };
+  const badgeByHref: Record<string, number> = {
+    "/projects": unseenProjects,
+    "/notes": unseenNotes,
+    "/my-tasks": unseenTasks,
+  };
 
   const financeItem = isAdmin ? MORE_NAV.find((item) => item.href === "/finance") : undefined;
   const domainsItem = MORE_NAV.find((item) => item.href === "/domains");

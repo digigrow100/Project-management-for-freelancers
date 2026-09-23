@@ -1,13 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import type { Project, Task } from "@/lib/types";
+import type { Profile, Project, Task } from "@/lib/types";
 import { TaskRow } from "./TaskRow";
 import { NewTaskForm } from "./NewTaskForm";
 import { ProgressBar } from "./ProgressBar";
 import { AddStageForm } from "./AddStageForm";
 
-export function SeoStageTabs({ project, tasks }: { project: Project; tasks: Task[] }) {
+export function SeoStageTabs({
+  project,
+  tasks,
+  assignableMembers = [],
+}: {
+  project: Project;
+  tasks: Task[];
+  assignableMembers?: Profile[];
+}) {
   const stages = [...project.stages].sort((a, b) => a.order - b.order);
   const [activeId, setActiveId] = useState(stages[0]?.id ?? "");
 
@@ -73,9 +81,9 @@ export function SeoStageTabs({ project, tasks }: { project: Project; tasks: Task
           />
           <div className="flex flex-col gap-2">
             {activeTasks.map((task) => (
-              <TaskRow key={task.id} task={task} stages={stages} />
+              <TaskRow key={task.id} task={task} stages={stages} assignableMembers={assignableMembers} />
             ))}
-            <NewTaskForm projectId={project.id} stageId={activeStage.id} />
+            <NewTaskForm projectId={project.id} stageId={activeStage.id} assignableMembers={assignableMembers} />
           </div>
         </div>
       )}

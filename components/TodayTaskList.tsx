@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project, Task } from "@/lib/types";
+import type { Profile, Project, Task } from "@/lib/types";
 import { TaskRow } from "./TaskRow";
 
 function todayKey(): string {
@@ -17,7 +17,15 @@ function todayKey(): string {
  * or earlier — an overdue task doesn't just vanish, it rolls forward until
  * it's done.
  */
-export function TodayTaskList({ tasks, projects }: { tasks: Task[]; projects: Project[] }) {
+export function TodayTaskList({
+  tasks,
+  projects,
+  assignableMembers = [],
+}: {
+  tasks: Task[];
+  projects: Project[];
+  assignableMembers?: Profile[];
+}) {
   const today = todayKey();
   const projectById = new Map(projects.map((p) => [p.id, p]));
   const todayTasks = tasks.filter((t) => t.scheduledFor && t.scheduledFor <= today);
@@ -54,6 +62,7 @@ export function TodayTaskList({ tasks, projects }: { tasks: Task[]; projects: Pr
             stages={project?.stages ?? []}
             showProject
             projectName={project?.name}
+            assignableMembers={assignableMembers}
           />
         );
       })}

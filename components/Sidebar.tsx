@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText } from "lucide-react";
 import type { Profile, Project } from "@/lib/types";
 import { SidebarProjectGroups } from "./SidebarProjectGroups";
 import { InstallAppButton } from "./InstallAppButton";
@@ -10,6 +10,7 @@ import { logoutAction } from "@/app/login/actions";
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/today", label: "Today", icon: ListChecks },
+  { href: "/my-tasks", label: "My Tasks", icon: ListTodo },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
@@ -20,15 +21,21 @@ export function Sidebar({
   profile,
   unseenProjects = 0,
   unseenNotes = 0,
+  unseenTasks = 0,
 }: {
   projects: Project[];
   profile: Profile | null;
   unseenProjects?: number;
   unseenNotes?: number;
+  unseenTasks?: number;
 }) {
   const isAdmin = profile?.role === "admin";
   const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
-  const badgeByHref: Record<string, number> = { "/projects": unseenProjects, "/notes": unseenNotes };
+  const badgeByHref: Record<string, number> = {
+    "/projects": unseenProjects,
+    "/notes": unseenNotes,
+    "/my-tasks": unseenTasks,
+  };
   return (
     <aside className="hidden md:flex md:h-screen md:w-64 md:flex-col border-r border-base-700/60 bg-base-900/60 backdrop-blur-sm px-4 py-6 gap-6">
       <div className="flex items-center gap-2 px-2">

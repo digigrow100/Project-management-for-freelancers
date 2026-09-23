@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { X, Trash2, Clock, CalendarDays, ListChecks, FileText } from "lucide-react";
-import type { ChecklistItem, Stage, Task, TaskStatus } from "@/lib/types";
+import type { ChecklistItem, Profile, Stage, Task, TaskStatus } from "@/lib/types";
 import { deleteTaskAction, updateTaskDetailsAction } from "@/lib/actions";
 import { formatRelativeDate } from "@/lib/utils";
 import { TaskFiles } from "./TaskFiles";
@@ -21,11 +21,13 @@ export function TaskDetailModal({
   task,
   stages,
   projectName,
+  assignableMembers = [],
   onClose,
 }: {
   task: Task;
   stages: Stage[];
   projectName?: string;
+  assignableMembers?: Profile[];
   onClose: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -122,6 +124,44 @@ export function TaskDetailModal({
               required
               defaultValue={task.title}
               className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Assigned to</label>
+            <select
+              name="assignedTo"
+              defaultValue={task.assignedTo ?? ""}
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+            >
+              <option value="">Unassigned</option>
+              {assignableMembers.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name || member.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Why this matters</label>
+            <textarea
+              name="why"
+              defaultValue={task.why}
+              rows={2}
+              placeholder="Why does this task matter?"
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Done when</label>
+            <textarea
+              name="expectedOutcome"
+              defaultValue={task.expectedOutcome}
+              rows={2}
+              placeholder="What does finishing this task look like?"
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
             />
           </div>
 

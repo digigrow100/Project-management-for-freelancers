@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Circle, Star, Trash2, Timer, ListChecks, Paperclip, CalendarDays } from "lucide-react";
-import type { Stage, Task } from "@/lib/types";
+import { Check, Circle, Star, Trash2, Timer, ListChecks, Paperclip, CalendarDays, User } from "lucide-react";
+import type { Profile, Stage, Task } from "@/lib/types";
 import { PriorityBadge } from "./Badges";
 import { cn, formatDateKey, formatRelativeDate } from "@/lib/utils";
 import {
@@ -27,12 +27,14 @@ export function TaskRow({
   stages = [],
   showProject,
   projectName,
+  assignableMembers = [],
 }: {
   task: Task;
   stageName?: string | null;
   stages?: Stage[];
   showProject?: boolean;
   projectName?: string;
+  assignableMembers?: Profile[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [detailOpen, setDetailOpen] = useState(false);
@@ -115,6 +117,15 @@ export function TaskRow({
                 {projectName}
               </span>
             )}
+            {task.assignedToName && (
+              <span
+                title={task.assignedToName}
+                className="flex items-center gap-1 rounded-full border border-base-600 px-2 py-0.5 text-[11px] text-neutral-400"
+              >
+                <User size={11} />
+                {task.assignedToName}
+              </span>
+            )}
             {task.checklist.length > 0 && (
               <span className="flex items-center gap-1 rounded-full border border-base-600 px-2 py-0.5 text-[11px] text-neutral-400">
                 <ListChecks size={11} />
@@ -177,6 +188,7 @@ export function TaskRow({
           task={task}
           stages={stages}
           projectName={projectName}
+          assignableMembers={assignableMembers}
           onClose={() => setDetailOpen(false)}
         />
       )}
