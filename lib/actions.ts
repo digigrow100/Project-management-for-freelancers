@@ -37,6 +37,7 @@ import type {
   ProjectType,
   RenewalServiceType,
   RenewalStatus,
+  ReportPeriodType,
   ResaleDomainStatus,
   RichContent,
   Role,
@@ -1280,12 +1281,16 @@ export async function deleteContentItemAction(id: string, projectId: string) {
   revalidatePath(`/projects/${projectId}`);
 }
 
-export async function generateSeoReportAction(projectId: string, period: string) {
+export async function generateSeoReportAction(
+  projectId: string,
+  period: string,
+  periodType: ReportPeriodType = "monthly",
+) {
   const profile = await requireProjectAccess(projectId);
-  const report = await store.getOrCreateSeoReport(projectId, period, profile.id);
+  const report = await store.getOrCreateSeoReport(projectId, period, profile.id, periodType);
 
   if (!report.summary) {
-    const draft = await store.buildSeoReportDraft(projectId, period);
+    const draft = await store.buildSeoReportDraft(projectId, period, periodType);
     const lines: string[] = [];
     if (draft.rankMovements.length > 0) {
       lines.push("Keyword movement:");
@@ -1297,7 +1302,13 @@ export async function generateSeoReportAction(projectId: string, period: string)
       lines.push("", "Completed this period:");
       for (const title of draft.completedTaskTitles) lines.push(`- ${title}`);
     }
-    lines.push("", `Backlinks created: ${draft.backlinksCreated}`);
+    lines.push(
+      "",
+      `Keywords tracked: ${draft.metrics.keywordsTracked} (improved ${draft.metrics.keywordsImproved}, dropped ${draft.metrics.keywordsDropped})`,
+      `Backlinks: ${draft.metrics.backlinksCreated} created, ${draft.metrics.backlinksLive} live`,
+      `Content published: ${draft.metrics.contentPublished}`,
+      `Technical fixes: ${draft.metrics.technicalFixed}`,
+    );
     await store.updateSeoReport(report.id, { summary: lines.join("\n") });
   }
   revalidatePath(`/projects/${projectId}`);
@@ -1310,6 +1321,15 @@ export async function updateSeoReportAction(
 ) {
   await requireProjectAccess(projectId);
   await store.updateSeoReport(id, patch);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function setReportPreferencesAction(
+  projectId: string,
+  patch: Parameters<typeof store.setReportPreferences>[1],
+) {
+  await requireProjectAccess(projectId);
+  await store.setReportPreferences(projectId, patch);
   revalidatePath(`/projects/${projectId}`);
 }
 

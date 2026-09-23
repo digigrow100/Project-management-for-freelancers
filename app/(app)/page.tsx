@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ListTodo, FolderKanban, CheckCircle2, ArrowRight, Plus, Wallet, TrendingUp, AlertCircle, PiggyBank, Hourglass, Pin, FileText } from "lucide-react";
+import { ListTodo, FolderKanban, CheckCircle2, ArrowRight, Plus, Wallet, TrendingUp, AlertCircle, PiggyBank, Hourglass, Pin, FileText, Activity, Users, BarChart3 } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   getCompletedTasks,
@@ -11,12 +11,21 @@ import {
   listPinnedNotes,
   listTeamMembers,
 } from "@/lib/store";
+import { getDashboardActivity, getSeoOverview, getTeamPerformance } from "@/lib/activity";
 import { StatCard } from "@/components/StatCard";
 import { ScheduledTodayStat } from "@/components/ScheduledTodayStat";
 import { TaskRow } from "@/components/TaskRow";
 import { ProjectTypeTabs } from "@/components/ProjectTypeTabs";
+import { ActivityFeed } from "@/components/ActivityFeed";
+import { TeamActivityPanel } from "@/components/TeamActivityPanel";
+import { SeoOverviewCard } from "@/components/SeoOverviewCard";
 import type { ProjectPaymentSummary } from "@/components/ProjectCardClient";
 import { currentMonthKey, formatMoney, formatRelativeDate, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
+
+function todayDateKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +54,24 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     if (!stageId) return null;
     return projectById.get(projectId)?.stages.find((s) => s.id === stageId)?.name ?? null;
   };
+
+  const todayKey = todayDateKey();
+  const seoProjects = activeProjects.filter((p) => p.type === "seo");
+  const [todayActivity, teamPerformance, seoOverview] = await Promise.all([
+    getDashboardActivity(activeProjects, todayKey),
+    getTeamPerformance(activeProjects, assignableMembers, todayKey),
+    seoProjects.length > 0
+      ? getSeoOverview(seoProjects, todayKey)
+      : Promise.resolve({
+          keywordsTracked: 0,
+          keywordsImproved: 0,
+          keywordsDropped: 0,
+          backlinksCreated: 0,
+          backlinksLive: 0,
+          contentPublished: 0,
+          technicalFixed: 0,
+        }),
+  ]);
 
   const paymentsByProject = new Map<string, typeof payments>();
   for (const payment of payments) {
@@ -141,6 +168,34 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         <StatCard label="Completed" value={completedTasks.length} icon={CheckCircle2} tone="accent" />
       </div>
 
+      {seoProjects.length > 0 && (
+        <section>
+          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            <BarChart3 size={13} className="text-accent-400" />
+            SEO Overview · This week
+          </h2>
+          <SeoOverviewCard metrics={seoOverview} />
+        </section>
+      )}
+
+      <section>
+        <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          <Activity size={13} className="text-accent-400" />
+          Today&apos;s Activity
+        </h2>
+        <ActivityFeed events={todayActivity} />
+      </section>
+
+      {teamPerformance.length > 0 && (
+        <section>
+          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            <Users size={13} className="text-accent-400" />
+            Team Activity
+          </h2>
+          <TeamActivityPanel performance={teamPerformance} />
+        </section>
+      )}
+
       {isAdmin && plans.length > 0 && (
         <section>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -181,7 +236,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            Open Tasks
+            Pending Work
           </h2>
           <Link href="/today" className="flex items-center gap-1 text-xs text-accent-400 hover:text-accent-300">
             Plan today <ArrowRight size={12} />
@@ -194,6 +249,28 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
             </p>
           )}
           {openTasks.slice(0, 8).map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              stageName={stageNameById(task.projectId, task.stageId)}
+              stages={projectById.get(task.projectId)?.stages ?? []}
+              showProject
+              projectName={projectById.get(task.projectId)?.name}
+              assignableMembers={assignableMembers}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">Recent Completed Work</h2>
+        <div className="flex flex-col gap-2 rounded-xl2 border border-base-700/60 bg-base-850 p-2 md:border-0 md:bg-transparent md:p-0">
+          {completedTasks.length === 0 && (
+            <p className="rounded-lg border border-dashed border-base-700 p-6 text-center text-sm text-neutral-500">
+              Nothing completed yet.
+            </p>
+          )}
+          {completedTasks.slice(0, 8).map((task) => (
             <TaskRow
               key={task.id}
               task={task}
