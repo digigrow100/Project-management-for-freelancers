@@ -5,6 +5,8 @@ import {
   getClient,
   getInvoice,
   getProjectsForClient,
+  getSeoReport,
+  listApprovedSeoReportsForClient,
   listInvoiceItems,
   listPaymentsForInvoice,
 } from "@/lib/store";
@@ -22,11 +24,13 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   const client = await getClient(invoice.clientId);
   if (!client) notFound();
 
-  const [items, payments, projects, businessProfile] = await Promise.all([
+  const [items, payments, projects, businessProfile, availableReports, attachedReport] = await Promise.all([
     listInvoiceItems(invoice.id),
     listPaymentsForInvoice(invoice.id),
     getProjectsForClient(client.id),
     getBusinessProfile(),
+    listApprovedSeoReportsForClient(client.id),
+    invoice.seoReportId ? getSeoReport(invoice.seoReportId) : Promise.resolve(null),
   ]);
 
   return (
@@ -37,6 +41,8 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
       businessProfile={businessProfile}
       payments={payments}
       projects={projects}
+      attachedReport={attachedReport}
+      availableReports={availableReports}
     />
   );
 }

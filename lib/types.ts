@@ -625,6 +625,12 @@ export interface ContentItem {
  */
 export type ReportPeriodType = "daily" | "weekly" | "monthly";
 
+/**
+ * A report's content is split into distinct editable fields rather than one
+ * blob, so a human can revise each part independently before approving it
+ * for attachment to a client invoice. Nothing here is ever permanently
+ * locked — `approved` is a flag, not a read-only state.
+ */
 export interface SeoReport {
   id: string;
   projectId: string;
@@ -632,8 +638,13 @@ export interface SeoReport {
   period: string;
   periodType: ReportPeriodType;
   summary: string;
+  completedWork: string;
+  metricsNotes: string;
+  notes: string;
   generatedBy: string | null;
   generatedByName: string | null;
+  approved: boolean;
+  approvedAt: string | null;
   sentToClient: boolean;
   sentAt: string | null;
   createdAt: string;
@@ -708,6 +719,8 @@ export interface Invoice {
   projectId: string | null;
   projectName: string | null;
   clientServiceId: string | null;
+  /** Optional link to the SEO report sent alongside this invoice. An invoice can exist without one. */
+  seoReportId: string | null;
   currency: string;
   issueDate: string;
   dueDate: string;

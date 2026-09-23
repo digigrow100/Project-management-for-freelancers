@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Eye, Plus, Trash2, X } from "lucide-react";
-import type { BusinessProfile, Client, Invoice, InvoiceItem, InvoiceStatus, Payment, Project } from "@/lib/types";
+import { ArrowLeft, Download, Eye, FileText, Plus, Trash2, X } from "lucide-react";
+import type { BusinessProfile, Client, Invoice, InvoiceItem, InvoiceStatus, Payment, Project, SeoReport } from "@/lib/types";
 import {
   addInvoicePaymentAction,
   deleteInvoiceAction,
@@ -46,6 +46,8 @@ export function InvoiceDetailPanel({
   businessProfile,
   payments,
   projects,
+  attachedReport,
+  availableReports,
 }: {
   invoice: Invoice;
   items: InvoiceItem[];
@@ -53,6 +55,8 @@ export function InvoiceDetailPanel({
   businessProfile: BusinessProfile;
   payments: Payment[];
   projects: Project[];
+  attachedReport: SeoReport | null;
+  availableReports: SeoReport[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -267,6 +271,24 @@ export function InvoiceDetailPanel({
           </p>
         </div>
 
+        {availableReports.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Attach SEO report (optional)</label>
+            <select
+              name="seoReportId"
+              defaultValue={invoice.seoReportId ?? ""}
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+            >
+              <option value="">None</option>
+              {availableReports.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.period} ({r.periodType})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <textarea
           name="notes"
           rows={2}
@@ -283,6 +305,27 @@ export function InvoiceDetailPanel({
           {isPending ? "Saving…" : "Save invoice"}
         </button>
       </form>
+
+      {attachedReport && (
+        <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <FileText size={16} className="text-accent-400" />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+              Attached SEO Report — {attachedReport.period}
+            </h2>
+          </div>
+          {attachedReport.summary && <p className="text-sm text-neutral-300">{attachedReport.summary}</p>}
+          {attachedReport.completedWork && (
+            <p className="mt-2 whitespace-pre-line text-xs text-neutral-400">{attachedReport.completedWork}</p>
+          )}
+          <Link
+            href={`/projects/${attachedReport.projectId}`}
+            className="mt-2 inline-block text-xs text-accent-400 hover:text-accent-300"
+          >
+            View in project reporting tab →
+          </Link>
+        </div>
+      )}
 
       <PaymentsSection invoice={invoice} clientId={client.id} payments={payments} totalDue={subtotal} />
     </div>

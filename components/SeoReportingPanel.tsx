@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { BarChart3, CheckCircle2, FileText } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, ShieldCheck } from "lucide-react";
 import type { ReportPeriodType, ReportPreferences, SeoReport } from "@/lib/types";
-import { generateSeoReportAction, updateSeoReportAction } from "@/lib/actions";
+import { approveSeoReportAction, generateSeoReportAction, updateSeoReportAction } from "@/lib/actions";
 import { ReportPreferencesForm } from "@/components/ReportPreferencesForm";
 import { cn } from "@/lib/utils";
 
@@ -107,34 +107,113 @@ export function SeoReportingPanel({
 function ReportCard({ projectId, report }: { projectId: string; report: SeoReport }) {
   const [isPending, startTransition] = useTransition();
   const [summary, setSummary] = useState(report.summary);
+  const [completedWork, setCompletedWork] = useState(report.completedWork);
+  const [metricsNotes, setMetricsNotes] = useState(report.metricsNotes);
+  const [notes, setNotes] = useState(report.notes);
+
+  function saveField(field: "summary" | "completedWork" | "metricsNotes" | "notes", value: string, original: string) {
+    if (value === original) return;
+    startTransition(() => updateSeoReportAction(report.id, projectId, { [field]: value }));
+  }
 
   return (
     <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-neutral-100">{report.period}</h3>
-        <button
-          type="button"
-          disabled={isPending || report.sentToClient}
-          onClick={() => startTransition(() => updateSeoReportAction(report.id, projectId, { sentToClient: true }))}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
-            report.sentToClient ? "bg-accent-500/15 text-accent-400" : "border border-base-600 text-neutral-400 hover:text-accent-300",
-          )}
-        >
-          <CheckCircle2 size={12} />
-          {report.sentToClient ? "Sent to client" : "Mark sent"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isPending || report.approved}
+            onClick={() => startTransition(() => approveSeoReportAction(report.id, projectId))}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+              report.approved ? "bg-sky-500/15 text-sky-400" : "border border-base-600 text-neutral-400 hover:text-sky-300",
+            )}
+            title="Approve so this report can be attached to an invoice"
+          >
+            <ShieldCheck size={12} />
+            {report.approved ? "Approved" : "Approve"}
+          </button>
+          <button
+            type="button"
+            disabled={isPending || report.sentToClient}
+            onClick={() => startTransition(() => updateSeoReportAction(report.id, projectId, { sentToClient: true }))}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+              report.sentToClient ? "bg-accent-500/15 text-accent-400" : "border border-base-600 text-neutral-400 hover:text-accent-300",
+            )}
+          >
+            <CheckCircle2 size={12} />
+            {report.sentToClient ? "Sent to client" : "Mark sent"}
+          </button>
+        </div>
       </div>
-      <textarea
-        value={summary}
-        onChange={(e) => setSummary(e.target.value)}
-        onBlur={() => summary !== report.summary && startTransition(() => updateSeoReportAction(report.id, projectId, { summary }))}
-        rows={8}
-        className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
-      />
+
+      <div className="flex flex-col gap-3">
+        <Field
+          label="Summary"
+          value={summary}
+          onChange={setSummary}
+          onBlur={() => saveField("summary", summary, report.summary)}
+          rows={2}
+        />
+        <Field
+          label="Completed work"
+          value={completedWork}
+          onChange={setCompletedWork}
+          onBlur={() => saveField("completedWork", completedWork, report.completedWork)}
+          rows={5}
+        />
+        <Field
+          label="Metrics"
+          value={metricsNotes}
+          onChange={setMetricsNotes}
+          onBlur={() => saveField("metricsNotes", metricsNotes, report.metricsNotes)}
+          rows={4}
+        />
+        <Field
+          label="Notes"
+          value={notes}
+          onChange={setNotes}
+          onBlur={() => saveField("notes", notes, report.notes)}
+          rows={2}
+          placeholder="Anything worth adding for the client (optional)"
+        />
+      </div>
+
       {report.generatedByName && (
-        <p className="mt-1.5 text-[11px] text-neutral-600">Generated by {report.generatedByName}</p>
+        <p className="mt-2 text-[11px] text-neutral-600">Generated by {report.generatedByName}</p>
       )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  onBlur,
+  rows,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  rows: number;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-neutral-500">{label}</label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+      />
     </div>
   );
 }

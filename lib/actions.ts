@@ -877,6 +877,7 @@ export async function createInvoiceAction(formData: FormData): Promise<string | 
     clientId,
     projectId: str(formData, "projectId") || null,
     clientServiceId: str(formData, "clientServiceId") || null,
+    seoReportId: str(formData, "seoReportId") || null,
     currency: str(formData, "currency") || "PKR",
     issueDate: str(formData, "issueDate") || store.todayDateKey(),
     dueDate: str(formData, "dueDate") || store.todayDateKey(),
@@ -896,6 +897,7 @@ export async function updateInvoiceAction(id: string, clientId: string, formData
   const items = parseInvoiceItems(str(formData, "items"));
   await store.updateInvoice(id, {
     projectId: str(formData, "projectId") || null,
+    seoReportId: str(formData, "seoReportId") || null,
     currency: str(formData, "currency") || "PKR",
     issueDate: str(formData, "issueDate") || store.todayDateKey(),
     dueDate: str(formData, "dueDate") || store.todayDateKey(),
@@ -1289,27 +1291,34 @@ export async function generateSeoReportAction(
   const profile = await requireProjectAccess(projectId);
   const report = await store.getOrCreateSeoReport(projectId, period, profile.id, periodType);
 
-  if (!report.summary) {
+  // Only seed content the first time — regenerating never overwrites what a human has since edited.
+  if (!report.summary && !report.completedWork && !report.metricsNotes) {
     const draft = await store.buildSeoReportDraft(projectId, period, periodType);
-    const lines: string[] = [];
+
+    const completedWorkLines: string[] = [];
+    if (draft.completedTaskTitles.length > 0) {
+      completedWorkLines.push("Completed this period:");
+      for (const title of draft.completedTaskTitles) completedWorkLines.push(`- ${title}`);
+    }
     if (draft.rankMovements.length > 0) {
-      lines.push("Keyword movement:");
+      completedWorkLines.push("", "Keyword movement:");
       for (const m of draft.rankMovements) {
-        lines.push(`- ${m.keyword}: ${m.from ?? "unranked"} -> ${m.to ?? "unranked"}`);
+        completedWorkLines.push(`- ${m.keyword}: ${m.from ?? "unranked"} -> ${m.to ?? "unranked"}`);
       }
     }
-    if (draft.completedTaskTitles.length > 0) {
-      lines.push("", "Completed this period:");
-      for (const title of draft.completedTaskTitles) lines.push(`- ${title}`);
-    }
-    lines.push(
-      "",
+
+    const metricsLines = [
       `Keywords tracked: ${draft.metrics.keywordsTracked} (improved ${draft.metrics.keywordsImproved}, dropped ${draft.metrics.keywordsDropped})`,
       `Backlinks: ${draft.metrics.backlinksCreated} created, ${draft.metrics.backlinksLive} live`,
       `Content published: ${draft.metrics.contentPublished}`,
       `Technical fixes: ${draft.metrics.technicalFixed}`,
-    );
-    await store.updateSeoReport(report.id, { summary: lines.join("\n") });
+    ];
+
+    await store.updateSeoReport(report.id, {
+      summary: `SEO activity summary for ${period}.`,
+      completedWork: completedWorkLines.join("\n"),
+      metricsNotes: metricsLines.join("\n"),
+    });
   }
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1321,6 +1330,13 @@ export async function updateSeoReportAction(
 ) {
   await requireProjectAccess(projectId);
   await store.updateSeoReport(id, patch);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+/** Approve step ahead of attaching a report to an invoice: Generate -> Edit -> Approve -> Attach. Approving never locks the content — every field stays editable afterward. */
+export async function approveSeoReportAction(id: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  await store.updateSeoReport(id, { approved: true });
   revalidatePath(`/projects/${projectId}`);
 }
 
