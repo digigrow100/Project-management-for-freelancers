@@ -10,10 +10,14 @@ import type {
   BacklinkStatus,
   BacklinkTemplate,
   BacklinkTemplateItem,
+  BillingFrequency,
   BusinessProfile,
   ChecklistItem,
   Client,
+  ClientBalance,
   ClientDetails,
+  ClientService,
+  ClientServiceStatus,
   CompetitorBacklink,
   ContentItem,
   ContentStatus,
@@ -22,6 +26,9 @@ import type {
   DomainClient,
   DomainDnsRecord,
   DomainSettings,
+  Invoice,
+  InvoiceItem,
+  InvoiceStatus,
   Keyword,
   KeywordGroup,
   KeywordGroupColor,
@@ -49,6 +56,7 @@ import type {
   RichContent,
   Role,
   SearchIntent,
+  Service,
   SeoModule,
   SeoReport,
   Stage,
@@ -392,6 +400,7 @@ interface ClientRow {
   email: string;
   phone: string;
   address: string;
+  website: string;
   notes: string;
   logo_url: string;
   created_at: string;
@@ -405,6 +414,7 @@ function toClient(row: ClientRow): Client {
     email: row.email,
     phone: row.phone,
     address: row.address ?? "",
+    website: row.website ?? "",
     notes: row.notes,
     logoUrl: row.logo_url,
     createdAt: row.created_at,
@@ -439,6 +449,7 @@ export async function createClient(input: {
   email: string;
   phone: string;
   address?: string;
+  website?: string;
   notes: string;
 }): Promise<Client> {
   const { data, error } = await getSupabase()
@@ -449,6 +460,7 @@ export async function createClient(input: {
       email: input.email,
       phone: input.phone,
       address: input.address ?? "",
+      website: input.website ?? "",
       notes: input.notes,
       logo_url: "",
     })
@@ -460,7 +472,7 @@ export async function createClient(input: {
 
 export async function updateClient(
   id: string,
-  patch: Partial<Pick<Client, "name" | "company" | "email" | "phone" | "address" | "notes" | "logoUrl">>,
+  patch: Partial<Pick<Client, "name" | "company" | "email" | "phone" | "address" | "website" | "notes" | "logoUrl">>,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.name !== undefined) update.name = patch.name;
@@ -468,6 +480,7 @@ export async function updateClient(
   if (patch.email !== undefined) update.email = patch.email;
   if (patch.phone !== undefined) update.phone = patch.phone;
   if (patch.address !== undefined) update.address = patch.address;
+  if (patch.website !== undefined) update.website = patch.website;
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (patch.logoUrl !== undefined) update.logo_url = patch.logoUrl;
 
@@ -925,6 +938,7 @@ interface ProfileRow {
   role: Role;
   can_access_renewals: boolean | null;
   can_access_backlink_credentials: boolean | null;
+  can_access_finance: boolean | null;
   created_at: string;
 }
 
@@ -936,6 +950,7 @@ function toProfile(row: ProfileRow): Profile {
     role: row.role,
     canAccessRenewals: row.can_access_renewals ?? false,
     canAccessBacklinkCredentials: row.can_access_backlink_credentials ?? false,
+    canAccessFinance: row.can_access_finance ?? false,
     createdAt: row.created_at,
   };
 }
@@ -1002,6 +1017,19 @@ export async function setMemberBacklinkCredentialAccess(userId: string, allowed:
     const { error } = await getSupabase()
       .from("freelance_hq_profiles")
       .update({ can_access_backlink_credentials: allowed, updated_at: nowIso() })
+      .eq("id", userId);
+    if (error) throw error;
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
+/** Fails open when the can_access_finance column doesn't exist yet (migration 050 not run). */
+export async function setMemberFinanceAccess(userId: string, allowed: boolean): Promise<void> {
+  try {
+    const { error } = await getSupabase()
+      .from("freelance_hq_profiles")
+      .update({ can_access_finance: allowed, updated_at: nowIso() })
       .eq("id", userId);
     if (error) throw error;
   } catch (error) {
@@ -1173,6 +1201,7 @@ export async function deletePaymentPlan(projectId: string, currency: string): Pr
 interface PaymentRow {
   id: string;
   project_id: string | null;
+  invoice_id?: string | null;
   amount: number;
   currency: string;
   kind: PaymentKind;
@@ -1186,6 +1215,7 @@ function toPayment(row: PaymentRow): Payment {
   return {
     id: row.id,
     projectId: row.project_id,
+    invoiceId: row.invoice_id ?? null,
     amount: Number(row.amount),
     currency: row.currency,
     kind: row.kind,
@@ -1223,7 +1253,8 @@ export async function listAllPayments(): Promise<Payment[]> {
 }
 
 export async function addPayment(input: {
-  projectId: string;
+  projectId: string | null;
+  invoiceId?: string | null;
   amount: number;
   currency: string;
   kind: PaymentKind;
@@ -1235,6 +1266,7 @@ export async function addPayment(input: {
     .from("freelance_hq_payments")
     .insert({
       project_id: input.projectId,
+      invoice_id: input.invoiceId ?? null,
       amount: input.amount,
       currency: input.currency,
       kind: input.kind,
@@ -1251,6 +1283,629 @@ export async function addPayment(input: {
 export async function deletePayment(id: string): Promise<void> {
   const { error } = await getSupabase().from("freelance_hq_payments").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function listPaymentsForInvoice(invoiceId: string): Promise<Payment[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_payments")
+      .select("*")
+      .eq("invoice_id", invoiceId)
+      .order("paid_on", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as PaymentRow[]).map(toPayment);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function listPaymentsForClient(clientId: string): Promise<Payment[]> {
+  try {
+    const invoices = await listInvoicesForClient(clientId);
+    if (invoices.length === 0) return [];
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_payments")
+      .select("*")
+      .in(
+        "invoice_id",
+        invoices.map((i) => i.id),
+      )
+      .order("paid_on", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as PaymentRow[]).map(toPayment);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Phase 4: Services, Client Services, Invoices                        */
+/* ------------------------------------------------------------------ */
+
+interface ServiceRow {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+  billing_frequency: BillingFrequency;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+function toService(row: ServiceRow): Service {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    price: Number(row.price),
+    currency: row.currency,
+    billingFrequency: row.billing_frequency,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listServices(): Promise<Service[]> {
+  try {
+    const { data, error } = await getSupabase().from("freelance_hq_services").select("*").order("name", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as ServiceRow[]).map(toService);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function getService(id: string): Promise<Service | null> {
+  const { data, error } = await getSupabase().from("freelance_hq_services").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? toService(data as ServiceRow) : null;
+}
+
+export async function createService(input: {
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+  billingFrequency: BillingFrequency;
+}): Promise<Service> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_services")
+    .insert({
+      name: input.name,
+      description: input.description,
+      price: input.price,
+      currency: input.currency,
+      billing_frequency: input.billingFrequency,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toService(data as ServiceRow);
+}
+
+export async function updateService(
+  id: string,
+  patch: Partial<Pick<Service, "name" | "description" | "price" | "currency" | "billingFrequency" | "isActive">>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.name !== undefined) update.name = patch.name;
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.price !== undefined) update.price = patch.price;
+  if (patch.currency !== undefined) update.currency = patch.currency;
+  if (patch.billingFrequency !== undefined) update.billing_frequency = patch.billingFrequency;
+  if (patch.isActive !== undefined) update.is_active = patch.isActive;
+
+  const { error } = await getSupabase().from("freelance_hq_services").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteService(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_services").delete().eq("id", id);
+  if (error) throw error;
+}
+
+interface ClientServiceRow {
+  id: string;
+  client_id: string;
+  service_id: string;
+  project_id: string | null;
+  price_override: number | null;
+  currency: string;
+  billing_frequency: BillingFrequency;
+  status: ClientServiceStatus;
+  next_invoice_date: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  freelance_hq_services?: { name: string } | null;
+  freelance_hq_projects?: { name: string } | null;
+}
+
+function toClientService(row: ClientServiceRow): ClientService {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    serviceId: row.service_id,
+    serviceName: row.freelance_hq_services?.name ?? "",
+    projectId: row.project_id,
+    projectName: row.freelance_hq_projects?.name ?? null,
+    priceOverride: row.price_override === null || row.price_override === undefined ? null : Number(row.price_override),
+    currency: row.currency,
+    billingFrequency: row.billing_frequency,
+    status: row.status,
+    nextInvoiceDate: row.next_invoice_date,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const CLIENT_SERVICE_SELECT = "*, freelance_hq_services (name), freelance_hq_projects (name)";
+
+export async function listClientServices(clientId: string): Promise<ClientService[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_client_services")
+      .select(CLIENT_SERVICE_SELECT)
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as unknown as ClientServiceRow[]).map(toClientService);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function getClientService(id: string): Promise<ClientService | null> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_client_services")
+    .select(CLIENT_SERVICE_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toClientService(data as unknown as ClientServiceRow) : null;
+}
+
+/** Every client_service that's due (or overdue) for its next recurring draft, across all clients. */
+export async function listDueClientServices(asOf: string): Promise<ClientService[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_client_services")
+      .select(CLIENT_SERVICE_SELECT)
+      .eq("status", "active")
+      .not("next_invoice_date", "is", null)
+      .lte("next_invoice_date", asOf);
+    if (error) throw error;
+    return ((data ?? []) as unknown as ClientServiceRow[]).map(toClientService);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createClientService(input: {
+  clientId: string;
+  serviceId: string;
+  projectId: string | null;
+  priceOverride: number | null;
+  currency: string;
+  billingFrequency: BillingFrequency;
+  nextInvoiceDate: string | null;
+  notes: string;
+}): Promise<ClientService> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_client_services")
+    .insert({
+      client_id: input.clientId,
+      service_id: input.serviceId,
+      project_id: input.projectId,
+      price_override: input.priceOverride,
+      currency: input.currency,
+      billing_frequency: input.billingFrequency,
+      next_invoice_date: input.nextInvoiceDate,
+      notes: input.notes,
+    })
+    .select(CLIENT_SERVICE_SELECT)
+    .single();
+  if (error) throw error;
+  return toClientService(data as unknown as ClientServiceRow);
+}
+
+export async function updateClientService(
+  id: string,
+  patch: Partial<{
+    projectId: string | null;
+    priceOverride: number | null;
+    currency: string;
+    billingFrequency: BillingFrequency;
+    status: ClientServiceStatus;
+    nextInvoiceDate: string | null;
+    notes: string;
+  }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.projectId !== undefined) update.project_id = patch.projectId;
+  if (patch.priceOverride !== undefined) update.price_override = patch.priceOverride;
+  if (patch.currency !== undefined) update.currency = patch.currency;
+  if (patch.billingFrequency !== undefined) update.billing_frequency = patch.billingFrequency;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.nextInvoiceDate !== undefined) update.next_invoice_date = patch.nextInvoiceDate;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+
+  const { error } = await getSupabase().from("freelance_hq_client_services").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteClientService(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_client_services").delete().eq("id", id);
+  if (error) throw error;
+}
+
+function nextPeriodDate(from: string, frequency: BillingFrequency): string {
+  const [y, m, d] = from.split("-").map(Number);
+  const date = new Date(y ?? 0, (m ?? 1) - 1, d ?? 1);
+  if (frequency === "monthly") date.setMonth(date.getMonth() + 1);
+  else if (frequency === "quarterly") date.setMonth(date.getMonth() + 3);
+  else if (frequency === "yearly") date.setFullYear(date.getFullYear() + 1);
+  else return from;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Atomically claims the next invoice number for the given year via an
+ * optimistic-lock update, retrying if two admins race. The counter table
+ * (not a hardcoded format string) is what makes the numbering scheme
+ * changeable later without touching already-issued invoice numbers.
+ */
+export async function nextInvoiceNumber(year: number): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: existing } = await getSupabase()
+      .from("freelance_hq_invoice_counters")
+      .select("last_number")
+      .eq("year", year)
+      .maybeSingle();
+
+    const prev = existing?.last_number ?? 0;
+    const next = prev + 1;
+
+    if (!existing) {
+      const { error: insertError } = await getSupabase()
+        .from("freelance_hq_invoice_counters")
+        .insert({ year, last_number: next });
+      if (!insertError) return formatInvoiceNumber(year, next);
+      continue;
+    }
+
+    const { data: updated, error: updateError } = await getSupabase()
+      .from("freelance_hq_invoice_counters")
+      .update({ last_number: next })
+      .eq("year", year)
+      .eq("last_number", prev)
+      .select()
+      .maybeSingle();
+    if (updateError) throw updateError;
+    if (updated) return formatInvoiceNumber(year, next);
+  }
+  throw new Error("Could not allocate an invoice number — please try again.");
+}
+
+function formatInvoiceNumber(year: number, n: number): string {
+  return `INV-${year}-${String(n).padStart(3, "0")}`;
+}
+
+interface InvoiceRow {
+  id: string;
+  invoice_number: string;
+  client_id: string;
+  project_id: string | null;
+  client_service_id: string | null;
+  currency: string;
+  issue_date: string;
+  due_date: string;
+  status: InvoiceStatus;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  freelance_hq_clients?: { name: string; company: string } | null;
+  freelance_hq_projects?: { name: string } | null;
+}
+
+function toInvoice(row: InvoiceRow): Invoice {
+  const client = row.freelance_hq_clients;
+  return {
+    id: row.id,
+    invoiceNumber: row.invoice_number,
+    clientId: row.client_id,
+    clientName: (client?.name || client?.company) ?? "",
+    projectId: row.project_id,
+    projectName: row.freelance_hq_projects?.name ?? null,
+    clientServiceId: row.client_service_id,
+    currency: row.currency,
+    issueDate: row.issue_date,
+    dueDate: row.due_date,
+    status: row.status,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const INVOICE_SELECT = "*, freelance_hq_clients (name, company), freelance_hq_projects (name)";
+
+/** Marks `sent` invoices past due_date as `overdue` for display, without a stored-status write. */
+function withOverdueStatus(invoice: Invoice, today: string): Invoice {
+  if (invoice.status === "sent" && invoice.dueDate < today) return { ...invoice, status: "overdue" };
+  return invoice;
+}
+
+export async function listInvoices(): Promise<Invoice[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_invoices")
+      .select(INVOICE_SELECT)
+      .order("issue_date", { ascending: false });
+    if (error) throw error;
+    const today = todayDateKey();
+    return ((data ?? []) as unknown as InvoiceRow[]).map(toInvoice).map((inv) => withOverdueStatus(inv, today));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function listInvoicesForClient(clientId: string): Promise<Invoice[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_invoices")
+      .select(INVOICE_SELECT)
+      .eq("client_id", clientId)
+      .order("issue_date", { ascending: false });
+    if (error) throw error;
+    const today = todayDateKey();
+    return ((data ?? []) as unknown as InvoiceRow[]).map(toInvoice).map((inv) => withOverdueStatus(inv, today));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function getInvoice(id: string): Promise<Invoice | null> {
+  const { data, error } = await getSupabase().from("freelance_hq_invoices").select(INVOICE_SELECT).eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return withOverdueStatus(toInvoice(data as unknown as InvoiceRow), todayDateKey());
+}
+
+interface InvoiceItemRow {
+  id: string;
+  invoice_id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  order: number;
+}
+
+function toInvoiceItem(row: InvoiceItemRow): InvoiceItem {
+  return {
+    id: row.id,
+    invoiceId: row.invoice_id,
+    description: row.description,
+    quantity: Number(row.quantity),
+    unitPrice: Number(row.unit_price),
+    order: row.order,
+  };
+}
+
+export async function listInvoiceItems(invoiceId: string): Promise<InvoiceItem[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_invoice_items")
+      .select("*")
+      .eq("invoice_id", invoiceId)
+      .order("order", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as InvoiceItemRow[]).map(toInvoiceItem);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function listInvoiceItemsForInvoices(invoiceIds: string[]): Promise<Record<string, InvoiceItem[]>> {
+  if (invoiceIds.length === 0) return {};
+  const { data, error } = await getSupabase().from("freelance_hq_invoice_items").select("*").in("invoice_id", invoiceIds).order("order", { ascending: true });
+  if (error) throw error;
+  const byInvoice: Record<string, InvoiceItem[]> = {};
+  for (const row of (data ?? []) as InvoiceItemRow[]) {
+    const item = toInvoiceItem(row);
+    (byInvoice[item.invoiceId] ??= []).push(item);
+  }
+  return byInvoice;
+}
+
+export interface InvoiceItemInput {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export async function createInvoice(input: {
+  clientId: string;
+  projectId: string | null;
+  clientServiceId: string | null;
+  currency: string;
+  issueDate: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  notes: string;
+  items: InvoiceItemInput[];
+}): Promise<Invoice> {
+  const year = Number(input.issueDate.slice(0, 4)) || new Date().getFullYear();
+  const invoiceNumber = await nextInvoiceNumber(year);
+
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_invoices")
+    .insert({
+      invoice_number: invoiceNumber,
+      client_id: input.clientId,
+      project_id: input.projectId,
+      client_service_id: input.clientServiceId,
+      currency: input.currency,
+      issue_date: input.issueDate,
+      due_date: input.dueDate,
+      status: input.status,
+      notes: input.notes,
+    })
+    .select(INVOICE_SELECT)
+    .single();
+  if (error) throw error;
+  const invoice = toInvoice(data as unknown as InvoiceRow);
+
+  if (input.items.length > 0) {
+    const { error: itemsError } = await getSupabase()
+      .from("freelance_hq_invoice_items")
+      .insert(
+        input.items.map((item, i) => ({
+          invoice_id: invoice.id,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          order: i,
+        })),
+      );
+    if (itemsError) throw itemsError;
+  }
+
+  return invoice;
+}
+
+export async function updateInvoice(
+  id: string,
+  patch: Partial<{
+    projectId: string | null;
+    currency: string;
+    issueDate: string;
+    dueDate: string;
+    status: InvoiceStatus;
+    notes: string;
+  }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.projectId !== undefined) update.project_id = patch.projectId;
+  if (patch.currency !== undefined) update.currency = patch.currency;
+  if (patch.issueDate !== undefined) update.issue_date = patch.issueDate;
+  if (patch.dueDate !== undefined) update.due_date = patch.dueDate;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+
+  const { error } = await getSupabase().from("freelance_hq_invoices").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteInvoice(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_invoices").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Replaces every line item on an invoice with the given set (add/edit/remove in one call, same pattern as a checklist rewrite). */
+export async function replaceInvoiceItems(invoiceId: string, items: InvoiceItemInput[]): Promise<void> {
+  const { error: deleteError } = await getSupabase().from("freelance_hq_invoice_items").delete().eq("invoice_id", invoiceId);
+  if (deleteError) throw deleteError;
+  if (items.length === 0) return;
+
+  const { error: insertError } = await getSupabase()
+    .from("freelance_hq_invoice_items")
+    .insert(
+      items.map((item, i) => ({
+        invoice_id: invoiceId,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        order: i,
+      })),
+    );
+  if (insertError) throw insertError;
+}
+
+export function invoiceTotal(items: InvoiceItem[]): number {
+  return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+}
+
+/**
+ * Recomputes a `sent`/`paid`/`partially_paid` invoice's status from the sum
+ * of its payments vs. its line-item total. Never touches `draft` or
+ * `cancelled` — those stay under manual control.
+ */
+export async function recomputeInvoiceStatus(invoiceId: string): Promise<void> {
+  const invoice = await getInvoice(invoiceId);
+  if (!invoice || invoice.status === "draft" || invoice.status === "cancelled") return;
+
+  const [items, payments] = await Promise.all([listInvoiceItems(invoiceId), listPaymentsForInvoice(invoiceId)]);
+  const total = invoiceTotal(items);
+  const paid = payments.reduce((sum, p) => sum + p.amount, 0);
+
+  let status: InvoiceStatus = invoice.status === "overdue" ? "sent" : invoice.status;
+  if (paid <= 0) status = "sent";
+  else if (paid >= total && total > 0) status = "paid";
+  else status = "partially_paid";
+
+  await updateInvoice(invoiceId, { status });
+}
+
+/**
+ * On-demand recurring billing: creates a draft invoice for every active
+ * client_service whose next_invoice_date is due, then advances that date by
+ * one billing period. Never sends — drafts always need manual review/send.
+ */
+export async function generateDueInvoiceDrafts(): Promise<Invoice[]> {
+  const today = todayDateKey();
+  const due = await listDueClientServices(today);
+  const created: Invoice[] = [];
+
+  for (const cs of due) {
+    const price = cs.priceOverride ?? (await getService(cs.serviceId))?.price ?? 0;
+    const invoice = await createInvoice({
+      clientId: cs.clientId,
+      projectId: cs.projectId,
+      clientServiceId: cs.id,
+      currency: cs.currency,
+      issueDate: today,
+      dueDate: today,
+      status: "draft",
+      notes: "",
+      items: [{ description: cs.serviceName || "Service", quantity: 1, unitPrice: price }],
+    });
+    created.push(invoice);
+
+    if (cs.nextInvoiceDate) {
+      await updateClientService(cs.id, { nextInvoiceDate: nextPeriodDate(cs.nextInvoiceDate, cs.billingFrequency) });
+    }
+  }
+
+  return created;
+}
+
+/** Aggregated invoiced/paid/outstanding across every one of a client's invoices, per currency (first currency used if the client bills in more than one). */
+export async function getClientBalance(clientId: string): Promise<ClientBalance> {
+  const invoices = await listInvoicesForClient(clientId);
+  const nonCancelled = invoices.filter((i) => i.status !== "cancelled");
+  const currency = nonCancelled[0]?.currency ?? "PKR";
+  const relevant = nonCancelled.filter((i) => i.currency === currency);
+
+  const items = await listInvoiceItemsForInvoices(relevant.map((i) => i.id));
+  const totalInvoiced = relevant.reduce((sum, inv) => sum + invoiceTotal(items[inv.id] ?? []), 0);
+
+  const payments = await listPaymentsForClient(clientId);
+  const totalPaid = payments.filter((p) => p.currency === currency).reduce((sum, p) => sum + p.amount, 0);
+
+  return { totalInvoiced, totalPaid, outstanding: Math.max(0, totalInvoiced - totalPaid), currency };
 }
 
 interface KeywordRow {

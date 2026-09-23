@@ -44,6 +44,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
         role: "admin",
         canAccessRenewals: true,
         canAccessBacklinkCredentials: true,
+        canAccessFinance: true,
         createdAt: new Date().toISOString(),
       };
     }
@@ -66,6 +67,12 @@ export async function requireAdmin(): Promise<Profile> {
 export async function requireRenewalsAccess(): Promise<Profile> {
   const profile = await requireProfile();
   if (profile.role !== "admin" && !profile.canAccessRenewals) throw new Error("You don't have access to Renewals.");
+  return profile;
+}
+
+export async function requireFinanceAccess(): Promise<Profile> {
+  const profile = await requireProfile();
+  if (profile.role !== "admin" && !profile.canAccessFinance) throw new Error("You don't have access to Finance.");
   return profile;
 }
 

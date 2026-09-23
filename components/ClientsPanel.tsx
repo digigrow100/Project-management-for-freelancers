@@ -30,6 +30,7 @@ export function ClientsPanel({ clients }: { clients: Client[] }) {
           <Field name="email" label="Email" type="email" placeholder="client@example.com" />
           <Field name="phone" label="Phone" placeholder="+1 555 000 0000" />
           <Field name="address" label="Address" placeholder="Business address" />
+          <Field name="website" label="Website" placeholder="https://example.com" />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-neutral-400">Notes</label>
