@@ -3,9 +3,12 @@ import { getSupabase } from "./supabaseClient";
 import { PROJECT_TEMPLATES } from "./templates";
 import { decryptSecret, encryptSecret, hashVaultPassword, verifyVaultPassword } from "./backlinkCrypto";
 import type {
+  AiActionType,
   AiConversation,
   AiMessage,
   AiMessageRole,
+  AiPendingAction,
+  AiPendingActionStatus,
   AiToolCallRecord,
   BacklinkCategory,
   BacklinkCategoryType,
@@ -5152,4 +5155,66 @@ export async function addAiMessage(input: {
     .single();
   if (error) throw error;
   return toAiMessage(data as AiMessageRow);
+}
+
+interface AiPendingActionRow {
+  id: string;
+  conversation_id: string;
+  created_by: string;
+  action_type: AiActionType;
+  payload: Record<string, unknown>;
+  summary: string;
+  status: AiPendingActionStatus;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+function toAiPendingAction(row: AiPendingActionRow): AiPendingAction {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    createdBy: row.created_by,
+    actionType: row.action_type,
+    payload: row.payload,
+    summary: row.summary,
+    status: row.status,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+  };
+}
+
+export async function createAiPendingAction(input: {
+  conversationId: string;
+  createdBy: string;
+  actionType: AiActionType;
+  payload: Record<string, unknown>;
+  summary: string;
+}): Promise<AiPendingAction> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_ai_pending_actions")
+    .insert({
+      conversation_id: input.conversationId,
+      created_by: input.createdBy,
+      action_type: input.actionType,
+      payload: input.payload,
+      summary: input.summary,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toAiPendingAction(data as AiPendingActionRow);
+}
+
+export async function getAiPendingAction(id: string): Promise<AiPendingAction | null> {
+  const { data, error } = await getSupabase().from("freelance_hq_ai_pending_actions").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? toAiPendingAction(data as AiPendingActionRow) : null;
+}
+
+export async function resolveAiPendingAction(id: string, status: "confirmed" | "rejected"): Promise<void> {
+  const { error } = await getSupabase()
+    .from("freelance_hq_ai_pending_actions")
+    .update({ status, resolved_at: nowIso() })
+    .eq("id", id);
+  if (error) throw error;
 }

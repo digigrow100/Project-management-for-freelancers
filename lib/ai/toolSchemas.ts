@@ -126,4 +126,104 @@ export const AI_TOOL_SCHEMAS: OpenAI.Responses.Tool[] = [
       additionalProperties: false,
     },
   },
+
+  // Write proposals — every one of these only STAGES a pending action and
+  // returns a preview. None of them create/edit/delete anything by
+  // themselves; the chat UI shows a Confirm/Reject card and only Confirm
+  // executes the real, existing Server Action (app/api/ai/confirm).
+  {
+    type: "function",
+    name: "propose_task_schedule",
+    description:
+      "Propose a batch of new tasks for a project, evenly spread across a number of days starting from a date. Does NOT create the tasks — returns a preview for the user to confirm.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: { type: "string" },
+        tasks: {
+          type: "array",
+          description: "The task titles to schedule, in the order given.",
+          items: {
+            type: "object",
+            properties: { title: { type: "string" } },
+            required: ["title"],
+            additionalProperties: false,
+          },
+        },
+        days: { type: "integer", description: "Number of calendar days to spread the tasks across." },
+        startDate: { type: ["string", "null"], description: "YYYY-MM-DD. Null for today." },
+      },
+      required: ["projectId", "tasks", "days", "startDate"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "propose_invoice",
+    description: "Propose a new draft invoice for a client. Does NOT create it — returns a preview for the user to confirm. Requires Finance access.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        clientId: { type: "string" },
+        projectId: { type: ["string", "null"], description: "Optional linked project." },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: "string" },
+              quantity: { type: "number" },
+              unitPrice: { type: "number" },
+            },
+            required: ["description", "quantity", "unitPrice"],
+            additionalProperties: false,
+          },
+        },
+        currency: { type: ["string", "null"], description: "e.g. PKR, USD, GBP. Null defaults to PKR." },
+        issueDate: { type: ["string", "null"], description: "YYYY-MM-DD. Null for today." },
+        dueDate: { type: ["string", "null"], description: "YYYY-MM-DD. Null defaults to the issue date." },
+      },
+      required: ["clientId", "projectId", "items", "currency", "issueDate", "dueDate"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "propose_project",
+    description: "Propose a new project for a client. Does NOT create it — returns a preview for the user to confirm. Admin only.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        clientId: { type: "string" },
+        name: { type: "string" },
+        type: { type: "string", enum: ["seo", "web_dev", "web_app", "digital_marketing", "other"] },
+        description: { type: ["string", "null"] },
+      },
+      required: ["clientId", "name", "type", "description"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "propose_seo_report",
+    description:
+      "Propose generating an SEO report draft for a project — collects completed work, keyword movement, backlinks, content, and technical fixes for the period. Does NOT create it — returns a preview for the user to confirm. The report is never sent to the client automatically.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: { type: "string" },
+        period: {
+          type: ["string", "null"],
+          description: "Period key matching periodType: YYYY-MM-DD (daily), YYYY-Www (weekly), YYYY-MM (monthly). Null for the current period.",
+        },
+        periodType: { type: ["string", "null"], enum: ["daily", "weekly", "monthly", null], description: "Null defaults to monthly." },
+      },
+      required: ["projectId", "period", "periodType"],
+      additionalProperties: false,
+    },
+  },
 ];
