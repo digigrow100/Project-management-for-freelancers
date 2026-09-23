@@ -10,6 +10,8 @@ import type {
   ChecklistItem,
   Client,
   ClientDetails,
+  ContentItem,
+  ContentStatus,
   DnsRecordType,
   Domain,
   DomainClient,
@@ -24,21 +26,29 @@ import type {
   KeywordStatus,
   Note,
   NoteFolder,
+  OnPageStatus,
+  PageType,
   ProjectAttachment,
   Payment,
   PaymentKind,
   PaymentPlan,
   PaymentPlanType,
+  Priority,
   Profile,
   Project,
   ProjectType,
   ResaleDomainStatus,
   RichContent,
   Role,
+  SearchIntent,
+  SeoModule,
+  SeoReport,
   Stage,
   Task,
   TaskFile,
   TaskNote,
+  TechnicalIssue,
+  TechnicalIssueStatus,
   Renewal,
   RenewalServiceType,
   RenewalStatus,
@@ -102,6 +112,10 @@ interface TaskRow {
   assigned_to: string | null;
   why: string;
   expected_outcome: string;
+  seo_module: SeoModule | null;
+  keyword_id: string | null;
+  page_id: string | null;
+  content_item_id: string | null;
 }
 
 /** Normalizes legacy plain-string image URLs (from before file attachments were
@@ -138,6 +152,10 @@ function toTask(row: TaskRow, nameById?: Map<string, string>): Task {
     assignedToName: row.assigned_to ? (nameById?.get(row.assigned_to) ?? "Unknown") : null,
     why: row.why ?? "",
     expectedOutcome: row.expected_outcome ?? "",
+    seoModule: row.seo_module ?? null,
+    keywordId: row.keyword_id,
+    pageId: row.page_id,
+    contentItemId: row.content_item_id,
   };
 }
 
@@ -317,11 +335,17 @@ export async function createProject(input: {
   if (error) throw error;
 
   const row = data as ProjectRow;
-  const stageNames = PROJECT_TEMPLATES[input.type].stages;
-  const { data: stageRows, error: stageError } = await getSupabase()
-    .from("freelance_hq_stages")
-    .insert(stageNames.map((name, i) => ({ project_id: row.id, name, order_index: i })))
-    .select();
+  // SEO projects use the fixed module set (Keywords/On-Page/Technical/
+  // Content/Off-Page/Reporting) instead of freeform stages — every other
+  // project type keeps seeding its template's stage list exactly as before.
+  const stageNames = input.type === "seo" ? [] : PROJECT_TEMPLATES[input.type].stages;
+  const { data: stageRows, error: stageError } =
+    stageNames.length > 0
+      ? await getSupabase()
+          .from("freelance_hq_stages")
+          .insert(stageNames.map((name, i) => ({ project_id: row.id, name, order_index: i })))
+          .select()
+      : { data: [], error: null };
   if (stageError) throw stageError;
 
   return toProject(row, ((stageRows ?? []) as StageRow[]).map(toStage));
@@ -563,6 +587,10 @@ export async function createTask(input: {
   files?: TaskFile[];
   markDoneOn?: string | null;
   assignedTo?: string | null;
+  seoModule?: SeoModule | null;
+  keywordId?: string | null;
+  pageId?: string | null;
+  contentItemId?: string | null;
 }): Promise<Task> {
   const { count, error: countError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -588,6 +616,10 @@ export async function createTask(input: {
       completed_at: isBackdated ? toCompletedTimestamp(input.markDoneOn ?? null) : null,
       order_index: count ?? 0,
       assigned_to: input.assignedTo ?? null,
+      seo_module: input.seoModule ?? null,
+      keyword_id: input.keywordId ?? null,
+      page_id: input.pageId ?? null,
+      content_item_id: input.contentItemId ?? null,
     })
     .select()
     .single();
@@ -644,6 +676,10 @@ export async function updateTaskDetails(
     assignedTo: string | null;
     why: string;
     expectedOutcome: string;
+    seoModule?: SeoModule | null;
+    keywordId?: string | null;
+    pageId?: string | null;
+    contentItemId?: string | null;
   },
 ): Promise<void> {
   const status = patch.status === "done" && !isChecklistComplete(patch.checklist) ? "in_progress" : patch.status;
@@ -663,6 +699,12 @@ export async function updateTaskDetails(
     why: patch.why,
     expected_outcome: patch.expectedOutcome,
   };
+  // Optional — only touched when the caller supplies them (e.g. the SEO
+  // task detail view), so editing a non-SEO task never clobbers these.
+  if (patch.seoModule !== undefined) update.seo_module = patch.seoModule;
+  if (patch.keywordId !== undefined) update.keyword_id = patch.keywordId;
+  if (patch.pageId !== undefined) update.page_id = patch.pageId;
+  if (patch.contentItemId !== undefined) update.content_item_id = patch.contentItemId;
 
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -1182,6 +1224,8 @@ interface KeywordRow {
   status: KeywordStatus;
   notes: string;
   is_tracked: boolean;
+  search_intent: SearchIntent | null;
+  priority: Priority;
   created_at: string;
   updated_at: string;
 }
@@ -1200,6 +1244,8 @@ function toKeyword(row: KeywordRow, pageIds: string[]): Keyword {
     notes: row.notes,
     isTracked: row.is_tracked ?? false,
     pageIds,
+    searchIntent: row.search_intent ?? null,
+    priority: row.priority ?? "medium",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1251,14 +1297,16 @@ function normalizeKeywordText(text: string): string {
 
 export async function createKeyword(input: {
   projectId: string;
-  keyword: string;
   targetPage: string;
+  keyword: string;
   searchVolume: number | null;
   difficulty: number | null;
   currentRank: number | null;
   targetRank: number | null;
   status: KeywordStatus;
   notes: string;
+  searchIntent?: SearchIntent | null;
+  priority?: Priority;
 }): Promise<Keyword> {
   const { data: existingRows, error: existingError } = await getSupabase()
     .from("freelance_hq_keywords")
@@ -1286,6 +1334,8 @@ export async function createKeyword(input: {
       target_rank: input.targetRank,
       status: input.status,
       notes: input.notes,
+      search_intent: input.searchIntent ?? null,
+      priority: input.priority ?? "medium",
     })
     .select()
     .single();
@@ -1316,19 +1366,31 @@ export async function updateKeyword(
   patch: Partial<
     Pick<
       Keyword,
-      "keyword" | "targetPage" | "searchVolume" | "difficulty" | "currentRank" | "targetRank" | "status" | "notes"
+      | "keyword"
+      | "targetPage"
+      | "searchVolume"
+      | "difficulty"
+      | "currentRank"
+      | "targetRank"
+      | "status"
+      | "notes"
+      | "searchIntent"
+      | "priority"
     >
   >,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.keyword !== undefined) update.keyword = patch.keyword;
-  if (patch.targetPage !== undefined) update.target_page = patch.targetPage;
+  // targetPage is frozen (legacy free-text field, superseded by pageIds) —
+  // intentionally not settable here even if a caller passes it.
   if (patch.searchVolume !== undefined) update.search_volume = patch.searchVolume;
   if (patch.difficulty !== undefined) update.difficulty = patch.difficulty;
   if (patch.currentRank !== undefined) update.current_rank = patch.currentRank;
   if (patch.targetRank !== undefined) update.target_rank = patch.targetRank;
   if (patch.status !== undefined) update.status = patch.status;
   if (patch.notes !== undefined) update.notes = patch.notes;
+  if (patch.searchIntent !== undefined) update.search_intent = patch.searchIntent;
+  if (patch.priority !== undefined) update.priority = patch.priority;
 
   if (patch.currentRank !== undefined) {
     const { data: existing, error: fetchError } = await getSupabase()
@@ -1501,18 +1563,58 @@ interface KeywordPageRow {
   name: string;
   url: string;
   order: number;
+  page_type: PageType;
+  meta_title: string;
+  meta_description: string;
+  h1: string;
+  content_status: OnPageStatus;
+  internal_linking_status: OnPageStatus;
+  image_seo_status: OnPageStatus;
+  schema_status: OnPageStatus;
+  checklist: ChecklistItem[];
   created_at: string;
 }
 
-function toKeywordPage(row: KeywordPageRow): KeywordPage {
+function toKeywordPage(row: KeywordPageRow, primaryKeywordId: string | null): KeywordPage {
   return {
     id: row.id,
     groupId: row.group_id,
     name: row.name,
     url: row.url,
     order: row.order,
+    pageType: row.page_type ?? "other",
+    metaTitle: row.meta_title ?? "",
+    metaDescription: row.meta_description ?? "",
+    h1: row.h1 ?? "",
+    contentStatus: row.content_status ?? "not_started",
+    internalLinkingStatus: row.internal_linking_status ?? "not_started",
+    imageSeoStatus: row.image_seo_status ?? "not_started",
+    schemaStatus: row.schema_status ?? "not_started",
+    checklist: row.checklist ?? [],
+    primaryKeywordId,
     createdAt: row.created_at,
   };
+}
+
+/** Fails open (empty map) when migration 036 hasn't run yet. */
+async function listPrimaryKeywordIds(pageIds: string[]): Promise<Record<string, string>> {
+  if (pageIds.length === 0) return {};
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_keyword_page_links")
+      .select("page_id, keyword_id")
+      .in("page_id", pageIds)
+      .eq("is_primary", true);
+    if (error) throw error;
+    const map: Record<string, string> = {};
+    for (const row of (data ?? []) as { page_id: string; keyword_id: string }[]) {
+      map[row.page_id] = row.keyword_id;
+    }
+    return map;
+  } catch (error) {
+    if (isMissingTableError(error)) return {};
+    throw error;
+  }
 }
 
 /** Groups pages by their parent group for the groups given. */
@@ -1526,9 +1628,12 @@ export async function listKeywordPages(groupIds: string[]): Promise<Record<strin
       .order("order", { ascending: true });
     if (error) throw error;
 
+    const rows = (data ?? []) as KeywordPageRow[];
+    const primaryByPage = await listPrimaryKeywordIds(rows.map((r) => r.id));
+
     const map: Record<string, KeywordPage[]> = {};
-    for (const row of (data ?? []) as KeywordPageRow[]) {
-      const page = toKeywordPage(row);
+    for (const row of rows) {
+      const page = toKeywordPage(row, primaryByPage[row.id] ?? null);
       const list = map[page.groupId] ?? [];
       list.push(page);
       map[page.groupId] = list;
@@ -1547,14 +1652,56 @@ export async function createKeywordPage(input: { groupId: string; name: string; 
     .select()
     .single();
   if (error) throw error;
-  return toKeywordPage(data as KeywordPageRow);
+  return toKeywordPage(data as KeywordPageRow, null);
 }
 
-export async function updateKeywordPage(id: string, patch: { name?: string; url?: string }): Promise<void> {
+export async function updateKeywordPage(
+  id: string,
+  patch: {
+    name?: string;
+    url?: string;
+    pageType?: PageType;
+    metaTitle?: string;
+    metaDescription?: string;
+    h1?: string;
+    contentStatus?: OnPageStatus;
+    internalLinkingStatus?: OnPageStatus;
+    imageSeoStatus?: OnPageStatus;
+    schemaStatus?: OnPageStatus;
+    checklist?: ChecklistItem[];
+  },
+): Promise<void> {
   const update: Record<string, unknown> = {};
   if (patch.name !== undefined) update.name = patch.name;
   if (patch.url !== undefined) update.url = patch.url;
+  if (patch.pageType !== undefined) update.page_type = patch.pageType;
+  if (patch.metaTitle !== undefined) update.meta_title = patch.metaTitle;
+  if (patch.metaDescription !== undefined) update.meta_description = patch.metaDescription;
+  if (patch.h1 !== undefined) update.h1 = patch.h1;
+  if (patch.contentStatus !== undefined) update.content_status = patch.contentStatus;
+  if (patch.internalLinkingStatus !== undefined) update.internal_linking_status = patch.internalLinkingStatus;
+  if (patch.imageSeoStatus !== undefined) update.image_seo_status = patch.imageSeoStatus;
+  if (patch.schemaStatus !== undefined) update.schema_status = patch.schemaStatus;
+  if (patch.checklist !== undefined) update.checklist = patch.checklist;
   const { error } = await getSupabase().from("freelance_hq_keyword_pages").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+/** Marks `keywordId` as the primary keyword for `pageId` (must already be linked to it), clearing any previous primary on that page. Pass `keywordId: null` to clear the page's primary without setting a new one. */
+export async function setPrimaryKeywordForPage(pageId: string, keywordId: string | null): Promise<void> {
+  const { error: clearError } = await getSupabase()
+    .from("freelance_hq_keyword_page_links")
+    .update({ is_primary: false })
+    .eq("page_id", pageId);
+  if (clearError) throw clearError;
+
+  if (!keywordId) return;
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_keyword_page_links")
+    .update({ is_primary: true })
+    .eq("page_id", pageId)
+    .eq("keyword_id", keywordId);
   if (error) throw error;
 }
 
@@ -1742,11 +1889,19 @@ interface BacklinkCategoryRow {
   project_id: string;
   name: string;
   order: number;
+  seo_module: SeoModule;
   created_at: string;
 }
 
 function toBacklinkCategory(row: BacklinkCategoryRow): BacklinkCategory {
-  return { id: row.id, projectId: row.project_id, name: row.name, order: row.order, createdAt: row.created_at };
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    order: row.order,
+    seoModule: row.seo_module ?? "off_page",
+    createdAt: row.created_at,
+  };
 }
 
 /** Auto-seeds the four default categories the first time a project has none, so they're always there without a manual setup step. */
@@ -1981,6 +2136,357 @@ export async function revealBacklinkPassword(
   const encrypted = (data as { password_encrypted: string | null } | null)?.password_encrypted ?? null;
   if (!encrypted) throw new Error("NO_PASSWORD_SET");
   return decryptSecret(encrypted);
+}
+
+/**
+ * Technical SEO module: a simple issue tracker. `assignedToName` is
+ * resolved the same way task assignee names are (Phase 1 pattern).
+ */
+interface TechnicalIssueRow {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  url_affected: string;
+  priority: Priority;
+  assigned_to: string | null;
+  status: TechnicalIssueStatus;
+  fix_task_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toTechnicalIssue(row: TechnicalIssueRow, nameById: Map<string, string>): TechnicalIssue {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    description: row.description,
+    urlAffected: row.url_affected,
+    priority: row.priority,
+    assignedTo: row.assigned_to,
+    assignedToName: row.assigned_to ? (nameById.get(row.assigned_to) ?? "Unknown") : null,
+    status: row.status,
+    fixTaskId: row.fix_task_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listTechnicalIssues(projectId: string): Promise<TechnicalIssue[]> {
+  try {
+    const [{ data, error }, nameById] = await Promise.all([
+      getSupabase()
+        .from("freelance_hq_technical_issues")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      taskNameLookup(),
+    ]);
+    if (error) throw error;
+    return ((data ?? []) as TechnicalIssueRow[]).map((row) => toTechnicalIssue(row, nameById));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createTechnicalIssue(input: {
+  projectId: string;
+  title: string;
+  description: string;
+  urlAffected: string;
+  priority: Priority;
+  assignedTo: string | null;
+}): Promise<TechnicalIssue> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_technical_issues")
+    .insert({
+      project_id: input.projectId,
+      title: input.title,
+      description: input.description,
+      url_affected: input.urlAffected,
+      priority: input.priority,
+      assigned_to: input.assignedTo,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toTechnicalIssue(data as TechnicalIssueRow, await taskNameLookup());
+}
+
+export async function updateTechnicalIssue(
+  id: string,
+  patch: Partial<{
+    title: string;
+    description: string;
+    urlAffected: string;
+    priority: Priority;
+    assignedTo: string | null;
+    status: TechnicalIssueStatus;
+    fixTaskId: string | null;
+  }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.title !== undefined) update.title = patch.title;
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.urlAffected !== undefined) update.url_affected = patch.urlAffected;
+  if (patch.priority !== undefined) update.priority = patch.priority;
+  if (patch.assignedTo !== undefined) update.assigned_to = patch.assignedTo;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.fixTaskId !== undefined) update.fix_task_id = patch.fixTaskId;
+  const { error } = await getSupabase().from("freelance_hq_technical_issues").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteTechnicalIssue(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_technical_issues").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Content module: Idea -> Brief -> Writing -> Review -> Published. */
+interface ContentItemRow {
+  id: string;
+  project_id: string;
+  topic: string;
+  target_keyword_id: string | null;
+  assigned_to: string | null;
+  status: ContentStatus;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function toContentItem(row: ContentItemRow, nameById: Map<string, string>): ContentItem {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    topic: row.topic,
+    targetKeywordId: row.target_keyword_id,
+    assignedTo: row.assigned_to,
+    assignedToName: row.assigned_to ? (nameById.get(row.assigned_to) ?? "Unknown") : null,
+    status: row.status,
+    url: row.url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listContentItems(projectId: string): Promise<ContentItem[]> {
+  try {
+    const [{ data, error }, nameById] = await Promise.all([
+      getSupabase()
+        .from("freelance_hq_content_items")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      taskNameLookup(),
+    ]);
+    if (error) throw error;
+    return ((data ?? []) as ContentItemRow[]).map((row) => toContentItem(row, nameById));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createContentItem(input: {
+  projectId: string;
+  topic: string;
+  targetKeywordId: string | null;
+  assignedTo: string | null;
+}): Promise<ContentItem> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_content_items")
+    .insert({
+      project_id: input.projectId,
+      topic: input.topic,
+      target_keyword_id: input.targetKeywordId,
+      assigned_to: input.assignedTo,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toContentItem(data as ContentItemRow, await taskNameLookup());
+}
+
+export async function updateContentItem(
+  id: string,
+  patch: Partial<{
+    topic: string;
+    targetKeywordId: string | null;
+    assignedTo: string | null;
+    status: ContentStatus;
+    url: string;
+  }>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.topic !== undefined) update.topic = patch.topic;
+  if (patch.targetKeywordId !== undefined) update.target_keyword_id = patch.targetKeywordId;
+  if (patch.assignedTo !== undefined) update.assigned_to = patch.assignedTo;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.url !== undefined) update.url = patch.url;
+  const { error } = await getSupabase().from("freelance_hq_content_items").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteContentItem(id: string): Promise<void> {
+  const { error } = await getSupabase().from("freelance_hq_content_items").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Reporting module: one record per project per month. Report content
+ * (keyword movement, completed tasks, backlinks created) is computed at
+ * generate time from existing tables — see buildSeoReportDraft — not
+ * stored on this row; `summary` is the one thing a human writes.
+ */
+interface SeoReportRow {
+  id: string;
+  project_id: string;
+  period: string;
+  summary: string;
+  generated_by: string | null;
+  sent_to_client: boolean;
+  sent_at: string | null;
+  created_at: string;
+}
+
+function toSeoReport(row: SeoReportRow, nameById: Map<string, string>): SeoReport {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    period: row.period,
+    summary: row.summary,
+    generatedBy: row.generated_by,
+    generatedByName: row.generated_by ? (nameById.get(row.generated_by) ?? "Unknown") : null,
+    sentToClient: row.sent_to_client,
+    sentAt: row.sent_at,
+    createdAt: row.created_at,
+  };
+}
+
+export async function listSeoReports(projectId: string): Promise<SeoReport[]> {
+  try {
+    const [{ data, error }, nameById] = await Promise.all([
+      getSupabase()
+        .from("freelance_hq_seo_reports")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("period", { ascending: false }),
+      taskNameLookup(),
+    ]);
+    if (error) throw error;
+    return ((data ?? []) as SeoReportRow[]).map((row) => toSeoReport(row, nameById));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+/** Creates (or returns the existing) report row for a period, so "Generate" is safe to click more than once. */
+export async function getOrCreateSeoReport(projectId: string, period: string, generatedBy: string): Promise<SeoReport> {
+  const { data: existing, error: existingError } = await getSupabase()
+    .from("freelance_hq_seo_reports")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("period", period)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return toSeoReport(existing as SeoReportRow, await taskNameLookup());
+
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_seo_reports")
+    .insert({ project_id: projectId, period, generated_by: generatedBy })
+    .select()
+    .single();
+  if (error) throw error;
+  return toSeoReport(data as SeoReportRow, await taskNameLookup());
+}
+
+export async function updateSeoReport(
+  id: string,
+  patch: Partial<{ summary: string; sentToClient: boolean }>,
+): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (patch.summary !== undefined) update.summary = patch.summary;
+  if (patch.sentToClient !== undefined) {
+    update.sent_to_client = patch.sentToClient;
+    update.sent_at = patch.sentToClient ? nowIso() : null;
+  }
+  const { error } = await getSupabase().from("freelance_hq_seo_reports").update(update).eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Computed draft data for a report period — pulled from existing tables at
+ * generate time, never persisted itself. Powers the pre-filled summary a
+ * human then edits before marking the report sent.
+ */
+export interface SeoReportDraft {
+  rankMovements: { keyword: string; from: number | null; to: number | null }[];
+  completedTaskTitles: string[];
+  backlinksCreated: number;
+}
+
+export async function buildSeoReportDraft(projectId: string, period: string): Promise<SeoReportDraft> {
+  const [start, end] = monthBounds(period);
+
+  const keywords = await listKeywords(projectId);
+  const rankHistory = await listKeywordRankHistory(keywords.map((k) => k.id));
+  const rankMovements = keywords
+    .map((keyword) => {
+      const history = (rankHistory[keyword.id] ?? []).filter((h) => h.recordedOn >= start && h.recordedOn < end);
+      if (history.length === 0) return null;
+      const sorted = [...history].sort((a, b) => (a.recordedOn < b.recordedOn ? -1 : 1));
+      const first = sorted[0] ?? sorted[sorted.length - 1];
+      const last = sorted[sorted.length - 1] ?? first;
+      if (!first || !last) return null;
+      return { keyword: keyword.keyword, from: first.rank, to: last.rank };
+    })
+    .filter((m): m is { keyword: string; from: number | null; to: number | null } => m !== null);
+
+  const { data: completedTasks, error: taskError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("title")
+    .eq("project_id", projectId)
+    .eq("status", "done")
+    .gte("completed_at", start)
+    .lt("completed_at", end);
+  if (taskError) throw taskError;
+
+  const categories = await listBacklinkCategories(projectId);
+  let backlinksCreated = 0;
+  if (categories.length > 0) {
+    const { count, error: backlinkError } = await getSupabase()
+      .from("freelance_hq_backlink_entries")
+      .select("*", { count: "exact", head: true })
+      .in(
+        "category_id",
+        categories.map((c) => c.id),
+      )
+      .gte("created_at", start)
+      .lt("created_at", end);
+    if (backlinkError) throw backlinkError;
+    backlinksCreated = count ?? 0;
+  }
+
+  return {
+    rankMovements,
+    completedTaskTitles: ((completedTasks ?? []) as { title: string }[]).map((t) => t.title),
+    backlinksCreated,
+  };
+}
+
+/** ['YYYY-MM-01', 'YYYY-(MM+1)-01'] for a 'YYYY-MM' period key. */
+function monthBounds(period: string): [string, string] {
+  const [yearStr, monthStr] = period.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const start = `${period}-01`;
+  const endDate = new Date(Date.UTC(year, month, 1));
+  const end = endDate.toISOString().slice(0, 10);
+  return [start, end];
 }
 
 export async function getProjectByShareToken(token: string): Promise<Project | null> {

@@ -5,6 +5,7 @@ import {
   hasVaultPassword,
   listBacklinkCategories,
   listBacklinkEntries,
+  listContentItems,
   listKeywordGroups,
   listKeywordPages,
   listKeywordRankHistory,
@@ -12,6 +13,8 @@ import {
   listMonthlyPositions,
   listPaymentPlansForProject,
   listProjectAttachments,
+  listSeoReports,
+  listTechnicalIssues,
   getProject,
   getProjectProgress,
   isProjectAssignedToUser,
@@ -23,7 +26,6 @@ import {
 } from "@/lib/store";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StageBoard } from "@/components/StageBoard";
-import { SeoStageTabs } from "@/components/SeoStageTabs";
 import { TaskRow } from "@/components/TaskRow";
 import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { DeleteProjectPanel } from "@/components/DeleteProjectPanel";
@@ -32,9 +34,14 @@ import { ProjectMetaCard } from "@/components/ProjectMetaCard";
 import { WebsiteDetailsCard } from "@/components/WebsiteDetailsCard";
 import { DailyReportPanel } from "@/components/DailyReportPanel";
 import { ProjectDetailTabs } from "@/components/ProjectDetailTabs";
+import { SeoProjectTabs } from "@/components/SeoProjectTabs";
 import { ShareLinkPanel } from "@/components/ShareLinkPanel";
 import { PaymentsCard } from "@/components/PaymentsCard";
 import { KeywordsPanel } from "@/components/KeywordsPanel";
+import { OnPageSeoPanel } from "@/components/OnPageSeoPanel";
+import { TechnicalSeoPanel } from "@/components/TechnicalSeoPanel";
+import { ContentPipelinePanel } from "@/components/ContentPipelinePanel";
+import { SeoReportingPanel } from "@/components/SeoReportingPanel";
 import { ProjectAttachments } from "@/components/ProjectAttachments";
 import { BacklinksPanel } from "@/components/BacklinksPanel";
 import { WebAppFeaturesPanel } from "@/components/WebAppFeaturesPanel";
@@ -88,6 +95,21 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const webAppSubFeaturesByFeature =
     webAppFeatures.length > 0 ? await listWebAppSubFeatures(webAppFeatures.map((f) => f.id)) : {};
 
+  const technicalIssues = project.type === "seo" ? await listTechnicalIssues(project.id) : [];
+  const contentItems = project.type === "seo" ? await listContentItems(project.id) : [];
+  const seoReports = project.type === "seo" ? await listSeoReports(project.id) : [];
+
+  const tasksByPage: Record<string, typeof tasks> = {};
+  const tasksByContentItem: Record<string, typeof tasks> = {};
+  for (const task of tasks) {
+    if (task.pageId) (tasksByPage[task.pageId] ??= []).push(task);
+    if (task.contentItemId) (tasksByContentItem[task.contentItemId] ??= []).push(task);
+  }
+  const taskCountByKeyword: Record<string, number> = {};
+  for (const task of tasks) {
+    if (task.keywordId) taskCountByKeyword[task.keywordId] = (taskCountByKeyword[task.keywordId] ?? 0) + 1;
+  }
+
   const completed = tasks
     .filter((t) => t.status === "done")
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
@@ -136,6 +158,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
       <ShareLinkPanel projectId={project.id} shareToken={project.shareToken} />
 
+      {project.type === "seo" && <ProjectAttachments projectId={project.id} attachments={projectAttachments} />}
+
       {isAdmin && <PaymentsCard projectId={project.id} plans={paymentPlans} payments={payments} />}
     </div>
   );
@@ -143,14 +167,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const board = (
     <div className="flex flex-col gap-8">
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          {project.type === "seo" ? "SEO Checklist" : "Stages & Tasks"}
-        </h2>
-        {project.type === "seo" ? (
-          <SeoStageTabs project={project} tasks={tasks} assignableMembers={assignableMembers} />
-        ) : (
-          <StageBoard project={project} tasks={tasks} assignableMembers={assignableMembers} />
-        )}
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">Stages & Tasks</h2>
+        <StageBoard project={project} tasks={tasks} assignableMembers={assignableMembers} />
       </section>
 
       <section>
@@ -221,10 +239,9 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
         </div>
       </div>
 
-      <ProjectDetailTabs
-        board={board}
-        keywords={
-          project.type === "seo" ? (
+      {project.type === "seo" ? (
+        <SeoProjectTabs
+          keywords={
             <KeywordsPanel
               projectId={project.id}
               projectName={project.name}
@@ -233,36 +250,58 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               monthlyPositions={keywordMonthlyPositions}
               groups={keywordGroups}
               pagesByGroup={keywordPagesByGroup}
+              taskCountByKeyword={taskCountByKeyword}
             />
-          ) : undefined
-        }
-        backlinks={
-          project.type === "seo" ? (
+          }
+          onPage={
+            <OnPageSeoPanel
+              projectId={project.id}
+              groups={keywordGroups}
+              pagesByGroup={keywordPagesByGroup}
+              keywords={keywords}
+              tasksByPage={tasksByPage}
+              assignableMembers={assignableMembers}
+            />
+          }
+          technical={
+            <TechnicalSeoPanel projectId={project.id} issues={technicalIssues} assignableMembers={assignableMembers} />
+          }
+          content={
+            <ContentPipelinePanel
+              projectId={project.id}
+              items={contentItems}
+              keywords={keywords}
+              tasksByContentItem={tasksByContentItem}
+              assignableMembers={assignableMembers}
+            />
+          }
+          offPage={
             <BacklinksPanel
               projectId={project.id}
               categories={backlinkCategories}
               entriesByCategory={backlinkEntriesByCategory}
               hasVaultPassword={vaultPasswordSet}
             />
-          ) : undefined
-        }
-        attachments={
-          project.type === "seo" ? (
-            <ProjectAttachments projectId={project.id} attachments={projectAttachments} />
-          ) : undefined
-        }
-        features={
-          project.type === "web_app" ? (
-            <WebAppFeaturesPanel
-              projectId={project.id}
-              projectName={project.name}
-              features={webAppFeatures}
-              subFeaturesByFeature={webAppSubFeaturesByFeature}
-            />
-          ) : undefined
-        }
-        clientDetails={clientDetailsTab}
-      />
+          }
+          reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} />}
+          clientDetails={clientDetailsTab}
+        />
+      ) : (
+        <ProjectDetailTabs
+          board={board}
+          features={
+            project.type === "web_app" ? (
+              <WebAppFeaturesPanel
+                projectId={project.id}
+                projectName={project.name}
+                features={webAppFeatures}
+                subFeaturesByFeature={webAppSubFeaturesByFeature}
+              />
+            ) : undefined
+          }
+          clientDetails={clientDetailsTab}
+        />
+      )}
     </div>
   );
 }

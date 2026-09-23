@@ -4,8 +4,10 @@ export const PROJECT_TEMPLATES: Record<ProjectType, ProjectTemplate> = {
   seo: {
     type: "seo",
     label: "SEO",
-    description: "On-page, technical, off-page, social and Google Business Profile management.",
-    stages: ["On-Page SEO", "Technical SEO", "Off-Page SEO", "Social Media", "Google Business Profile"],
+    description: "Keywords, on-page, technical, content, off-page and reporting — a fixed module workflow.",
+    // Informational only — SEO projects use the fixed module set (see
+    // SeoProjectTabs), not freeform stages, so this isn't seeded on create.
+    stages: ["Keywords", "On-Page SEO", "Technical SEO", "Content", "Off-Page SEO", "Reporting"],
   },
   web_dev: {
     type: "web_dev",
