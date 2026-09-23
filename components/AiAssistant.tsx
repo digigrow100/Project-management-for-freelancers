@@ -42,9 +42,12 @@ function extractProposals(message: AiMessage): ProposalPreview[] {
 export function AiAssistant({
   projects,
   clients = [],
+  hasTicker = false,
 }: {
   projects: Pick<Project, "id" | "name" | "type" | "archived">[];
   clients?: Pick<Client, "id" | "name" | "company">[];
+  /** True when the domain-expiry ticker is also rendered — it sits fixed at the bottom on mobile/tablet, so the launcher button needs extra clearance to stay above it. */
+  hasTicker?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -141,7 +144,10 @@ export function AiAssistant({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-20 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-glow hover:bg-accent-400 md:bottom-6"
+        className={cn(
+          "fixed right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-glow hover:bg-accent-400 md:bottom-6",
+          hasTicker ? "bottom-32" : "bottom-20",
+        )}
         title="AI Assistant"
       >
         <Sparkles size={20} />
