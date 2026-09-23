@@ -52,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
       <DomainExpiryTicker items={tickerItems} />
-      {profile && <AiAssistant projects={projects} clients={clients} />}
+      {profile && <AiAssistant projects={projects} clients={clients} hasTicker={tickerItems.length > 0} />}
     </div>
   );
 }
