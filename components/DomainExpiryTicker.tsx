@@ -9,7 +9,7 @@ export function DomainExpiryTicker({ items }: { items: DomainExpiryTickerItem[] 
   if (items.length === 0) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-16 z-30 border-t border-amber-500/30 bg-base-900/95 backdrop-blur-sm md:bottom-0">
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-amber-500/30 bg-base-900/95 backdrop-blur-sm md:bottom-0">
       <Link
         href="/domains"
         className="flex items-center gap-2.5 overflow-hidden px-3 py-2"

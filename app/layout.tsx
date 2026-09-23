@@ -22,6 +22,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#030a07",
+  // Without this, env(safe-area-inset-*) evaluates to 0 on iOS Safari — the
+  // mobile bottom nav's safe-area padding (and the ticker/AI-launcher
+  // clearance built on top of it) silently does nothing without it.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

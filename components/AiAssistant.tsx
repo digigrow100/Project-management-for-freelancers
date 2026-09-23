@@ -146,7 +146,9 @@ export function AiAssistant({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "fixed right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-base-950 shadow-glow hover:bg-accent-400",
-          hasTicker ? "bottom-32 md:bottom-16" : "bottom-20 md:bottom-6",
+          hasTicker
+            ? "bottom-[calc(8rem+env(safe-area-inset-bottom))] md:bottom-16"
+            : "bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-6",
         )}
         title="AI Assistant"
       >
