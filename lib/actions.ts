@@ -4,10 +4,18 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as store from "./store";
-import { requireAdmin, requireProfile, requireProjectAccess, requireRenewalsAccess } from "./auth";
-import { uploadLogo, uploadProjectAttachment, uploadTaskFile } from "./storage";
+import {
+  requireAdmin,
+  requireBacklinkCredentialAccess,
+  requireProfile,
+  requireProjectAccess,
+  requireRenewalsAccess,
+} from "./auth";
+import { uploadBacklinkFile, uploadLogo, uploadProjectAttachment, uploadTaskFile } from "./storage";
 import type {
+  BacklinkCategoryType,
   BacklinkLink,
+  BacklinkStatus,
   ChecklistItem,
   ClientDetails,
   ContentStatus,
@@ -15,7 +23,9 @@ import type {
   DomainStatus,
   KeywordGroupColor,
   KeywordStatus,
+  LoginMethod,
   OnPageStatus,
+  OutreachStatus,
   PageType,
   PaymentKind,
   PaymentPlanType,
@@ -51,6 +61,13 @@ function numOrNull(value: string): number | null {
   if (!value.trim()) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/** A <select> always reports its field as present in FormData, even for an empty "Not set" option — check the value itself, not `.has()`. */
+function boolOrNull(value: string): boolean | null {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
 }
 
 interface RawChecklistItem {
@@ -134,6 +151,7 @@ export async function createClientAction(formData: FormData) {
     company,
     email: str(formData, "email"),
     phone: str(formData, "phone"),
+    address: str(formData, "address"),
     notes: str(formData, "notes"),
   });
   revalidatePath("/clients");
@@ -155,6 +173,7 @@ export async function updateClientAction(formData: FormData) {
     company: str(formData, "company"),
     email: str(formData, "email"),
     phone: str(formData, "phone"),
+    address: str(formData, "address"),
     notes: str(formData, "notes"),
     logoUrl: uploadedLogoUrl ?? str(formData, "existingLogoUrl"),
   });
@@ -175,6 +194,7 @@ export async function updateClientDetailsAction(formData: FormData) {
     company: str(formData, "clientCompany"),
     email: str(formData, "clientEmail"),
     phone: str(formData, "clientPhone"),
+    address: str(formData, "clientAddress"),
     notes: str(formData, "clientNotes"),
     logoUrl: uploadedLogoUrl ?? str(formData, "existingLogoUrl"),
   };
@@ -244,6 +264,8 @@ export async function createTaskAction(formData: FormData) {
     keywordId: str(formData, "keywordId") || null,
     pageId: str(formData, "pageId") || null,
     contentItemId: str(formData, "contentItemId") || null,
+    backlinkEntryId: str(formData, "backlinkEntryId") || null,
+    outreachProspectId: str(formData, "outreachProspectId") || null,
   });
 
   const attachments = formData.getAll("attachmentFile").filter((f): f is File => f instanceof File && f.size > 0);
@@ -280,6 +302,10 @@ export async function updateTaskDetailsAction(formData: FormData) {
     ...(formData.has("keywordId") ? { keywordId: str(formData, "keywordId") || null } : {}),
     ...(formData.has("pageId") ? { pageId: str(formData, "pageId") || null } : {}),
     ...(formData.has("contentItemId") ? { contentItemId: str(formData, "contentItemId") || null } : {}),
+    ...(formData.has("backlinkEntryId") ? { backlinkEntryId: str(formData, "backlinkEntryId") || null } : {}),
+    ...(formData.has("outreachProspectId")
+      ? { outreachProspectId: str(formData, "outreachProspectId") || null }
+      : {}),
   });
   refresh(projectId);
 }
@@ -405,11 +431,15 @@ function parseBacklinkLinks(formData: FormData): BacklinkLink[] {
   }
 }
 
-export async function createBacklinkCategoryAction(projectId: string, name: string): Promise<string | null> {
+export async function createBacklinkCategoryAction(
+  projectId: string,
+  name: string,
+  categoryType: BacklinkCategoryType = "other",
+): Promise<string | null> {
   if (!name.trim()) return null;
   await requireProjectAccess(projectId);
   try {
-    const category = await store.createBacklinkCategory(projectId, name);
+    const category = await store.createBacklinkCategory(projectId, name, categoryType);
     revalidatePath(`/projects/${projectId}`);
     return category.id;
   } catch {
@@ -417,14 +447,17 @@ export async function createBacklinkCategoryAction(projectId: string, name: stri
   }
 }
 
-export async function updateBacklinkCategoryAction(id: string, projectId: string, name: string) {
-  if (!name.trim()) return;
+export async function updateBacklinkCategoryAction(
+  id: string,
+  projectId: string,
+  patch: { name?: string; categoryType?: BacklinkCategoryType },
+) {
   await requireProjectAccess(projectId);
   try {
-    await store.updateBacklinkCategory(id, name);
+    await store.updateBacklinkCategory(id, patch);
     revalidatePath(`/projects/${projectId}`);
   } catch {
-    // Non-critical: renaming a category shouldn't be able to crash the page.
+    // Non-critical: editing a category shouldn't be able to crash the page.
   }
 }
 
@@ -456,7 +489,7 @@ export async function createBacklinkEntryAction(
   await requireProjectAccess(projectId);
 
   try {
-    await store.createBacklinkEntry({
+    const entry = await store.createBacklinkEntry({
       categoryId,
       projectId,
       name,
@@ -464,10 +497,23 @@ export async function createBacklinkEntryAction(
       username: str(formData, "username"),
       email: str(formData, "email"),
       password: str(formData, "password") || null,
+      loginMethod: (str(formData, "loginMethod") || "email") as LoginMethod,
       postsPerMonth: numOrNull(str(formData, "postsPerMonth")),
+      status: (str(formData, "status") || "not_started") as BacklinkStatus,
+      keywordId: str(formData, "keywordId") || null,
+      indexed: boolOrNull(str(formData, "indexed")),
+      listedOn: str(formData, "listedOn") || null,
+      files: [],
       notes: str(formData, "notes"),
       links: parseBacklinkLinks(formData),
     });
+
+    const attachments = formData.getAll("attachmentFile").filter((f): f is File => f instanceof File && f.size > 0);
+    for (const attachment of attachments) {
+      const uploaded = await uploadBacklinkFile(attachment, entry.id);
+      if (uploaded) await store.addBacklinkFile(entry.id, uploaded);
+    }
+
     revalidatePath(`/projects/${projectId}`);
     return { ok: true };
   } catch (error) {
@@ -491,10 +537,22 @@ export async function updateBacklinkEntryAction(
       email: str(formData, "email"),
       password: str(formData, "password") || undefined,
       clearPassword: formData.get("clearPassword") === "true",
+      loginMethod: (str(formData, "loginMethod") || "email") as LoginMethod,
       postsPerMonth: numOrNull(str(formData, "postsPerMonth")),
+      status: (str(formData, "status") || "not_started") as BacklinkStatus,
+      keywordId: str(formData, "keywordId") || null,
+      indexed: boolOrNull(str(formData, "indexed")),
+      listedOn: str(formData, "listedOn") || null,
       notes: str(formData, "notes"),
       links: parseBacklinkLinks(formData),
     });
+
+    const attachments = formData.getAll("attachmentFile").filter((f): f is File => f instanceof File && f.size > 0);
+    for (const attachment of attachments) {
+      const uploaded = await uploadBacklinkFile(attachment, id);
+      if (uploaded) await store.addBacklinkFile(id, uploaded);
+    }
+
     revalidatePath(`/projects/${projectId}`);
     return { ok: true };
   } catch (error) {
@@ -518,9 +576,14 @@ export async function revealBacklinkPasswordAction(
   vaultPassword: string,
 ): Promise<
   | { ok: true; password: string }
-  | { ok: false; reason: "no_vault_password" | "wrong_password" | "no_password_set" | "error" }
+  | { ok: false; reason: "no_vault_password" | "wrong_password" | "no_password_set" | "no_permission" | "error" }
 > {
-  const profile = await requireProjectAccess(projectId);
+  let profile;
+  try {
+    profile = await requireBacklinkCredentialAccess(projectId);
+  } catch {
+    return { ok: false, reason: "no_permission" };
+  }
   try {
     const password = await store.revealBacklinkPassword(entryId, profile.id, vaultPassword);
     return { ok: true, password };
@@ -614,6 +677,12 @@ export async function updateMemberRoleAction(userId: string, role: Role) {
 export async function setMemberRenewalsAccessAction(userId: string, allowed: boolean) {
   await requireAdmin();
   await store.setMemberRenewalsAccess(userId, allowed);
+  revalidatePath("/admin");
+}
+
+export async function setMemberBacklinkCredentialAccessAction(userId: string, allowed: boolean) {
+  await requireAdmin();
+  await store.setMemberBacklinkCredentialAccess(userId, allowed);
   revalidatePath("/admin");
 }
 
@@ -1031,6 +1100,106 @@ export async function updateSeoReportAction(
   await requireProjectAccess(projectId);
   await store.updateSeoReport(id, patch);
   revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createOutreachProspectAction(formData: FormData) {
+  const projectId = str(formData, "projectId");
+  const website = str(formData, "website");
+  if (!projectId || !website) return;
+  await requireProjectAccess(projectId);
+
+  await store.createOutreachProspect({
+    projectId,
+    website,
+    contactPerson: str(formData, "contactPerson"),
+    contactEmail: str(formData, "contactEmail"),
+    drDa: numOrNull(str(formData, "drDa")),
+    price: numOrNull(str(formData, "price")),
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateOutreachProspectAction(
+  id: string,
+  projectId: string,
+  patch: Parameters<typeof store.updateOutreachProspect>[1],
+) {
+  await requireProjectAccess(projectId);
+  await store.updateOutreachProspect(id, patch);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteOutreachProspectAction(id: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  await store.deleteOutreachProspect(id);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createFollowUpTaskForProspectAction(prospectId: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  const prospects = await store.listOutreachProspects(projectId);
+  const prospect = prospects.find((p) => p.id === prospectId);
+  if (!prospect) return;
+
+  await store.createTask({
+    projectId,
+    stageId: null,
+    title: `Follow up: ${prospect.website}`,
+    seoModule: "off_page",
+    outreachProspectId: prospect.id,
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createCompetitorBacklinkAction(formData: FormData) {
+  const projectId = str(formData, "projectId");
+  const competitorUrl = str(formData, "competitorUrl");
+  if (!projectId || !competitorUrl) return;
+  await requireProjectAccess(projectId);
+
+  await store.createCompetitorBacklink({
+    projectId,
+    competitorUrl,
+    sourceBacklinkUrl: str(formData, "sourceBacklinkUrl"),
+    opportunityNotes: str(formData, "opportunityNotes"),
+    targetPageId: str(formData, "targetPageId") || null,
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateCompetitorBacklinkAction(
+  id: string,
+  projectId: string,
+  patch: Parameters<typeof store.updateCompetitorBacklink>[1],
+) {
+  await requireProjectAccess(projectId);
+  await store.updateCompetitorBacklink(id, patch);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteCompetitorBacklinkAction(id: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  await store.deleteCompetitorBacklink(id);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function saveBacklinksAsTemplateAction(projectId: string, name: string) {
+  if (!name.trim()) return;
+  const profile = await requireProjectAccess(projectId);
+  await store.saveBacklinksAsTemplate(projectId, name, profile.id);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteBacklinkTemplateAction(id: string) {
+  await requireAdmin();
+  await store.deleteBacklinkTemplate(id);
+}
+
+export async function importBacklinkTemplateItemsAction(projectId: string, itemIds: string[]): Promise<number> {
+  await requireProjectAccess(projectId);
+  const count = await store.importBacklinkTemplateItems(projectId, itemIds);
+  revalidatePath(`/projects/${projectId}`);
+  return count;
 }
 
 /**

@@ -43,6 +43,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
         name: user.email?.split("@")[0] ?? "",
         role: "admin",
         canAccessRenewals: true,
+        canAccessBacklinkCredentials: true,
         createdAt: new Date().toISOString(),
       };
     }
@@ -74,5 +75,18 @@ export async function requireProjectAccess(projectId: string): Promise<Profile> 
 
   const allowed = await store.isProjectAssignedToUser(projectId, profile.id);
   if (!allowed) throw new Error("You don't have access to this project.");
+  return profile;
+}
+
+/**
+ * Reveal-time gate for backlink credentials. Being assigned to the project
+ * is necessary but never sufficient — a member also needs the explicit
+ * canAccessBacklinkCredentials grant (admins always pass).
+ */
+export async function requireBacklinkCredentialAccess(projectId: string): Promise<Profile> {
+  const profile = await requireProjectAccess(projectId);
+  if (profile.role !== "admin" && !profile.canAccessBacklinkCredentials) {
+    throw new Error("You don't have permission to reveal backlink credentials.");
+  }
   return profile;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Mail, Phone, Building2, Pencil, X, User } from "lucide-react";
+import { Mail, Phone, Building2, Pencil, X, User, MapPin } from "lucide-react";
 import type { ClientDetails } from "@/lib/types";
 import { updateClientDetailsAction } from "@/lib/actions";
 
@@ -46,6 +46,7 @@ export function ClientDetailsCard({ projectId, client }: { projectId: string; cl
             <Field icon={Building2} label="Company" value={client.company} />
             <Field icon={Mail} label="Email" value={client.email} href={client.email ? `mailto:${client.email}` : undefined} />
             <Field icon={Phone} label="Phone" value={client.phone} href={client.phone ? `tel:${client.phone}` : undefined} />
+            <Field icon={MapPin} label="Address" value={client.address} />
           </div>
         ) : (
           <p className="text-sm text-neutral-500">No client details yet. Click edit to add them.</p>
@@ -116,6 +117,7 @@ export function ClientDetailsCard({ projectId, client }: { projectId: string; cl
         <LabeledInput name="clientCompany" label="Company" defaultValue={client.company} />
         <LabeledInput name="clientEmail" label="Email" type="email" defaultValue={client.email} />
         <LabeledInput name="clientPhone" label="Phone" defaultValue={client.phone} />
+        <LabeledInput name="clientAddress" label="Address" defaultValue={client.address} />
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-neutral-400">Notes</label>

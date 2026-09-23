@@ -5,7 +5,11 @@ import {
   hasVaultPassword,
   listBacklinkCategories,
   listBacklinkEntries,
+  listBacklinkTemplateItems,
+  listBacklinkTemplates,
+  listCompetitorBacklinks,
   listContentItems,
+  listOutreachProspects,
   listKeywordGroups,
   listKeywordPages,
   listKeywordRankHistory,
@@ -43,7 +47,7 @@ import { TechnicalSeoPanel } from "@/components/TechnicalSeoPanel";
 import { ContentPipelinePanel } from "@/components/ContentPipelinePanel";
 import { SeoReportingPanel } from "@/components/SeoReportingPanel";
 import { ProjectAttachments } from "@/components/ProjectAttachments";
-import { BacklinksPanel } from "@/components/BacklinksPanel";
+import { OffPagePanel } from "@/components/OffPagePanel";
 import { WebAppFeaturesPanel } from "@/components/WebAppFeaturesPanel";
 import { PROJECT_THEME } from "@/lib/projectTheme";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
@@ -91,6 +95,17 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     backlinkCategories.length > 0 ? await listBacklinkEntries(backlinkCategories.map((c) => c.id)) : {};
   const vaultPasswordSet = project.type === "seo" ? await hasVaultPassword(profile.id) : false;
 
+  const outreachProspects = project.type === "seo" ? await listOutreachProspects(project.id) : [];
+  const competitorBacklinks = project.type === "seo" ? await listCompetitorBacklinks(project.id) : [];
+  const backlinkTemplates = project.type === "seo" ? await listBacklinkTemplates() : [];
+  const backlinkTemplateItemsByTemplate: Record<string, Awaited<ReturnType<typeof listBacklinkTemplateItems>>> = {};
+  if (backlinkTemplates.length > 0) {
+    const itemLists = await Promise.all(backlinkTemplates.map((t) => listBacklinkTemplateItems(t.id)));
+    backlinkTemplates.forEach((t, i) => {
+      backlinkTemplateItemsByTemplate[t.id] = itemLists[i] ?? [];
+    });
+  }
+
   const webAppFeatures = project.type === "web_app" ? await listWebAppFeatures(project.id) : [];
   const webAppSubFeaturesByFeature =
     webAppFeatures.length > 0 ? await listWebAppSubFeatures(webAppFeatures.map((f) => f.id)) : {};
@@ -101,9 +116,11 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   const tasksByPage: Record<string, typeof tasks> = {};
   const tasksByContentItem: Record<string, typeof tasks> = {};
+  const tasksByProspect: Record<string, typeof tasks> = {};
   for (const task of tasks) {
     if (task.pageId) (tasksByPage[task.pageId] ??= []).push(task);
     if (task.contentItemId) (tasksByContentItem[task.contentItemId] ??= []).push(task);
+    if (task.outreachProspectId) (tasksByProspect[task.outreachProspectId] ??= []).push(task);
   }
   const taskCountByKeyword: Record<string, number> = {};
   for (const task of tasks) {
@@ -276,11 +293,20 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             />
           }
           offPage={
-            <BacklinksPanel
+            <OffPagePanel
               projectId={project.id}
               categories={backlinkCategories}
               entriesByCategory={backlinkEntriesByCategory}
               hasVaultPassword={vaultPasswordSet}
+              keywords={keywords}
+              pages={Object.values(keywordPagesByGroup).flat()}
+              assignableMembers={assignableMembers}
+              prospects={outreachProspects}
+              tasksByProspect={tasksByProspect}
+              competitorBacklinks={competitorBacklinks}
+              templates={backlinkTemplates}
+              templateItemsByTemplate={backlinkTemplateItemsByTemplate}
+              isAdmin={isAdmin}
             />
           }
           reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} />}

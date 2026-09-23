@@ -49,6 +49,7 @@ export function ClientDetailPanel({
           <Field name="company" label="Company" defaultValue={client.company} />
           <Field name="email" label="Email" type="email" defaultValue={client.email} />
           <Field name="phone" label="Phone" defaultValue={client.phone} />
+          <Field name="address" label="Address" defaultValue={client.address} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-neutral-400">Notes</label>

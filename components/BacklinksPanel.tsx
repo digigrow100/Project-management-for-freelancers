@@ -13,8 +13,9 @@ import {
   KeyRound,
   ExternalLink,
   Check,
+  Paperclip,
 } from "lucide-react";
-import type { BacklinkCategory, BacklinkEntry, BacklinkLink } from "@/lib/types";
+import type { BacklinkCategory, BacklinkCategoryType, BacklinkEntry, BacklinkLink, Keyword, Profile } from "@/lib/types";
 import {
   createBacklinkCategoryAction,
   createBacklinkEntryAction,
@@ -27,17 +28,50 @@ import {
 import { cn } from "@/lib/utils";
 import { DragScrollRow } from "@/components/DragScrollRow";
 import { VaultPasswordModal } from "@/components/VaultPasswordModal";
+import { NewTaskForm } from "@/components/NewTaskForm";
+
+export const CATEGORY_TYPE_LABEL: Record<BacklinkCategoryType, string> = {
+  local_citation: "Local Citation",
+  web2: "Web 2.0",
+  guest_post: "Guest Post",
+  outreach: "Outreach",
+  competitor: "Competitor",
+  social: "Social",
+  other: "Other",
+};
+
+const STATUS_LABEL = {
+  not_started: "Not started",
+  account_created: "Account created",
+  submitted: "Submitted",
+  verification_pending: "Verification pending",
+  live: "Live",
+  rejected: "Rejected",
+} as const;
+
+const STATUS_STYLE: Record<keyof typeof STATUS_LABEL, string> = {
+  not_started: "bg-base-700/60 text-neutral-400",
+  account_created: "bg-sky-500/15 text-sky-400",
+  submitted: "bg-amber-500/15 text-amber-400",
+  verification_pending: "bg-amber-500/15 text-amber-400",
+  live: "bg-accent-500/15 text-accent-400",
+  rejected: "bg-rose-500/15 text-rose-400",
+};
 
 export function BacklinksPanel({
   projectId,
   categories,
   entriesByCategory,
   hasVaultPassword,
+  keywords = [],
+  assignableMembers = [],
 }: {
   projectId: string;
   categories: BacklinkCategory[];
   entriesByCategory: Record<string, BacklinkEntry[]>;
   hasVaultPassword: boolean;
+  keywords?: Keyword[];
+  assignableMembers?: Profile[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(categories[0]?.id ?? null);
@@ -125,6 +159,9 @@ export function BacklinksPanel({
                   )}
                 >
                   <span>{category.name}</span>
+                  <span className="rounded-full bg-base-800 px-1.5 text-[10px] text-neutral-500">
+                    {CATEGORY_TYPE_LABEL[category.categoryType]}
+                  </span>
                   <span className="rounded-full bg-base-800 px-1.5 text-[10px] text-neutral-400">
                     {(entriesByCategory[category.id] ?? []).length}
                   </span>
@@ -182,6 +219,7 @@ export function BacklinksPanel({
                 projectId={projectId}
                 categoryId={selectedCategory.id}
                 entry={null}
+                keywords={keywords}
                 onCancel={() => setAddingEntry(false)}
                 onSaved={() => setAddingEntry(false)}
               />
@@ -202,6 +240,7 @@ export function BacklinksPanel({
                   projectId={projectId}
                   categoryId={selectedCategory.id}
                   entry={entry}
+                  keywords={keywords}
                   onCancel={() => setEditingEntryId(null)}
                   onSaved={() => setEditingEntryId(null)}
                 />
@@ -211,6 +250,8 @@ export function BacklinksPanel({
                   entry={entry}
                   projectId={projectId}
                   vaultPasswordSet={vaultPasswordSet}
+                  keywords={keywords}
+                  assignableMembers={assignableMembers}
                   onRequestVaultSetup={() => setVaultModalOpen(true)}
                   onEdit={() => setEditingEntryId(entry.id)}
                   onDelete={() => startTransition(() => deleteBacklinkEntryAction(entry.id, projectId))}
@@ -253,13 +294,14 @@ function CategoryForm({
     <form
       action={(formData) => {
         const name = String(formData.get("name") ?? "").trim();
+        const categoryType = String(formData.get("categoryType") ?? "other") as BacklinkCategoryType;
         if (!name) return;
         startTransition(async () => {
           if (category) {
-            await updateBacklinkCategoryAction(category.id, projectId, name);
+            await updateBacklinkCategoryAction(category.id, projectId, { name, categoryType });
             onSaved(category.id);
           } else {
-            const id = await createBacklinkCategoryAction(projectId, name);
+            const id = await createBacklinkCategoryAction(projectId, name, categoryType);
             onSaved(id ?? "");
           }
         });
@@ -274,6 +316,17 @@ function CategoryForm({
         defaultValue={category?.name ?? ""}
         className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
       />
+      <select
+        name="categoryType"
+        defaultValue={category?.categoryType ?? "other"}
+        className="w-fit shrink-0 rounded-md border border-base-600 bg-base-950 px-2 py-1.5 text-xs text-neutral-100 focus:border-accent-500 focus:outline-none"
+      >
+        {(Object.keys(CATEGORY_TYPE_LABEL) as BacklinkCategoryType[]).map((t) => (
+          <option key={t} value={t}>
+            {CATEGORY_TYPE_LABEL[t]}
+          </option>
+        ))}
+      </select>
       <button
         type="submit"
         disabled={isPending}
@@ -292,6 +345,8 @@ function EntryCard({
   entry,
   projectId,
   vaultPasswordSet,
+  keywords,
+  assignableMembers,
   onRequestVaultSetup,
   onEdit,
   onDelete,
@@ -300,6 +355,8 @@ function EntryCard({
   entry: BacklinkEntry;
   projectId: string;
   vaultPasswordSet: boolean;
+  keywords: Keyword[];
+  assignableMembers: Profile[];
   onRequestVaultSetup: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -311,6 +368,8 @@ function EntryCard({
   const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const linkedKeyword = entry.keywordId ? keywords.find((k) => k.id === entry.keywordId) : null;
 
   function submitReveal() {
     setRevealError(null);
@@ -325,6 +384,8 @@ function EntryCard({
       if (result.reason === "wrong_password") setRevealError("Incorrect security password.");
       else if (result.reason === "no_password_set") setRevealError("No password saved for this entry.");
       else if (result.reason === "no_vault_password") onRequestVaultSetup();
+      else if (result.reason === "no_permission")
+        setRevealError("You don't have permission to reveal backlink credentials. Ask an admin to grant access.");
       else setRevealError("Something went wrong. Please try again.");
     });
   }
@@ -333,7 +394,12 @@ function EntryCard({
     <div className="rounded-lg border border-base-700/60 bg-base-900 p-3.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="break-words text-sm font-semibold text-neutral-100">{entry.name}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="break-words text-sm font-semibold text-neutral-100">{entry.name}</p>
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", STATUS_STYLE[entry.status])}>
+              {STATUS_LABEL[entry.status]}
+            </span>
+          </div>
           {entry.url && (
             <a
               href={entry.url}
@@ -347,6 +413,14 @@ function EntryCard({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCreatingTask((v) => !v)}
+            className="rounded-md p-1.5 text-neutral-400 hover:text-accent-300"
+            title="Create task"
+          >
+            <Plus size={13} />
+          </button>
           <button type="button" onClick={onEdit} className="rounded-md p-1.5 text-neutral-400 hover:text-accent-300" title="Edit">
             <Pencil size={13} />
           </button>
@@ -368,7 +442,28 @@ function EntryCard({
         {entry.postsPerMonth !== null && (
           <span className="rounded-full bg-base-800 px-2 py-0.5">{entry.postsPerMonth} posts/mo</span>
         )}
+        {linkedKeyword && (
+          <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-accent-400">
+            {linkedKeyword.keyword} #{linkedKeyword.currentRank ?? "—"}
+          </span>
+        )}
+        {entry.indexed !== null && (
+          <span className="rounded-full bg-base-800 px-2 py-0.5">{entry.indexed ? "Indexed" : "Not indexed"}</span>
+        )}
+        {entry.listedOn && <span className="rounded-full bg-base-800 px-2 py-0.5">Listed {entry.listedOn}</span>}
       </div>
+
+      {creatingTask && (
+        <div className="mt-2.5">
+          <NewTaskForm
+            projectId={projectId}
+            stageId={null}
+            assignableMembers={assignableMembers}
+            seoModule="off_page"
+            backlinkEntryId={entry.id}
+          />
+        </div>
+      )}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
         {!entry.hasPassword && <span className="text-xs text-neutral-600">No password saved</span>}
@@ -467,6 +562,23 @@ function EntryCard({
         </div>
       )}
 
+      {entry.files.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {entry.files.map((file, i) => (
+            <a
+              key={i}
+              href={file.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded-full bg-base-800 px-2 py-0.5 text-[11px] text-neutral-300 hover:text-accent-300"
+            >
+              <Paperclip size={10} />
+              {file.name}
+            </a>
+          ))}
+        </div>
+      )}
+
       {entry.notes && <p className="mt-2 break-words text-xs text-neutral-500">{entry.notes}</p>}
     </div>
   );
@@ -476,12 +588,14 @@ function EntryForm({
   projectId,
   categoryId,
   entry,
+  keywords,
   onCancel,
   onSaved,
 }: {
   projectId: string;
   categoryId: string;
   entry: BacklinkEntry | null;
+  keywords: Keyword[];
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -585,6 +699,85 @@ function EntryForm({
           className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
         />
       </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Login method</label>
+          <select
+            name="loginMethod"
+            defaultValue={entry?.loginMethod ?? "email"}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            <option value="email">Email</option>
+            <option value="google">Google Login</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Status</label>
+          <select
+            name="status"
+            defaultValue={entry?.status ?? "not_started"}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            {(Object.keys(STATUS_LABEL) as (keyof typeof STATUS_LABEL)[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Listed on</label>
+          <input
+            name="listedOn"
+            type="date"
+            defaultValue={entry?.listedOn ?? ""}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Linked keyword (ranking tracking)</label>
+          <select
+            name="keywordId"
+            defaultValue={entry?.keywordId ?? ""}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            <option value="">None</option>
+            {keywords.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.keyword}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Indexed</label>
+          <select
+            name="indexed"
+            defaultValue={entry?.indexed === null || entry?.indexed === undefined ? "" : String(entry.indexed)}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            <option value="">Not set</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+      </div>
+
+      <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs text-neutral-400 hover:text-accent-300">
+        <Paperclip size={13} />
+        Attach screenshot / file
+        <input type="file" name="attachmentFile" multiple className="hidden" />
+      </label>
+      {entry && entry.files.length > 0 && (
+        <p className="text-[11px] text-neutral-600">
+          {entry.files.length} file{entry.files.length === 1 ? "" : "s"} already attached — new uploads are added, not replaced.
+        </p>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
