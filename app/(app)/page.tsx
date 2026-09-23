@@ -9,6 +9,7 @@ import {
   listAllPayments,
   listPaymentPlans,
   listPinnedNotes,
+  listTeamMembers,
 } from "@/lib/store";
 import { StatCard } from "@/components/StatCard";
 import { ScheduledTodayStat } from "@/components/ScheduledTodayStat";
@@ -22,15 +23,17 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({ searchParams }: { searchParams: { currency?: string } }) {
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
-  const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, pinnedNotes] = await Promise.all([
-    getOpenTasks(),
-    profile ? getProjectsForProfile(profile) : Promise.resolve([]),
-    getCompletedTasks(),
-    getProjectProgressMap(),
-    isAdmin ? listPaymentPlans() : Promise.resolve([]),
-    isAdmin ? listAllPayments() : Promise.resolve([]),
-    profile ? listPinnedNotes(profile.id, isAdmin) : Promise.resolve([]),
-  ]);
+  const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, pinnedNotes, assignableMembers] =
+    await Promise.all([
+      getOpenTasks(),
+      profile ? getProjectsForProfile(profile) : Promise.resolve([]),
+      getCompletedTasks(),
+      getProjectProgressMap(),
+      isAdmin ? listPaymentPlans() : Promise.resolve([]),
+      isAdmin ? listAllPayments() : Promise.resolve([]),
+      profile ? listPinnedNotes(profile.id, isAdmin) : Promise.resolve([]),
+      listTeamMembers(),
+    ]);
 
   const visibleIds = new Set(projects.map((p) => p.id));
   const openTasks = allOpenTasks.filter((t) => visibleIds.has(t.projectId));
@@ -198,6 +201,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
               stages={projectById.get(task.projectId)?.stages ?? []}
               showProject
               projectName={projectById.get(task.projectId)?.name}
+              assignableMembers={assignableMembers}
             />
           ))}
         </div>

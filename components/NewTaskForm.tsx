@@ -3,8 +3,17 @@
 import { useRef, useState } from "react";
 import { Plus, X, Paperclip } from "lucide-react";
 import { createTaskAction } from "@/lib/actions";
+import type { Profile } from "@/lib/types";
 
-export function NewTaskForm({ projectId, stageId }: { projectId: string; stageId: string | null }) {
+export function NewTaskForm({
+  projectId,
+  stageId,
+  assignableMembers = [],
+}: {
+  projectId: string;
+  stageId: string | null;
+  assignableMembers?: Profile[];
+}) {
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -57,15 +66,30 @@ export function NewTaskForm({ projectId, stageId }: { projectId: string; stageId
         className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
       />
 
-      <select
-        name="priority"
-        defaultValue="medium"
-        className="w-fit rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 focus:border-accent-500 focus:outline-none"
-      >
-        <option value="low">Low priority</option>
-        <option value="medium">Medium priority</option>
-        <option value="high">High priority</option>
-      </select>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          name="priority"
+          defaultValue="medium"
+          className="w-fit rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 focus:border-accent-500 focus:outline-none"
+        >
+          <option value="low">Low priority</option>
+          <option value="medium">Medium priority</option>
+          <option value="high">High priority</option>
+        </select>
+
+        <select
+          name="assignedTo"
+          defaultValue=""
+          className="w-fit rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 focus:border-accent-500 focus:outline-none"
+        >
+          <option value="">Unassigned</option>
+          {assignableMembers.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name || member.email}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs text-neutral-400 hover:text-accent-300">
         <Paperclip size={13} />

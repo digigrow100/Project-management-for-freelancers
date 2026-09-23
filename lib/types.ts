@@ -41,6 +41,13 @@ export interface Task {
   updatedAt: string;
   completedAt: string | null;
   order: number;
+  /** The one person accountable for this task. Null until someone picks it up. */
+  assignedTo: string | null;
+  assignedToName: string | null;
+  /** Why this task matters — shown separately from `notes`, which stays the working log. */
+  why: string;
+  /** What "done" looks like for this task. Labeled "Done When" in the UI. */
+  expectedOutcome: string;
 }
 
 export interface ClientDetails {

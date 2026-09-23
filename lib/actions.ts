@@ -31,6 +31,7 @@ import type {
 function refresh(projectId?: string) {
   revalidatePath("/");
   revalidatePath("/today");
+  revalidatePath("/my-tasks");
   revalidatePath("/projects");
   if (projectId) revalidatePath(`/projects/${projectId}`);
 }
@@ -218,11 +219,21 @@ export async function createTaskAction(formData: FormData) {
   const priority = (str(formData, "priority") || "medium") as TaskPriority;
   const scheduledFor = str(formData, "scheduledFor") || null;
   const markDoneOn = str(formData, "markDoneOn") || null;
+  const assignedTo = str(formData, "assignedTo") || null;
   const checklist = parseChecklistJson(formData);
   if (!projectId || !title) return;
   await requireProjectAccess(projectId);
 
-  const task = await store.createTask({ projectId, stageId, title, priority, scheduledFor, checklist, markDoneOn });
+  const task = await store.createTask({
+    projectId,
+    stageId,
+    title,
+    priority,
+    scheduledFor,
+    checklist,
+    markDoneOn,
+    assignedTo,
+  });
 
   const attachments = formData.getAll("attachmentFile").filter((f): f is File => f instanceof File && f.size > 0);
   for (const attachment of attachments) {
@@ -249,6 +260,9 @@ export async function updateTaskDetailsAction(formData: FormData) {
     scheduledFor: str(formData, "scheduledFor") || null,
     checklist: parseChecklistJson(formData),
     completedDate: str(formData, "completedDate") || null,
+    assignedTo: str(formData, "assignedTo") || null,
+    why: str(formData, "why"),
+    expectedOutcome: str(formData, "expectedOutcome"),
   });
   refresh(projectId);
 }

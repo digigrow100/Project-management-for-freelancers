@@ -1,14 +1,15 @@
 import { getCurrentProfile } from "@/lib/auth";
-import { getOpenTasks, getProjectsForProfile } from "@/lib/store";
+import { getOpenTasks, getProjectsForProfile, listTeamMembers } from "@/lib/store";
 import { TodayTaskList } from "@/components/TodayTaskList";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
   const profile = await getCurrentProfile();
-  const [allTasks, projects] = await Promise.all([
+  const [allTasks, projects, assignableMembers] = await Promise.all([
     getOpenTasks(),
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
+    listTeamMembers(),
   ]);
   const visibleIds = new Set(projects.map((p) => p.id));
   const tasks = allTasks.filter((t) => visibleIds.has(t.projectId));
@@ -22,7 +23,7 @@ export default async function TodayPage() {
         </p>
       </div>
 
-      <TodayTaskList tasks={tasks} projects={projects} />
+      <TodayTaskList tasks={tasks} projects={projects} assignableMembers={assignableMembers} />
     </div>
   );
 }

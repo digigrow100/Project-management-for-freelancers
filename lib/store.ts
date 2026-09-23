@@ -99,6 +99,9 @@ interface TaskRow {
   updated_at: string;
   completed_at: string | null;
   order_index: number;
+  assigned_to: string | null;
+  why: string;
+  expected_outcome: string;
 }
 
 /** Normalizes legacy plain-string image URLs (from before file attachments were
@@ -113,7 +116,8 @@ function toStage(row: StageRow): Stage {
   return { id: row.id, name: row.name, order: row.order_index };
 }
 
-function toTask(row: TaskRow): Task {
+/** `nameById` is optional so callers that don't need the resolved assignee name (e.g. a single-row update) can skip the extra query. */
+function toTask(row: TaskRow, nameById?: Map<string, string>): Task {
   return {
     id: row.id,
     projectId: row.project_id,
@@ -130,7 +134,17 @@ function toTask(row: TaskRow): Task {
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
     order: row.order_index,
+    assignedTo: row.assigned_to,
+    assignedToName: row.assigned_to ? (nameById?.get(row.assigned_to) ?? "Unknown") : null,
+    why: row.why ?? "",
+    expectedOutcome: row.expected_outcome ?? "",
   };
+}
+
+/** Builds the id -> display-name map `toTask` needs to resolve `assignedToName`. */
+async function taskNameLookup(): Promise<Map<string, string>> {
+  const members = await listTeamMembers();
+  return new Map(members.map((m) => [m.id, m.name || m.email]));
 }
 
 function toProject(row: ProjectRow, stages: Stage[]): Project {
@@ -479,20 +493,22 @@ export async function addStage(projectId: string, name: string): Promise<Stage |
 }
 
 export async function getTasksByProject(projectId: string): Promise<Task[]> {
-  const { data, error } = await getSupabase()
-    .from("freelance_hq_tasks")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("order_index");
+  const [{ data, error }, nameById] = await Promise.all([
+    getSupabase().from("freelance_hq_tasks").select("*").eq("project_id", projectId).order("order_index"),
+    taskNameLookup(),
+  ]);
   if (error) throw error;
-  return ((data ?? []) as TaskRow[]).map(toTask);
+  return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
 }
 
 export async function getOpenTasks(): Promise<Task[]> {
-  const { data, error } = await getSupabase().from("freelance_hq_tasks").select("*").neq("status", "done");
+  const [{ data, error }, nameById] = await Promise.all([
+    getSupabase().from("freelance_hq_tasks").select("*").neq("status", "done"),
+    taskNameLookup(),
+  ]);
   if (error) throw error;
 
-  const tasks = ((data ?? []) as TaskRow[]).map(toTask);
+  const tasks = ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
   return tasks.sort((a, b) => {
     const aDate = a.dueDate ?? a.scheduledFor;
     const bDate = b.dueDate ?? b.scheduledFor;
@@ -509,12 +525,31 @@ export async function getOpenTasks(): Promise<Task[]> {
 }
 
 export async function getCompletedTasks(): Promise<Task[]> {
-  const { data, error } = await getSupabase().from("freelance_hq_tasks").select("*").eq("status", "done");
+  const [{ data, error }, nameById] = await Promise.all([
+    getSupabase().from("freelance_hq_tasks").select("*").eq("status", "done"),
+    taskNameLookup(),
+  ]);
   if (error) throw error;
 
   return ((data ?? []) as TaskRow[])
-    .map(toTask)
+    .map((row) => toTask(row, nameById))
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
+}
+
+/**
+ * Every task assigned to `userId`, regardless of status — the "My Tasks" page
+ * buckets these itself (overdue / due today / upcoming / waiting review /
+ * completed recently). Being the assignee is the access boundary here: if a
+ * task is assigned to you, you see it, even for a project you're not formally
+ * assigned to (an admin can hand anyone a task from the full team list).
+ */
+export async function getMyTasks(userId: string): Promise<Task[]> {
+  const [{ data, error }, nameById] = await Promise.all([
+    getSupabase().from("freelance_hq_tasks").select("*").eq("assigned_to", userId),
+    taskNameLookup(),
+  ]);
+  if (error) throw error;
+  return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
 }
 
 export async function createTask(input: {
@@ -527,6 +562,7 @@ export async function createTask(input: {
   checklist?: ChecklistItem[];
   files?: TaskFile[];
   markDoneOn?: string | null;
+  assignedTo?: string | null;
 }): Promise<Task> {
   const { count, error: countError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -551,13 +587,14 @@ export async function createTask(input: {
       status: isBackdated ? "done" : "todo",
       completed_at: isBackdated ? toCompletedTimestamp(input.markDoneOn ?? null) : null,
       order_index: count ?? 0,
+      assigned_to: input.assignedTo ?? null,
     })
     .select()
     .single();
   if (error) throw error;
 
   await touchProject(input.projectId);
-  return toTask(data as TaskRow);
+  return toTask(data as TaskRow, await taskNameLookup());
 }
 
 export async function updateTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
@@ -604,6 +641,9 @@ export async function updateTaskDetails(
     scheduledFor: string | null;
     checklist: ChecklistItem[];
     completedDate: string | null;
+    assignedTo: string | null;
+    why: string;
+    expectedOutcome: string;
   },
 ): Promise<void> {
   const status = patch.status === "done" && !isChecklistComplete(patch.checklist) ? "in_progress" : patch.status;
@@ -619,6 +659,9 @@ export async function updateTaskDetails(
     checklist: patch.checklist,
     completed_at: status === "done" ? toCompletedTimestamp(patch.completedDate) : null,
     updated_at: nowIso(),
+    assigned_to: patch.assignedTo,
+    why: patch.why,
+    expected_outcome: patch.expectedOutcome,
   };
 
   const { data, error } = await getSupabase()
@@ -2558,6 +2601,24 @@ export async function countUnseenNotes(userId: string): Promise<number> {
     if (isMissingTableError(error)) return 0;
     throw error;
   }
+}
+
+/**
+ * Tasks assigned to this user that changed since they last opened My Tasks.
+ * There's no separate "assigned at" timestamp, so this is `updated_at` past
+ * last-seen — an approximation that also counts any other edit to a task
+ * assigned to you, not just a new assignment. Acceptable for Phase 1; a
+ * dedicated assigned_at column can tighten this later if it proves noisy.
+ */
+export async function countUnseenTasks(userId: string): Promise<number> {
+  const lastSeen = await getLastSeen(userId, "tasks");
+  const { count, error } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("*", { count: "exact", head: true })
+    .eq("assigned_to", userId)
+    .gt("updated_at", lastSeen);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 interface WebAppFeatureRow {

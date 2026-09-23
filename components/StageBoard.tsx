@@ -1,10 +1,18 @@
-import type { Project, Task } from "@/lib/types";
+import type { Profile, Project, Task } from "@/lib/types";
 import { TaskRow } from "./TaskRow";
 import { NewTaskForm } from "./NewTaskForm";
 import { ProgressBar } from "./ProgressBar";
 import { AddStageForm } from "./AddStageForm";
 
-export function StageBoard({ project, tasks }: { project: Project; tasks: Task[] }) {
+export function StageBoard({
+  project,
+  tasks,
+  assignableMembers = [],
+}: {
+  project: Project;
+  tasks: Task[];
+  assignableMembers?: Profile[];
+}) {
   const stages = [...project.stages].sort((a, b) => a.order - b.order);
   const byStage = new Map<string, Task[]>();
   const unstaged: Task[] = [];
@@ -41,9 +49,15 @@ export function StageBoard({ project, tasks }: { project: Project; tasks: Task[]
             <ProgressBar done={done} total={stageTasks.length} color={project.color} className="mb-3" />
             <div className="flex flex-col gap-2">
               {stageTasks.map((task) => (
-                <TaskRow key={task.id} task={task} stageName={stage.name} stages={stages} />
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  stageName={stage.name}
+                  stages={stages}
+                  assignableMembers={assignableMembers}
+                />
               ))}
-              <NewTaskForm projectId={project.id} stageId={stage.id} />
+              <NewTaskForm projectId={project.id} stageId={stage.id} assignableMembers={assignableMembers} />
             </div>
           </div>
         );
@@ -54,7 +68,7 @@ export function StageBoard({ project, tasks }: { project: Project; tasks: Task[]
           <h3 className="mb-2 text-sm font-semibold text-neutral-200">No Stage</h3>
           <div className="flex flex-col gap-2">
             {sortTasks(unstaged).map((task) => (
-              <TaskRow key={task.id} task={task} stages={stages} />
+              <TaskRow key={task.id} task={task} stages={stages} assignableMembers={assignableMembers} />
             ))}
           </div>
         </div>
