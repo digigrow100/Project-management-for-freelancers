@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package } from "lucide-react";
 import type { Profile, Project } from "@/lib/types";
 import { SidebarProjectGroups } from "./SidebarProjectGroups";
 import { InstallAppButton } from "./InstallAppButton";
@@ -31,6 +31,7 @@ export function Sidebar({
 }) {
   const isAdmin = profile?.role === "admin";
   const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
+  const canAccessFinance = isAdmin || Boolean(profile?.canAccessFinance);
   const badgeByHref: Record<string, number> = {
     "/projects": unseenProjects,
     "/notes": unseenNotes,
@@ -69,6 +70,15 @@ export function Sidebar({
             Domains
           </Link>
         )}
+        {canAccessFinance && (
+          <Link
+            href="/invoices"
+            className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
+          >
+            <Receipt size={17} className="text-neutral-500 group-hover:text-accent-400" />
+            Invoices
+          </Link>
+        )}
         {isAdmin && (
           <>
             <Link
@@ -84,6 +94,13 @@ export function Sidebar({
             >
               <Wallet size={17} className="text-neutral-500 group-hover:text-accent-400" />
               Finance
+            </Link>
+            <Link
+              href="/services"
+              className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
+            >
+              <Package size={17} className="text-neutral-500 group-hover:text-accent-400" />
+              Services
             </Link>
             <Link
               href="/settings"

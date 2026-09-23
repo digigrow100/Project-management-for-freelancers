@@ -78,6 +78,7 @@ export interface Client {
   email: string;
   phone: string;
   address: string;
+  website: string;
   notes: string;
   logoUrl: string;
   createdAt: string;
@@ -132,6 +133,8 @@ export interface Profile {
   canAccessRenewals: boolean;
   /** Members (non-admins) can be individually granted permission to reveal backlink credentials. Admins always have access; project assignment alone is never enough. */
   canAccessBacklinkCredentials: boolean;
+  /** Members (non-admins) can be individually granted access to Finance (Invoices, Services, client balances). Admins always have access. */
+  canAccessFinance: boolean;
   createdAt: string;
 }
 
@@ -152,6 +155,8 @@ export interface Payment {
   id: string;
   /** Null once the project it was recorded against has been deleted with its payment history kept. */
   projectId: string | null;
+  /** Set when this payment was recorded against a specific invoice. Null for the older project-only payment flow. */
+  invoiceId: string | null;
   amount: number;
   currency: string;
   kind: PaymentKind;
@@ -629,4 +634,81 @@ export interface SeoReport {
   sentToClient: boolean;
   sentAt: string | null;
   createdAt: string;
+}
+
+export type BillingFrequency = "one_time" | "monthly" | "quarterly" | "yearly";
+
+/** A reusable, priced offering in the agency's catalog (e.g. "SEO Monthly Retainer"). Not client- or project-specific. */
+export interface Service {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+  billingFrequency: BillingFrequency;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ClientServiceStatus = "active" | "paused" | "cancelled";
+
+/**
+ * A client's subscription to a Service. Optionally linked to the Project it's
+ * delivered through (informational — a client can be subscribed to a service
+ * before any project exists). `nextInvoiceDate` drives recurring draft
+ * generation; null means it isn't scheduled for auto-drafting.
+ */
+export interface ClientService {
+  id: string;
+  clientId: string;
+  serviceId: string;
+  serviceName: string;
+  projectId: string | null;
+  projectName: string | null;
+  /** Overrides the service's catalog price for this client when set. */
+  priceOverride: number | null;
+  currency: string;
+  billingFrequency: BillingFrequency;
+  status: ClientServiceStatus;
+  nextInvoiceDate: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type InvoiceStatus = "draft" | "sent" | "paid" | "partially_paid" | "overdue" | "cancelled";
+
+export interface InvoiceItem {
+  id: string;
+  invoiceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  order: number;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  clientId: string;
+  clientName: string;
+  projectId: string | null;
+  projectName: string | null;
+  clientServiceId: string | null;
+  currency: string;
+  issueDate: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Aggregated billing snapshot for one client, used by the client overview and future AI queries. */
+export interface ClientBalance {
+  totalInvoiced: number;
+  totalPaid: number;
+  outstanding: number;
+  currency: string;
 }

@@ -1,11 +1,19 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Wallet, TrendingUp, AlertCircle, Receipt } from "lucide-react";
+import { Wallet, TrendingUp, AlertCircle, Receipt, FileWarning } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
-import { listAllPayments, listPaymentPlans, getProjects } from "@/lib/store";
+import {
+  listAllPayments,
+  listInvoiceItemsForInvoices,
+  listInvoices,
+  listPaymentPlans,
+  getProjects,
+  invoiceTotal,
+} from "@/lib/store";
 import { StatCard } from "@/components/StatCard";
 import { PROJECT_THEME } from "@/lib/projectTheme";
-import { formatMoney, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
+import { cn, formatMoney, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
+import { INVOICE_STATUS_LABEL, INVOICE_STATUS_STYLE } from "@/components/InvoicesPanel";
 import type { PaymentPlan, Project } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +49,13 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
   const start = rangeStart(range);
   const today = dateKey(new Date());
 
-  const [allPayments, allPlans, projects] = await Promise.all([listAllPayments(), listPaymentPlans(), getProjects()]);
+  const [allPayments, allPlans, projects, allInvoices] = await Promise.all([
+    listAllPayments(),
+    listPaymentPlans(),
+    getProjects(),
+    listInvoices(),
+  ]);
+  const invoiceItemsByInvoice = await listInvoiceItemsForInvoices(allInvoices.map((i) => i.id));
 
   const currencies = sortCurrencies(Array.from(new Set(allPlans.map((p) => p.currency))));
   const currency = resolveSelectedCurrency(currencies, searchParams.currency);
@@ -65,6 +79,19 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
   const outstanding = plans
     .filter((p) => p.planType === "one_time")
     .reduce((sum, p) => sum + Math.max(0, p.amount - (totalPaidByProject.get(p.projectId) ?? 0)), 0);
+
+  const totalPaidByInvoice = new Map<string, number>();
+  for (const payment of allPayments) {
+    if (!payment.invoiceId) continue;
+    totalPaidByInvoice.set(payment.invoiceId, (totalPaidByInvoice.get(payment.invoiceId) ?? 0) + payment.amount);
+  }
+  const invoicesInCurrency = allInvoices.filter((i) => i.currency === currency && i.status !== "cancelled");
+  const invoiceOutstanding = invoicesInCurrency.reduce((sum, inv) => {
+    const total = invoiceTotal(invoiceItemsByInvoice[inv.id] ?? []);
+    const paid = totalPaidByInvoice.get(inv.id) ?? 0;
+    return sum + Math.max(0, total - paid);
+  }, 0);
+  const overdueInvoices = invoicesInCurrency.filter((i) => i.status === "overdue");
 
   const collectedByType = new Map<string, number>();
   for (const payment of paymentsInRange) {
@@ -133,6 +160,39 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
         <StatCard label="Monthly recurring (current)" value={formatMoney(monthlyRecurring, currency)} icon={TrendingUp} tone="amber" />
         <StatCard label="Outstanding (one-time)" value={formatMoney(outstanding, currency)} icon={AlertCircle} tone="rose" />
       </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <StatCard label="Outstanding (invoices)" value={formatMoney(invoiceOutstanding, currency)} icon={FileWarning} tone="rose" />
+        <StatCard label="Overdue invoices" value={String(overdueInvoices.length)} icon={AlertCircle} tone="amber" />
+      </div>
+
+      {overdueInvoices.length > 0 && (
+        <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Overdue invoices · {currency}
+          </h2>
+          <div className="flex flex-col gap-2">
+            {overdueInvoices.map((invoice) => (
+              <Link
+                key={invoice.id}
+                href={`/invoices/${invoice.id}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-base-700/50 bg-base-900 px-3 py-2 hover:border-accent-500/40"
+              >
+                <div>
+                  <p className="text-sm font-medium text-neutral-100">{invoice.invoiceNumber}</p>
+                  <p className="text-xs text-neutral-500">{invoice.clientName}</p>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-neutral-400">Due {invoice.dueDate}</span>
+                  <span className={cn("rounded-full px-2 py-0.5 font-medium", INVOICE_STATUS_STYLE[invoice.status])}>
+                    {INVOICE_STATUS_LABEL[invoice.status]}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {collectedByType.size > 0 && (
         <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">

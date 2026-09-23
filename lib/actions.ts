@@ -7,6 +7,7 @@ import * as store from "./store";
 import {
   requireAdmin,
   requireBacklinkCredentialAccess,
+  requireFinanceAccess,
   requireProfile,
   requireProjectAccess,
   requireRenewalsAccess,
@@ -16,11 +17,14 @@ import type {
   BacklinkCategoryType,
   BacklinkLink,
   BacklinkStatus,
+  BillingFrequency,
   ChecklistItem,
   ClientDetails,
+  ClientServiceStatus,
   ContentStatus,
   DnsRecordType,
   DomainStatus,
+  InvoiceStatus,
   KeywordGroupColor,
   KeywordStatus,
   LoginMethod,
@@ -152,6 +156,7 @@ export async function createClientAction(formData: FormData) {
     email: str(formData, "email"),
     phone: str(formData, "phone"),
     address: str(formData, "address"),
+    website: str(formData, "website"),
     notes: str(formData, "notes"),
   });
   revalidatePath("/clients");
@@ -174,6 +179,7 @@ export async function updateClientAction(formData: FormData) {
     email: str(formData, "email"),
     phone: str(formData, "phone"),
     address: str(formData, "address"),
+    website: str(formData, "website"),
     notes: str(formData, "notes"),
     logoUrl: uploadedLogoUrl ?? str(formData, "existingLogoUrl"),
   });
@@ -686,6 +692,12 @@ export async function setMemberBacklinkCredentialAccessAction(userId: string, al
   revalidatePath("/admin");
 }
 
+export async function setMemberFinanceAccessAction(userId: string, allowed: boolean) {
+  await requireAdmin();
+  await store.setMemberFinanceAccess(userId, allowed);
+  revalidatePath("/admin");
+}
+
 export async function assignProjectsAction(formData: FormData) {
   await requireAdmin();
 
@@ -759,6 +771,205 @@ export async function deletePaymentPlanAction(formData: FormData) {
   await store.deletePaymentPlan(projectId, currency);
   refresh(projectId);
   revalidatePath("/finance");
+}
+
+/* ------------------------------------------------------------------ */
+/* Phase 4: Services, Client Services, Invoices                        */
+/* ------------------------------------------------------------------ */
+
+export async function createServiceAction(formData: FormData) {
+  await requireAdmin();
+
+  const name = str(formData, "name");
+  if (!name) return;
+
+  await store.createService({
+    name,
+    description: str(formData, "description"),
+    price: Number(str(formData, "price")) || 0,
+    currency: str(formData, "currency") || "PKR",
+    billingFrequency: (str(formData, "billingFrequency") || "monthly") as BillingFrequency,
+  });
+  revalidatePath("/services");
+}
+
+export async function updateServiceAction(
+  id: string,
+  patch: Parameters<typeof store.updateService>[1],
+) {
+  await requireAdmin();
+  await store.updateService(id, patch);
+  revalidatePath("/services");
+}
+
+export async function deleteServiceAction(id: string) {
+  await requireAdmin();
+  await store.deleteService(id);
+  revalidatePath("/services");
+}
+
+export async function createClientServiceAction(formData: FormData) {
+  const clientId = str(formData, "clientId");
+  const serviceId = str(formData, "serviceId");
+  if (!clientId || !serviceId) return;
+  await requireFinanceAccess();
+
+  const priceOverrideStr = str(formData, "priceOverride");
+  await store.createClientService({
+    clientId,
+    serviceId,
+    projectId: str(formData, "projectId") || null,
+    priceOverride: priceOverrideStr ? Number(priceOverrideStr) : null,
+    currency: str(formData, "currency") || "PKR",
+    billingFrequency: (str(formData, "billingFrequency") || "monthly") as BillingFrequency,
+    nextInvoiceDate: str(formData, "nextInvoiceDate") || null,
+    notes: str(formData, "notes"),
+  });
+  revalidatePath(`/clients/${clientId}`);
+}
+
+export async function updateClientServiceAction(
+  id: string,
+  clientId: string,
+  patch: Parameters<typeof store.updateClientService>[1],
+) {
+  await requireFinanceAccess();
+  await store.updateClientService(id, patch);
+  revalidatePath(`/clients/${clientId}`);
+}
+
+export async function deleteClientServiceAction(id: string, clientId: string) {
+  await requireFinanceAccess();
+  await store.deleteClientService(id);
+  revalidatePath(`/clients/${clientId}`);
+}
+
+interface RawInvoiceItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+function parseInvoiceItems(raw: string): RawInvoiceItem[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => ({
+        description: String(item?.description ?? "").trim(),
+        quantity: Number(item?.quantity) || 0,
+        unitPrice: Number(item?.unitPrice) || 0,
+      }))
+      .filter((item) => item.description);
+  } catch {
+    return [];
+  }
+}
+
+export async function createInvoiceAction(formData: FormData): Promise<string | undefined> {
+  const clientId = str(formData, "clientId");
+  if (!clientId) return;
+  await requireFinanceAccess();
+
+  const items = parseInvoiceItems(str(formData, "items"));
+  const invoice = await store.createInvoice({
+    clientId,
+    projectId: str(formData, "projectId") || null,
+    clientServiceId: str(formData, "clientServiceId") || null,
+    currency: str(formData, "currency") || "PKR",
+    issueDate: str(formData, "issueDate") || store.todayDateKey(),
+    dueDate: str(formData, "dueDate") || store.todayDateKey(),
+    status: (str(formData, "status") || "draft") as InvoiceStatus,
+    notes: str(formData, "notes"),
+    items,
+  });
+  revalidatePath("/invoices");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/finance");
+  return invoice.id;
+}
+
+export async function updateInvoiceAction(id: string, clientId: string, formData: FormData) {
+  await requireFinanceAccess();
+
+  const items = parseInvoiceItems(str(formData, "items"));
+  await store.updateInvoice(id, {
+    projectId: str(formData, "projectId") || null,
+    currency: str(formData, "currency") || "PKR",
+    issueDate: str(formData, "issueDate") || store.todayDateKey(),
+    dueDate: str(formData, "dueDate") || store.todayDateKey(),
+    notes: str(formData, "notes"),
+  });
+  await store.replaceInvoiceItems(id, items);
+  await store.recomputeInvoiceStatus(id);
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/finance");
+}
+
+export async function setInvoiceStatusAction(id: string, clientId: string, status: InvoiceStatus) {
+  await requireFinanceAccess();
+  await store.updateInvoice(id, { status });
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/invoices");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/finance");
+}
+
+export async function deleteInvoiceAction(id: string, clientId: string) {
+  await requireFinanceAccess();
+  await store.deleteInvoice(id);
+  revalidatePath("/invoices");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/finance");
+}
+
+export async function addInvoicePaymentAction(formData: FormData) {
+  const invoiceId = str(formData, "invoiceId");
+  const clientId = str(formData, "clientId");
+  const amount = Number(str(formData, "amount"));
+  if (!invoiceId || !amount) return;
+  await requireFinanceAccess();
+
+  const currency = str(formData, "currency") || "PKR";
+  const note = str(formData, "note");
+  const paidOn = str(formData, "paidOn") || store.todayDateKey();
+
+  await store.addPayment({
+    projectId: null,
+    invoiceId,
+    amount,
+    currency,
+    kind: "installment",
+    period: null,
+    note,
+    paidOn,
+  });
+  await store.recomputeInvoiceStatus(invoiceId);
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/finance");
+}
+
+export async function deleteInvoicePaymentAction(paymentId: string, invoiceId: string, clientId: string) {
+  await requireFinanceAccess();
+  await store.deletePayment(paymentId);
+  await store.recomputeInvoiceStatus(invoiceId);
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/finance");
+}
+
+/** Generates draft invoices for every due recurring client_service. Never sends — drafts always need manual review. */
+export async function generateDueInvoiceDraftsAction(): Promise<number> {
+  await requireFinanceAccess();
+  const created = await store.generateDueInvoiceDrafts();
+  revalidatePath("/invoices");
+  revalidatePath("/finance");
+  return created.length;
 }
 
 export async function createKeywordAction(formData: FormData) {

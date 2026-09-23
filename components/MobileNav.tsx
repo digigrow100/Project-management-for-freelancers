@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X, Receipt, Package } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -25,6 +25,8 @@ const MORE_NAV = [
   { href: "/projects/new", label: "New Project", icon: Plus },
   { href: "/clients", label: "Clients", icon: Building2 },
   { href: "/finance", label: "Finance", icon: Wallet },
+  { href: "/invoices", label: "Invoices", icon: Receipt },
+  { href: "/services", label: "Services", icon: Package },
   { href: "/domains", label: "Domains", icon: Globe },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/admin", label: "Admin", icon: Shield },
@@ -49,6 +51,7 @@ export function MobileNav({
   const pathname = usePathname();
   const isAdmin = profile?.role === "admin";
   const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
+  const canAccessFinance = isAdmin || Boolean(profile?.canAccessFinance);
   const [moreOpen, setMoreOpen] = useState(false);
   const badgeByHref: Record<string, number> = {
     "/projects": unseenProjects,
@@ -58,11 +61,14 @@ export function MobileNav({
 
   const financeItem = isAdmin ? MORE_NAV.find((item) => item.href === "/finance") : undefined;
   const domainsItem = MORE_NAV.find((item) => item.href === "/domains");
-  const sheetItems = isAdmin
-    ? [...COMMON_MORE_NAV, ...MORE_NAV.filter((item) => item.href !== "/finance")]
-    : canAccessRenewals && domainsItem
-      ? [...COMMON_MORE_NAV, domainsItem]
-      : COMMON_MORE_NAV;
+  const invoicesItem = MORE_NAV.find((item) => item.href === "/invoices");
+  const extraItems = isAdmin
+    ? MORE_NAV.filter((item) => item.href !== "/finance")
+    : [
+        ...(canAccessRenewals && domainsItem ? [domainsItem] : []),
+        ...(canAccessFinance && invoicesItem ? [invoicesItem] : []),
+      ];
+  const sheetItems = [...COMMON_MORE_NAV, ...extraItems];
 
   return (
     <>
