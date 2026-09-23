@@ -38,7 +38,7 @@ export function Sidebar({
     "/my-tasks": unseenTasks,
   };
   return (
-    <aside className="hidden md:flex md:h-screen md:w-64 md:flex-col border-r border-base-700/60 bg-base-900/60 backdrop-blur-sm px-4 py-6 gap-6">
+    <aside className="hidden md:flex md:h-screen md:w-64 md:flex-col border-r border-base-700/60 bg-base-900/60 backdrop-blur-sm pl-[calc(1rem+env(safe-area-inset-left))] pr-4 py-6 gap-6">
       <div className="flex items-center gap-2 px-2">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/15 text-accent-400">
           <Leaf size={18} />
