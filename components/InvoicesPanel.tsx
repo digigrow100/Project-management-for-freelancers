@@ -3,8 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, X, Zap } from "lucide-react";
-import type { Client, Invoice, InvoiceStatus } from "@/lib/types";
+import { FileText, Plus, Sparkles, X, Zap } from "lucide-react";
+import type { Client, ClientService, Invoice, InvoiceStatus, SeoReport } from "@/lib/types";
 import { createInvoiceAction, generateDueInvoiceDraftsAction } from "@/lib/actions";
 import { cn, formatMoney } from "@/lib/utils";
 
@@ -32,10 +32,14 @@ export function InvoicesPanel({
   invoices,
   clients,
   totals,
+  clientServicesByClient,
+  seoReportsByClient,
 }: {
   invoices: Invoice[];
   clients: Client[];
   totals: Record<string, number>;
+  clientServicesByClient: Record<string, ClientService[]>;
+  seoReportsByClient: Record<string, SeoReport[]>;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -86,7 +90,14 @@ export function InvoicesPanel({
 
       {generatedMsg && <p className="text-xs text-neutral-500">{generatedMsg}</p>}
 
-      {adding && <NewInvoiceForm clients={clients} onDone={() => setAdding(false)} />}
+      {adding && (
+        <NewInvoiceForm
+          clients={clients}
+          clientServicesByClient={clientServicesByClient}
+          seoReportsByClient={seoReportsByClient}
+          onDone={() => setAdding(false)}
+        />
+      )}
 
       <div className="flex flex-wrap gap-1.5 rounded-lg border border-base-700/60 bg-base-850 p-1 w-fit">
         {(["all", "draft", "sent", "partially_paid", "paid", "overdue", "cancelled"] as const).map((s) => (
@@ -150,13 +161,57 @@ interface DraftItem {
   unitPrice: number;
 }
 
-function NewInvoiceForm({ clients, onDone }: { clients: Client[]; onDone: () => void }) {
+function autofillItemsFromServices(services: ClientService[]): DraftItem[] {
+  return services.map((cs) => ({
+    description: cs.serviceName || "Service",
+    quantity: 1,
+    unitPrice: cs.priceOverride ?? 0,
+  }));
+}
+
+function isUntouched(items: DraftItem[]): boolean {
+  return items.length === 1 && !items[0]!.description.trim() && items[0]!.unitPrice === 0;
+}
+
+function NewInvoiceForm({
+  clients,
+  clientServicesByClient,
+  seoReportsByClient,
+  onDone,
+}: {
+  clients: Client[];
+  clientServicesByClient: Record<string, ClientService[]>;
+  seoReportsByClient: Record<string, SeoReport[]>;
+  onDone: () => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState<DraftItem[]>([{ description: "", quantity: 1, unitPrice: 0 }]);
+  const [clientId, setClientId] = useState("");
+  const [currency, setCurrency] = useState("PKR");
+  const [seoReportId, setSeoReportId] = useState("");
+  const [autofilled, setAutofilled] = useState(false);
+
+  const activeServices = clientId ? (clientServicesByClient[clientId] ?? []) : [];
+  const approvedReports = clientId ? (seoReportsByClient[clientId] ?? []) : [];
+
+  function handleClientChange(nextClientId: string) {
+    setClientId(nextClientId);
+    setSeoReportId("");
+    const services = clientServicesByClient[nextClientId] ?? [];
+    if (services.length > 0 && isUntouched(items)) {
+      const suggested = autofillItemsFromServices(services);
+      setItems(suggested);
+      setCurrency(services[0]!.currency);
+      setAutofilled(true);
+    } else {
+      setAutofilled(false);
+    }
+  }
 
   function updateItem(index: number, patch: Partial<DraftItem>) {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    setAutofilled(false);
   }
   function removeItem(index: number) {
     setItems((prev) => prev.filter((_, i) => i !== index));
@@ -185,6 +240,8 @@ function NewInvoiceForm({ clients, onDone }: { clients: Client[]; onDone: () => 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <select
           name="clientId"
+          value={clientId}
+          onChange={(e) => handleClientChange(e.target.value)}
           required
           className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none sm:col-span-2"
         >
@@ -197,7 +254,8 @@ function NewInvoiceForm({ clients, onDone }: { clients: Client[]; onDone: () => 
         </select>
         <select
           name="currency"
-          defaultValue="PKR"
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
           className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
         >
           {["PKR", "USD", "GBP"].map((c) => (
@@ -233,6 +291,14 @@ function NewInvoiceForm({ clients, onDone }: { clients: Client[]; onDone: () => 
           />
         </div>
       </div>
+
+      {autofilled && activeServices.length > 0 && (
+        <p className="flex items-center gap-1.5 rounded-md border border-accent-500/30 bg-accent-500/5 px-3 py-2 text-xs text-accent-300">
+          <Sparkles size={13} />
+          Suggested from {activeServices.length === 1 ? "this client's active service" : "this client's active services"}
+          — everything below is still editable.
+        </p>
+      )}
 
       <div className="flex flex-col gap-2">
         <p className="text-xs font-medium text-neutral-400">Line items</p>
@@ -279,6 +345,32 @@ function NewInvoiceForm({ clients, onDone }: { clients: Client[]; onDone: () => 
         </button>
         <p className="text-right text-sm text-neutral-300">Total: {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
       </div>
+
+      {clientId && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-400">Attach SEO report (optional)</label>
+          {approvedReports.length > 0 ? (
+            <select
+              name="seoReportId"
+              value={seoReportId}
+              onChange={(e) => setSeoReportId(e.target.value)}
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+            >
+              <option value="">None</option>
+              {approvedReports.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.period} ({r.periodType})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-xs text-neutral-500">
+              No approved SEO reports yet for this client. Generate and approve one from a project&apos;s Reporting tab
+              first — the invoice can still be created without one.
+            </p>
+          )}
+        </div>
+      )}
 
       <textarea
         name="notes"

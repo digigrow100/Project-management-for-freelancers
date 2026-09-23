@@ -1609,6 +1609,7 @@ interface InvoiceRow {
   client_id: string;
   project_id: string | null;
   client_service_id: string | null;
+  seo_report_id?: string | null;
   currency: string;
   issue_date: string;
   due_date: string;
@@ -1630,6 +1631,7 @@ function toInvoice(row: InvoiceRow): Invoice {
     projectId: row.project_id,
     projectName: row.freelance_hq_projects?.name ?? null,
     clientServiceId: row.client_service_id,
+    seoReportId: row.seo_report_id ?? null,
     currency: row.currency,
     issueDate: row.issue_date,
     dueDate: row.due_date,
@@ -1743,6 +1745,7 @@ export async function createInvoice(input: {
   clientId: string;
   projectId: string | null;
   clientServiceId: string | null;
+  seoReportId?: string | null;
   currency: string;
   issueDate: string;
   dueDate: string;
@@ -1760,6 +1763,7 @@ export async function createInvoice(input: {
       client_id: input.clientId,
       project_id: input.projectId,
       client_service_id: input.clientServiceId,
+      seo_report_id: input.seoReportId ?? null,
       currency: input.currency,
       issue_date: input.issueDate,
       due_date: input.dueDate,
@@ -1793,6 +1797,7 @@ export async function updateInvoice(
   id: string,
   patch: Partial<{
     projectId: string | null;
+    seoReportId: string | null;
     currency: string;
     issueDate: string;
     dueDate: string;
@@ -1802,6 +1807,7 @@ export async function updateInvoice(
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.projectId !== undefined) update.project_id = patch.projectId;
+  if (patch.seoReportId !== undefined) update.seo_report_id = patch.seoReportId;
   if (patch.currency !== undefined) update.currency = patch.currency;
   if (patch.issueDate !== undefined) update.issue_date = patch.issueDate;
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate;
@@ -3491,7 +3497,12 @@ interface SeoReportRow {
   period: string;
   period_type?: ReportPeriodType | null;
   summary: string;
+  completed_work?: string | null;
+  metrics_notes?: string | null;
+  notes?: string | null;
   generated_by: string | null;
+  approved?: boolean | null;
+  approved_at?: string | null;
   sent_to_client: boolean;
   sent_at: string | null;
   created_at: string;
@@ -3504,12 +3515,23 @@ function toSeoReport(row: SeoReportRow, nameById: Map<string, string>): SeoRepor
     period: row.period,
     periodType: row.period_type ?? "monthly",
     summary: row.summary,
+    completedWork: row.completed_work ?? "",
+    metricsNotes: row.metrics_notes ?? "",
+    notes: row.notes ?? "",
     generatedBy: row.generated_by,
     generatedByName: row.generated_by ? (nameById.get(row.generated_by) ?? "Unknown") : null,
+    approved: row.approved ?? false,
+    approvedAt: row.approved_at ?? null,
     sentToClient: row.sent_to_client,
     sentAt: row.sent_at,
     createdAt: row.created_at,
   };
+}
+
+export async function getSeoReport(id: string): Promise<SeoReport | null> {
+  const { data, error } = await getSupabase().from("freelance_hq_seo_reports").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? toSeoReport(data as SeoReportRow, await taskNameLookup()) : null;
 }
 
 export async function listSeoReports(projectId: string): Promise<SeoReport[]> {
@@ -3558,16 +3580,43 @@ export async function getOrCreateSeoReport(
 
 export async function updateSeoReport(
   id: string,
-  patch: Partial<{ summary: string; sentToClient: boolean }>,
+  patch: Partial<{
+    summary: string;
+    completedWork: string;
+    metricsNotes: string;
+    notes: string;
+    approved: boolean;
+    sentToClient: boolean;
+  }>,
 ): Promise<void> {
   const update: Record<string, unknown> = {};
   if (patch.summary !== undefined) update.summary = patch.summary;
+  if (patch.completedWork !== undefined) update.completed_work = patch.completedWork;
+  if (patch.metricsNotes !== undefined) update.metrics_notes = patch.metricsNotes;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+  if (patch.approved !== undefined) {
+    update.approved = patch.approved;
+    update.approved_at = patch.approved ? nowIso() : null;
+  }
   if (patch.sentToClient !== undefined) {
     update.sent_to_client = patch.sentToClient;
     update.sent_at = patch.sentToClient ? nowIso() : null;
   }
   const { error } = await getSupabase().from("freelance_hq_seo_reports").update(update).eq("id", id);
   if (error) throw error;
+}
+
+/** Every approved SEO report across a client's SEO projects — powers the "attach existing report" picker on invoice creation. Only approved reports are offered, matching the Generate -> Edit -> Approve -> Attach workflow. */
+export async function listApprovedSeoReportsForClient(clientId: string): Promise<SeoReport[]> {
+  const projects = await getProjectsForClient(clientId);
+  const seoProjectIds = projects.filter((p) => p.type === "seo").map((p) => p.id);
+  if (seoProjectIds.length === 0) return [];
+
+  const reportLists = await Promise.all(seoProjectIds.map((id) => listSeoReports(id)));
+  return reportLists
+    .flat()
+    .filter((r) => r.approved)
+    .sort((a, b) => (a.period < b.period ? 1 : -1));
 }
 
 /**
