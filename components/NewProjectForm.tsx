@@ -82,7 +82,9 @@ export function NewProjectForm({ clients }: { clients: Client[] }) {
                 />
                 <span className="font-medium text-neutral-100">{opt.label}</span>
               </span>
-              <span className="text-xs text-neutral-500">{PROJECT_TEMPLATES[opt.value].stages.length} stages</span>
+              <span className="text-xs text-neutral-500">
+                {PROJECT_TEMPLATES[opt.value].stages.length} {opt.value === "seo" ? "modules" : "stages"}
+              </span>
             </label>
           ))}
         </div>

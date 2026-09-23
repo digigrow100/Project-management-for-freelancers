@@ -3,16 +3,25 @@
 import { useRef, useState } from "react";
 import { Plus, X, Paperclip } from "lucide-react";
 import { createTaskAction } from "@/lib/actions";
-import type { Profile } from "@/lib/types";
+import type { Profile, SeoModule } from "@/lib/types";
 
 export function NewTaskForm({
   projectId,
   stageId,
   assignableMembers = [],
+  seoModule,
+  keywordId,
+  pageId,
+  contentItemId,
 }: {
   projectId: string;
   stageId: string | null;
   assignableMembers?: Profile[];
+  /** Set when creating a task from an SEO module — carried as hidden fields, no extra UI. */
+  seoModule?: SeoModule;
+  keywordId?: string;
+  pageId?: string;
+  contentItemId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -45,6 +54,10 @@ export function NewTaskForm({
     >
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="stageId" value={stageId ?? ""} />
+      {seoModule && <input type="hidden" name="seoModule" value={seoModule} />}
+      {keywordId && <input type="hidden" name="keywordId" value={keywordId} />}
+      {pageId && <input type="hidden" name="pageId" value={pageId} />}
+      {contentItemId && <input type="hidden" name="contentItemId" value={contentItemId} />}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-neutral-400">New task</span>
         <button

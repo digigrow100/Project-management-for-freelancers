@@ -10,21 +10,28 @@ import type {
   BacklinkLink,
   ChecklistItem,
   ClientDetails,
+  ContentStatus,
   DnsRecordType,
   DomainStatus,
   KeywordGroupColor,
   KeywordStatus,
+  OnPageStatus,
+  PageType,
   PaymentKind,
   PaymentPlanType,
+  Priority,
   ProjectType,
   RenewalServiceType,
   RenewalStatus,
   ResaleDomainStatus,
   RichContent,
   Role,
+  SearchIntent,
+  SeoModule,
   SubFeatureStatus,
   TaskPriority,
   TaskStatus,
+  TechnicalIssueStatus,
   WebDevDetails,
 } from "./types";
 
@@ -233,6 +240,10 @@ export async function createTaskAction(formData: FormData) {
     checklist,
     markDoneOn,
     assignedTo,
+    seoModule: (str(formData, "seoModule") || null) as SeoModule | null,
+    keywordId: str(formData, "keywordId") || null,
+    pageId: str(formData, "pageId") || null,
+    contentItemId: str(formData, "contentItemId") || null,
   });
 
   const attachments = formData.getAll("attachmentFile").filter((f): f is File => f instanceof File && f.size > 0);
@@ -263,6 +274,12 @@ export async function updateTaskDetailsAction(formData: FormData) {
     assignedTo: str(formData, "assignedTo") || null,
     why: str(formData, "why"),
     expectedOutcome: str(formData, "expectedOutcome"),
+    // Only present on the SEO task detail view — undefined here (non-SEO
+    // projects) leaves these columns untouched rather than clearing them.
+    ...(formData.has("seoModule") ? { seoModule: (str(formData, "seoModule") || null) as SeoModule | null } : {}),
+    ...(formData.has("keywordId") ? { keywordId: str(formData, "keywordId") || null } : {}),
+    ...(formData.has("pageId") ? { pageId: str(formData, "pageId") || null } : {}),
+    ...(formData.has("contentItemId") ? { contentItemId: str(formData, "contentItemId") || null } : {}),
   });
   refresh(projectId);
 }
@@ -684,13 +701,17 @@ export async function createKeywordAction(formData: FormData) {
   const created = await store.createKeyword({
     projectId,
     keyword,
-    targetPage: str(formData, "targetPage"),
+    // targetPage is frozen (see decisions) — new keywords no longer collect
+    // it; pageId below (via pageIds) is the live relationship.
+    targetPage: "",
     searchVolume: numOrNull(str(formData, "searchVolume")),
     difficulty: numOrNull(str(formData, "difficulty")),
     currentRank: numOrNull(str(formData, "currentRank")),
     targetRank: numOrNull(str(formData, "targetRank")),
     status: (str(formData, "status") || "not_started") as KeywordStatus,
     notes: str(formData, "notes"),
+    searchIntent: (str(formData, "searchIntent") || null) as SearchIntent | null,
+    priority: (str(formData, "priority") || "medium") as Priority,
   });
 
   const pageId = str(formData, "pageId");
@@ -713,13 +734,15 @@ export async function updateKeywordAction(formData: FormData) {
 
   await store.updateKeyword(id, {
     keyword: str(formData, "keyword"),
-    targetPage: str(formData, "targetPage"),
+    // targetPage is frozen — store.updateKeyword ignores it even if sent.
     searchVolume: numOrNull(str(formData, "searchVolume")),
     difficulty: numOrNull(str(formData, "difficulty")),
     currentRank: numOrNull(str(formData, "currentRank")),
     targetRank: numOrNull(str(formData, "targetRank")),
     status: (str(formData, "status") || "not_started") as KeywordStatus,
     notes: str(formData, "notes"),
+    searchIntent: (str(formData, "searchIntent") || null) as SearchIntent | null,
+    priority: (str(formData, "priority") || "medium") as Priority,
   });
   revalidatePath(`/projects/${projectId}`);
 }
@@ -862,14 +885,14 @@ export async function createKeywordPageAction(groupId: string, projectId: string
 export async function updateKeywordPageAction(
   id: string,
   projectId: string,
-  patch: { name?: string; url?: string },
+  patch: Parameters<typeof store.updateKeywordPage>[1],
 ) {
   await requireProjectAccess(projectId);
   try {
     await store.updateKeywordPage(id, patch);
     revalidatePath(`/projects/${projectId}`);
   } catch {
-    // Non-critical: renaming a page shouldn't be able to crash the page.
+    // Non-critical: editing a page shouldn't be able to crash the page.
   }
 }
 
@@ -881,6 +904,133 @@ export async function deleteKeywordPageAction(id: string, projectId: string) {
   } catch {
     // Non-critical: deleting a page shouldn't be able to crash the page.
   }
+}
+
+export async function setPrimaryKeywordForPageAction(pageId: string, projectId: string, keywordId: string | null) {
+  await requireProjectAccess(projectId);
+  try {
+    await store.setPrimaryKeywordForPage(pageId, keywordId);
+    revalidatePath(`/projects/${projectId}`);
+  } catch {
+    // Non-critical: setting a primary keyword shouldn't be able to crash the page.
+  }
+}
+
+export async function createTechnicalIssueAction(formData: FormData) {
+  const projectId = str(formData, "projectId");
+  const title = str(formData, "title");
+  if (!projectId || !title) return;
+  await requireProjectAccess(projectId);
+
+  await store.createTechnicalIssue({
+    projectId,
+    title,
+    description: str(formData, "description"),
+    urlAffected: str(formData, "urlAffected"),
+    priority: (str(formData, "priority") || "medium") as Priority,
+    assignedTo: str(formData, "assignedTo") || null,
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateTechnicalIssueAction(id: string, projectId: string, formData: FormData) {
+  await requireProjectAccess(projectId);
+  await store.updateTechnicalIssue(id, {
+    title: str(formData, "title"),
+    description: str(formData, "description"),
+    urlAffected: str(formData, "urlAffected"),
+    priority: (str(formData, "priority") || "medium") as Priority,
+    assignedTo: str(formData, "assignedTo") || null,
+    status: (str(formData, "status") || "open") as TechnicalIssueStatus,
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createFixTaskForIssueAction(issueId: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  const issues = await store.listTechnicalIssues(projectId);
+  const issue = issues.find((i) => i.id === issueId);
+  if (!issue) return;
+
+  const task = await store.createTask({
+    projectId,
+    stageId: null,
+    title: `Fix: ${issue.title}`,
+    priority: issue.priority,
+    seoModule: "technical",
+  });
+  await store.updateTechnicalIssue(issueId, { fixTaskId: task.id, status: "in_progress" });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteTechnicalIssueAction(id: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  await store.deleteTechnicalIssue(id);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createContentItemAction(formData: FormData) {
+  const projectId = str(formData, "projectId");
+  const topic = str(formData, "topic");
+  if (!projectId || !topic) return;
+  await requireProjectAccess(projectId);
+
+  await store.createContentItem({
+    projectId,
+    topic,
+    targetKeywordId: str(formData, "targetKeywordId") || null,
+    assignedTo: str(formData, "assignedTo") || null,
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateContentItemAction(
+  id: string,
+  projectId: string,
+  patch: Parameters<typeof store.updateContentItem>[1],
+) {
+  await requireProjectAccess(projectId);
+  await store.updateContentItem(id, patch);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteContentItemAction(id: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  await store.deleteContentItem(id);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function generateSeoReportAction(projectId: string, period: string) {
+  const profile = await requireProjectAccess(projectId);
+  const report = await store.getOrCreateSeoReport(projectId, period, profile.id);
+
+  if (!report.summary) {
+    const draft = await store.buildSeoReportDraft(projectId, period);
+    const lines: string[] = [];
+    if (draft.rankMovements.length > 0) {
+      lines.push("Keyword movement:");
+      for (const m of draft.rankMovements) {
+        lines.push(`- ${m.keyword}: ${m.from ?? "unranked"} -> ${m.to ?? "unranked"}`);
+      }
+    }
+    if (draft.completedTaskTitles.length > 0) {
+      lines.push("", "Completed this period:");
+      for (const title of draft.completedTaskTitles) lines.push(`- ${title}`);
+    }
+    lines.push("", `Backlinks created: ${draft.backlinksCreated}`);
+    await store.updateSeoReport(report.id, { summary: lines.join("\n") });
+  }
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateSeoReportAction(
+  id: string,
+  projectId: string,
+  patch: Parameters<typeof store.updateSeoReport>[1],
+) {
+  await requireProjectAccess(projectId);
+  await store.updateSeoReport(id, patch);
+  revalidatePath(`/projects/${projectId}`);
 }
 
 /**

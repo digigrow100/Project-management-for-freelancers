@@ -48,7 +48,15 @@ export interface Task {
   why: string;
   /** What "done" looks like for this task. Labeled "Done When" in the UI. */
   expectedOutcome: string;
+  /** Which SEO module this task belongs to. Only set for tasks on `type: "seo"` projects — stages/stageId are used for every other project type. */
+  seoModule: SeoModule | null;
+  /** Optional link to the keyword, page, or content item this task serves. A task links to at most one of each. */
+  keywordId: string | null;
+  pageId: string | null;
+  contentItemId: string | null;
 }
+
+export type SeoModule = "on_page" | "technical" | "off_page" | "content" | "reporting";
 
 export interface ClientDetails {
   name: string;
@@ -156,10 +164,14 @@ export interface ProjectTemplate {
 
 export type KeywordStatus = "not_started" | "in_progress" | "ranking" | "achieved";
 
+export type SearchIntent = "informational" | "navigational" | "commercial" | "transactional" | "local";
+export type Priority = "low" | "medium" | "high";
+
 export interface Keyword {
   id: string;
   projectId: string;
   keyword: string;
+  /** Legacy free-text target page, frozen — kept for older keywords that predate Groups/Pages. New keywords use `pageIds` instead. */
   targetPage: string;
   searchVolume: number | null;
   difficulty: number | null;
@@ -169,6 +181,8 @@ export interface Keyword {
   notes: string;
   isTracked: boolean;
   pageIds: string[];
+  searchIntent: SearchIntent | null;
+  priority: Priority;
   createdAt: string;
   updatedAt: string;
 }
@@ -186,22 +200,46 @@ export interface KeywordGroup {
   createdAt: string;
 }
 
-/** A page within a Group that one or more keywords can target. */
+export type PageType = "service" | "location" | "blog" | "landing" | "other";
+export type OnPageStatus = "not_started" | "in_progress" | "done";
+
+/**
+ * A page within a Group that one or more keywords can target — the on-page
+ * SEO workspace for that page. `primaryKeywordId` is the one linked keyword
+ * marked primary (at most one, enforced at the database level); every other
+ * linked keyword is this page's secondary keywords.
+ */
 export interface KeywordPage {
   id: string;
   groupId: string;
   name: string;
   url: string;
   order: number;
+  pageType: PageType;
+  metaTitle: string;
+  metaDescription: string;
+  h1: string;
+  contentStatus: OnPageStatus;
+  internalLinkingStatus: OnPageStatus;
+  imageSeoStatus: OnPageStatus;
+  schemaStatus: OnPageStatus;
+  checklist: ChecklistItem[];
+  primaryKeywordId: string | null;
   createdAt: string;
 }
 
-/** A named grouping of backlink entries within a project (e.g. "Guest Posting"). */
+/**
+ * A named grouping of backlink entries within a project (e.g. "Guest
+ * Posting"). `seoModule` is always "off_page" for now — Phase 3 builds the
+ * real Off-Page CRM (citations, web 2.0, guest posts, outreach, etc.) on
+ * top of this; this field just lets it slot under the Off-Page tab today.
+ */
 export interface BacklinkCategory {
   id: string;
   projectId: string;
   name: string;
   order: number;
+  seoModule: SeoModule;
   createdAt: string;
 }
 
@@ -448,4 +486,57 @@ export interface WebsitePublicConfig {
   bodyScripts: string;
   /** When true, the live site should show a simple "temporarily offline" state instead of rendering normally. */
   offline: boolean;
+}
+
+/** Technical SEO module: a simple issue tracker. `fixTaskId` optionally links the task doing the fix. */
+export type TechnicalIssueStatus = "open" | "in_progress" | "fixed";
+
+export interface TechnicalIssue {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  urlAffected: string;
+  priority: Priority;
+  assignedTo: string | null;
+  assignedToName: string | null;
+  status: TechnicalIssueStatus;
+  fixTaskId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Content module: Idea -> Brief -> Writing -> Review -> Published. `targetKeywordId` is optional — content doesn't have to wait on keyword research. */
+export type ContentStatus = "idea" | "brief" | "writing" | "review" | "published";
+
+export interface ContentItem {
+  id: string;
+  projectId: string;
+  topic: string;
+  targetKeywordId: string | null;
+  assignedTo: string | null;
+  assignedToName: string | null;
+  status: ContentStatus;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Reporting module: one record per client per month. Its content (keyword
+ * movement, completed tasks, backlinks created) is computed at generate
+ * time from existing data, not stored here — `summary` is the one thing a
+ * human writes.
+ */
+export interface SeoReport {
+  id: string;
+  projectId: string;
+  /** 'YYYY-MM' */
+  period: string;
+  summary: string;
+  generatedBy: string | null;
+  generatedByName: string | null;
+  sentToClient: boolean;
+  sentAt: string | null;
+  createdAt: string;
 }

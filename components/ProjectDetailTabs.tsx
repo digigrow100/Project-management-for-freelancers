@@ -1,44 +1,34 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { AppWindow, Link2, ListTodo, Paperclip, Search, User } from "lucide-react";
+import { AppWindow, ListTodo, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "board" | "keywords" | "backlinks" | "attachments" | "features" | "client";
+type TabKey = "board" | "features" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof ListTodo }[] = [
   { key: "board", label: "Stages & Tasks", icon: ListTodo },
-  { key: "keywords", label: "Keywords", icon: Search },
-  { key: "backlinks", label: "Backlinks", icon: Link2 },
-  { key: "attachments", label: "Attachments", icon: Paperclip },
   { key: "features", label: "Features", icon: AppWindow },
   { key: "client", label: "Client Details", icon: User },
 ];
 
+/**
+ * Top-level tab controller for non-SEO project types (web_dev/web_app/
+ * digital_marketing/other), which still use freeform stages. SEO projects
+ * use SeoProjectTabs instead.
+ */
 export function ProjectDetailTabs({
   board,
-  keywords,
-  backlinks,
-  attachments,
   features,
   clientDetails,
 }: {
   board: ReactNode;
-  keywords?: ReactNode;
-  backlinks?: ReactNode;
-  attachments?: ReactNode;
   features?: ReactNode;
   clientDetails: ReactNode;
 }) {
   const [active, setActive] = useState<TabKey>("board");
-  const content = { board, keywords, backlinks, attachments, features, client: clientDetails } as const;
-  const visibleTabs = TABS.filter(
-    (tab) =>
-      (tab.key !== "keywords" || keywords !== undefined) &&
-      (tab.key !== "backlinks" || backlinks !== undefined) &&
-      (tab.key !== "attachments" || attachments !== undefined) &&
-      (tab.key !== "features" || features !== undefined),
-  );
+  const content = { board, features, client: clientDetails } as const;
+  const visibleTabs = TABS.filter((tab) => tab.key !== "features" || features !== undefined);
 
   return (
     <div className="flex flex-col gap-5">

@@ -2,7 +2,16 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Search, Trash2, Pencil, Plus, X, Download, Upload, History, ChevronDown, ArrowUp, ArrowDown, Minus, LineChart, Check, FolderInput, FolderMinus, List } from "lucide-react";
-import type { Keyword, KeywordGroup, KeywordMonthlyPosition, KeywordPage, KeywordRankHistoryEntry, KeywordStatus } from "@/lib/types";
+import type {
+  Keyword,
+  KeywordGroup,
+  KeywordMonthlyPosition,
+  KeywordPage,
+  KeywordRankHistoryEntry,
+  KeywordStatus,
+  Priority,
+  SearchIntent,
+} from "@/lib/types";
 import {
   addKeywordToPageAction,
   bulkAssignKeywordsToPageAction,
@@ -133,6 +142,7 @@ export function KeywordsPanel({
   monthlyPositions,
   groups,
   pagesByGroup,
+  taskCountByKeyword = {},
 }: {
   projectId: string;
   projectName: string;
@@ -141,6 +151,8 @@ export function KeywordsPanel({
   monthlyPositions: Record<string, KeywordMonthlyPosition[]>;
   groups: KeywordGroup[];
   pagesByGroup: Record<string, KeywordPage[]>;
+  /** How many tasks link to each keyword (via task.keywordId) — shown as a "related tasks" badge. */
+  taskCountByKeyword?: Record<string, number>;
 }) {
   const [isPending, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -207,6 +219,7 @@ export function KeywordsPanel({
       <KeywordRow
         key={keyword.id}
         keyword={keyword}
+        taskCount={taskCountByKeyword[keyword.id] ?? 0}
         history={rankHistory[keyword.id] ?? []}
         groups={groups}
         pagesByGroup={pagesByGroup}
@@ -869,6 +882,20 @@ function BulkPagePicker({
   );
 }
 
+const INTENT_LABEL: Record<SearchIntent, string> = {
+  informational: "Informational",
+  navigational: "Navigational",
+  commercial: "Commercial",
+  transactional: "Transactional",
+  local: "Local",
+};
+
+const PRIORITY_STYLE: Record<Priority, string> = {
+  low: "bg-base-700/60 text-neutral-400",
+  medium: "bg-sky-500/15 text-sky-400",
+  high: "bg-rose-500/15 text-rose-400",
+};
+
 function KeywordRow({
   keyword,
   history,
@@ -885,6 +912,7 @@ function KeywordRow({
   onStatusChange,
   onToggleTracked,
   onTogglePage,
+  taskCount = 0,
 }: {
   keyword: Keyword;
   history: KeywordRankHistoryEntry[];
@@ -901,6 +929,7 @@ function KeywordRow({
   onStatusChange: (status: KeywordStatus) => void;
   onToggleTracked: () => void;
   onTogglePage: (pageId: string, assign: boolean) => void;
+  taskCount?: number;
 }) {
   const assignedPages = keyword.pageIds
     .map((id) => Object.values(pagesByGroup).flat().find((p) => p.id === id))
@@ -950,6 +979,17 @@ function KeywordRow({
             {keyword.difficulty !== null && <span className="rounded-full bg-base-800 px-2 py-0.5">KD {keyword.difficulty}</span>}
             {keyword.targetRank !== null && (
               <span className="rounded-full bg-base-800 px-2 py-0.5">Target #{keyword.targetRank}</span>
+            )}
+            <span className={cn("rounded-full px-2 py-0.5 font-medium", PRIORITY_STYLE[keyword.priority])}>
+              {keyword.priority} priority
+            </span>
+            {keyword.searchIntent && (
+              <span className="rounded-full bg-base-800 px-2 py-0.5">{INTENT_LABEL[keyword.searchIntent]}</span>
+            )}
+            {taskCount > 0 && (
+              <span className="rounded-full bg-base-800 px-2 py-0.5">
+                {taskCount} related task{taskCount === 1 ? "" : "s"}
+              </span>
             )}
           </div>
           {keyword.notes && <p className="mt-1.5 break-words text-xs text-neutral-500">{keyword.notes}</p>}
@@ -1418,12 +1458,20 @@ function KeywordForm({
           defaultValue={keyword?.keyword ?? ""}
           className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
         />
-        <input
-          name="targetPage"
-          placeholder="Target page / URL"
-          defaultValue={keyword?.targetPage ?? ""}
-          className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
-        />
+        {/* targetPage is frozen (legacy free-text field) — shown read-only for
+            older keywords that still have one, never collected for new ones.
+            Use the Pages picker below (or the On-Page module) to set the
+            real target page going forward. */}
+        {keyword?.targetPage ? (
+          <input
+            disabled
+            value={keyword.targetPage}
+            title="Legacy target page — read-only. Use the page picker instead."
+            className="w-full rounded-md border border-base-700/60 bg-base-900/60 px-2.5 py-1.5 text-sm text-neutral-500"
+          />
+        ) : (
+          <div />
+        )}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <NumberField name="searchVolume" label="Volume" defaultValue={keyword?.searchVolume} />
@@ -1431,19 +1479,48 @@ function KeywordForm({
         <NumberField name="currentRank" label="Current rank" defaultValue={keyword?.currentRank} />
         <NumberField name="targetRank" label="Target rank" defaultValue={keyword?.targetRank} />
       </div>
-      <div>
-        <label className="mb-1 block text-[11px] text-neutral-500">Status</label>
-        <select
-          name="status"
-          defaultValue={keyword?.status ?? "not_started"}
-          className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none sm:w-48"
-        >
-          {(Object.keys(STATUS_LABEL) as KeywordStatus[]).map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABEL[s]}
-            </option>
-          ))}
-        </select>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Status</label>
+          <select
+            name="status"
+            defaultValue={keyword?.status ?? "not_started"}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            {(Object.keys(STATUS_LABEL) as KeywordStatus[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Priority</label>
+          <select
+            name="priority"
+            defaultValue={keyword?.priority ?? "medium"}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] text-neutral-500">Search intent</label>
+          <select
+            name="searchIntent"
+            defaultValue={keyword?.searchIntent ?? ""}
+            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+          >
+            <option value="">Not set</option>
+            <option value="local">Local</option>
+            <option value="commercial">Commercial</option>
+            <option value="transactional">Transactional</option>
+            <option value="informational">Informational</option>
+            <option value="navigational">Navigational</option>
+          </select>
+        </div>
       </div>
       <textarea
         name="notes"
