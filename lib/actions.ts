@@ -335,6 +335,26 @@ export async function toggleChecklistItemAction(taskId: string, projectId: strin
   refresh(projectId);
 }
 
+export async function updateMemberTaskBasicsAction(input: {
+  taskId: string;
+  priority: TaskPriority;
+  dueDate: string | null;
+  notes: string;
+  requirements: string;
+  promptSteps: string;
+}) {
+  const profile = await requireProfile();
+  await store.updateAssignedTaskBasics(input.taskId, profile.id, {
+    priority: input.priority,
+    dueDate: input.dueDate,
+    notes: input.notes.trim(),
+    requirements: input.requirements.trim(),
+    promptSteps: input.promptSteps.trim(),
+  });
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+}
+
 export async function startFocusTaskAction(taskId: string) {
   const profile = await requireProfile();
   await store.startTaskFocus(taskId, profile.id);
