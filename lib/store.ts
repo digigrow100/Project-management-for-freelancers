@@ -52,6 +52,11 @@ import type {
   OutreachProspect,
   OutreachStatus,
   PageType,
+  PageAuditCheck,
+  PageAuditStatus,
+  PageCheckTemplate,
+  ProjectPage,
+  ProjectPageType,
   ProjectAttachment,
   Payment,
   PaymentKind,
@@ -294,6 +299,180 @@ async function fetchStagesForProjects(projectIds: string[]): Promise<Map<string,
     map.set(row.project_id, list);
   }
   return map;
+}
+
+
+interface ProjectPageRow {
+  id: string;
+  project_id: string;
+  name: string;
+  url: string;
+  page_type: ProjectPageType;
+  is_active: boolean;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function toProjectPage(row: ProjectPageRow): ProjectPage {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    url: row.url ?? "",
+    pageType: row.page_type ?? "other",
+    isActive: row.is_active,
+    source: row.source ?? "manual",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listProjectPages(projectId: string): Promise<ProjectPage[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_project_pages")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("is_active", true)
+      .order("name");
+    if (error) throw error;
+    return ((data ?? []) as ProjectPageRow[]).map(toProjectPage);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createProjectPage(input: {
+  projectId: string;
+  name: string;
+  url: string;
+  pageType: ProjectPageType;
+}): Promise<ProjectPage> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_project_pages")
+    .insert({
+      project_id: input.projectId,
+      name: input.name.trim(),
+      url: input.url.trim(),
+      page_type: input.pageType,
+      source: "manual",
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+
+  const page = toProjectPage(data as ProjectPageRow);
+  await ensurePageAuditChecks(input.projectId, new Date().toISOString().slice(0, 7));
+  return page;
+}
+
+export async function deleteProjectPage(pageId: string, projectId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from("freelance_hq_project_pages")
+    .delete()
+    .eq("id", pageId)
+    .eq("project_id", projectId);
+  if (error) throw error;
+}
+
+export async function listPageCheckTemplates(): Promise<PageCheckTemplate[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_page_check_templates")
+      .select("*")
+      .eq("is_active", true)
+      .order("order_index");
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({
+      checkKey: row.check_key,
+      label: row.label,
+      order: row.order_index ?? 0,
+      isActive: row.is_active,
+    }));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function ensurePageAuditChecks(projectId: string, periodMonth: string): Promise<void> {
+  const [pages, templates] = await Promise.all([listProjectPages(projectId), listPageCheckTemplates()]);
+  if (pages.length === 0 || templates.length === 0) return;
+
+  const rows = pages.flatMap((page) =>
+    templates.map((template) => ({
+      page_id: page.id,
+      period_month: periodMonth,
+      check_key: template.checkKey,
+    })),
+  );
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_page_audit_checks")
+    .upsert(rows, { onConflict: "page_id,period_month,check_key", ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+export async function listPageAuditChecks(projectId: string, periodMonth: string): Promise<PageAuditCheck[]> {
+  try {
+    await ensurePageAuditChecks(projectId, periodMonth);
+    const pages = await listProjectPages(projectId);
+    if (pages.length === 0) return [];
+    const templates = await listPageCheckTemplates();
+    const templateByKey = new Map(templates.map((t) => [t.checkKey, t]));
+
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_page_audit_checks")
+      .select("*")
+      .in("page_id", pages.map((p) => p.id))
+      .eq("period_month", periodMonth);
+    if (error) throw error;
+
+    return (data ?? [])
+      .map((row: any) => {
+        const template = templateByKey.get(row.check_key);
+        return {
+          id: row.id,
+          pageId: row.page_id,
+          periodMonth: row.period_month,
+          checkKey: row.check_key,
+          status: row.status as PageAuditStatus,
+          notes: row.notes ?? "",
+          checkedAt: row.checked_at,
+          checkedBy: row.checked_by,
+          label: template?.label ?? row.check_key,
+          order: template?.order ?? 999,
+        } satisfies PageAuditCheck;
+      })
+      .sort((a, b) => a.order - b.order);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function updatePageAuditCheck(
+  pageId: string,
+  periodMonth: string,
+  checkKey: string,
+  status: PageAuditStatus,
+  checkedBy: string | null,
+): Promise<void> {
+  const now = nowIso();
+  const { error } = await getSupabase()
+    .from("freelance_hq_page_audit_checks")
+    .update({
+      status,
+      checked_at: status === "pending" ? null : now,
+      checked_by: status === "pending" ? null : checkedBy,
+      updated_at: now,
+    })
+    .eq("page_id", pageId)
+    .eq("period_month", periodMonth)
+    .eq("check_key", checkKey);
+  if (error) throw error;
 }
 
 export async function getProjects(): Promise<Project[]> {
