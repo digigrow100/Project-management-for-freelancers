@@ -891,7 +891,9 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         .eq("state", "active")
         .in("task_id", fallbackIds);
       if (focusError && !isMissingTableError(focusError)) throw focusError;
-      await closeOpenTimeEntries(userId, now);
+      for (const fallbackId of fallbackIds) {
+        await closeOpenTimeEntriesForTask(fallbackId, now);
+      }
     }
     return null;
   }
