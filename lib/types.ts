@@ -58,6 +58,17 @@ export interface Task {
   outreachProspectId: string | null;
 }
 
+export interface TaskFocusState {
+  taskId: string;
+  userId: string;
+  state: "active" | "paused";
+  startedAt: string | null;
+  pausedAt: string | null;
+  /** A paused task becomes eligible to resurface after this many other task completions. */
+  resumeAfterCompletions: number;
+  updatedAt: string;
+}
+
 export type SeoModule = "on_page" | "technical" | "off_page" | "content" | "reporting";
 
 export interface ClientDetails {
