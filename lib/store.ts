@@ -741,6 +741,32 @@ async function startTaskTimeEntry(taskId: string, projectId: string, userId: str
   }
 }
 
+async function closeOpenTimeEntriesForTask(taskId: string, endedAt: string): Promise<void> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_time_entries")
+      .select("id, started_at")
+      .eq("task_id", taskId)
+      .is("ended_at", null);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Array<{ id: string; started_at: string }>) {
+      const seconds = Math.max(
+        0,
+        Math.floor((new Date(endedAt).getTime() - new Date(row.started_at).getTime()) / 1000),
+      );
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_task_time_entries")
+        .update({ ended_at: endedAt, duration_seconds: seconds })
+        .eq("id", row.id)
+        .is("ended_at", null);
+      if (updateError) throw updateError;
+    }
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
 /** Closed-session totals only. The member UI adds the live active session from TaskFocusState.startedAt. */
 export async function getTaskTimeTotals(userId: string, taskIds: string[]): Promise<Record<string, number>> {
   if (taskIds.length === 0) return {};
@@ -912,12 +938,13 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
   try {
     const { data: activeRows, error: activeError } = await getSupabase()
       .from("freelance_hq_task_focus")
-      .select("task_id")
+      .select("task_id, started_at")
       .eq("user_id", userId)
       .eq("state", "active");
     if (activeError) throw activeError;
 
-    const activeIds = ((activeRows ?? []) as Array<{ task_id: string }>).map((row) => row.task_id);
+    const activeFocusRows = (activeRows ?? []) as Array<{ task_id: string; started_at: string | null }>;
+    const activeIds = activeFocusRows.map((row) => row.task_id);
     const alreadyActive = activeIds.includes(taskId);
     const otherActiveIds = activeIds.filter((id) => id !== taskId);
 
@@ -953,6 +980,19 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
       if (focusError) throw focusError;
 
       await startTaskTimeEntry(taskId, task.projectId, userId, now);
+    } else {
+      const { data: openTimer, error: openTimerError } = await getSupabase()
+        .from("freelance_hq_task_time_entries")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("task_id", taskId)
+        .is("ended_at", null)
+        .maybeSingle();
+      if (openTimerError && !isMissingTableError(openTimerError)) throw openTimerError;
+      if (!openTimer && !isMissingTableError(openTimerError)) {
+        const existingStartedAt = activeFocusRows.find((row) => row.task_id === taskId)?.started_at ?? now;
+        await startTaskTimeEntry(taskId, task.projectId, userId, existingStartedAt);
+      }
     }
   } catch (error) {
     if (!isMissingTableError(error)) throw error;
@@ -1162,6 +1202,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
     .maybeSingle();
   if (error) throw error;
 
+  if (resolvedStatus === "done") await closeOpenTimeEntriesForTask(taskId, nowIso());
   if (data) await touchProject((data as { project_id: string }).project_id);
 }
 
@@ -1222,6 +1263,7 @@ export async function updateTaskDetails(
     .maybeSingle();
   if (error) throw error;
 
+  if (status === "done") await closeOpenTimeEntriesForTask(taskId, nowIso());
   if (data) await touchProject((data as { project_id: string }).project_id);
 }
 
