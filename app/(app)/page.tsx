@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { ListTodo, FolderKanban, CheckCircle2, ArrowRight, Plus, Wallet, TrendingUp, AlertCircle, PiggyBank, Hourglass, Pin, FileText, Activity, Users, BarChart3 } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
+import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
 import {
   getCompletedTasks,
+  getMyTasks,
   getOpenTasks,
+  getProjectsByIds,
+  getTaskFocusStates,
   getProjectProgressMap,
   getProjectsForProfile,
   listAllPayments,
@@ -32,6 +36,15 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({ searchParams }: { searchParams: { currency?: string } }) {
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
+
+  if (profile && profile.role === "member") {
+    const [tasks, focusStates] = await Promise.all([
+      getMyTasks(profile.id),
+      getTaskFocusStates(profile.id),
+    ]);
+    const memberProjects = await getProjectsByIds(tasks.map((task) => task.projectId));
+    return <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} />;
+  }
   const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, pinnedNotes, assignableMembers] =
     await Promise.all([
       getOpenTasks(),
