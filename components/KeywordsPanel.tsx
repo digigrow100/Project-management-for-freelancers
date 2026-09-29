@@ -118,7 +118,7 @@ function toNumberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function exportKeywords(projectName: string, keywords: Keyword[]) {
+async function exportKeywords(projectName: string, keywords: Keyword[], groups: KeywordGroup[] = []) {
   const XLSX = await import("xlsx");
   const rows = keywords.map((k) => ({
     Keyword: k.keyword,
@@ -133,7 +133,7 @@ async function exportKeywords(projectName: string, keywords: Keyword[]) {
     "Keyword Role": k.keywordRole,
     "Target Mode": k.targetMode,
     "Suggested Page": k.suggestedPageName,
-    Cluster: k.clusterId ?? "",
+    Cluster: groups.find((group) => group.id === k.clusterId)?.name ?? "",
     Notes: k.notes,
   }));
   const sheet = XLSX.utils.json_to_sheet(rows, { header: [...EXPORT_COLUMNS] });
@@ -371,7 +371,7 @@ export function KeywordsPanel({
           </button>
           <button
             type="button"
-            onClick={() => exportKeywords(projectName, keywords)}
+            onClick={() => exportKeywords(projectName, keywords, groups)}
             disabled={keywords.length === 0}
             className="flex items-center gap-1 text-xs text-neutral-400 hover:text-accent-300 disabled:opacity-40 disabled:hover:text-neutral-400"
           >
@@ -470,7 +470,7 @@ export function KeywordsPanel({
               setSelectedUngrouped(new Set());
             });
           }}
-          onExport={() => exportKeywords(projectName, sortedKeywords.filter((k) => selectedUngrouped.has(k.id)))}
+          onExport={() => exportKeywords(projectName, sortedKeywords.filter((k) => selectedUngrouped.has(k.id)), groups)}
           onDelete={() => {
             if (!confirm(`Delete ${selectedUngrouped.size} keyword${selectedUngrouped.size === 1 ? "" : "s"}? This can't be undone.`)) return;
             const ids = [...selectedUngrouped];
@@ -505,7 +505,7 @@ export function KeywordsPanel({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords)}
+                onClick={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords, groups)}
                 disabled={modalKeywords.length === 0}
                 className="flex items-center gap-1 text-xs text-neutral-400 hover:text-accent-300 disabled:opacity-40"
               >
@@ -572,7 +572,7 @@ export function KeywordsPanel({
                     setSelectedInModal(new Set());
                   });
                 }}
-                onExport={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords.filter((k) => selectedInModal.has(k.id)))}
+                onExport={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords.filter((k) => selectedInModal.has(k.id)), groups)}
                 onDelete={() => {
                   if (!confirm(`Delete ${selectedInModal.size} keyword${selectedInModal.size === 1 ? "" : "s"}? This can't be undone.`))
                     return;
@@ -663,7 +663,7 @@ export function KeywordsPanel({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => exportKeywords(projectName, keywords)}
+                onClick={() => exportKeywords(projectName, keywords, groups)}
                 disabled={keywords.length === 0}
                 className="flex items-center gap-1 text-xs text-neutral-400 hover:text-accent-300 disabled:opacity-40"
               >
@@ -700,7 +700,7 @@ export function KeywordsPanel({
                     setSelectedAll(new Set());
                   });
                 }}
-                onExport={() => exportKeywords(projectName, keywords.filter((k) => selectedAll.has(k.id)))}
+                onExport={() => exportKeywords(projectName, keywords.filter((k) => selectedAll.has(k.id)), groups)}
                 onDelete={() => {
                   if (!confirm(`Delete ${selectedAll.size} keyword${selectedAll.size === 1 ? "" : "s"}? This can't be undone.`)) return;
                   const ids = [...selectedAll];
