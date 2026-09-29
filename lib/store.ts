@@ -976,28 +976,37 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       }
       if (!claim) continue;
 
-      const task = await createTask({
-        projectId: project.id,
-        stageId: null,
-        title: template.title,
-        notes: template.notes,
-        priority: template.priority,
-        scheduledFor: null,
-        assignedTo: userId,
-        seoModule: template.seo_module,
-        why: template.why,
-        expectedOutcome: template.expected_outcome,
-        isFallback: true,
-        fallbackTemplateKey: template.template_key,
-      });
+      try {
+        const task = await createTask({
+          projectId: project.id,
+          stageId: null,
+          title: template.title,
+          notes: template.notes,
+          priority: template.priority,
+          scheduledFor: null,
+          assignedTo: userId,
+          seoModule: template.seo_module,
+          why: template.why,
+          expectedOutcome: template.expected_outcome,
+          isFallback: true,
+          fallbackTemplateKey: template.template_key,
+        });
 
-      const { error: updateClaimError } = await getSupabase()
-        .from("freelance_hq_idle_task_claims")
-        .update({ task_id: task.id })
-        .eq("id", (claim as IdleTaskClaimRow).id);
-      if (updateClaimError) throw updateClaimError;
+        const { error: updateClaimError } = await getSupabase()
+          .from("freelance_hq_idle_task_claims")
+          .update({ task_id: task.id })
+          .eq("id", (claim as IdleTaskClaimRow).id);
+        if (updateClaimError) throw updateClaimError;
 
-      return task;
+        return task;
+      } catch (error) {
+        await getSupabase()
+          .from("freelance_hq_idle_task_claims")
+          .delete()
+          .eq("id", (claim as IdleTaskClaimRow).id)
+          .is("task_id", null);
+        throw error;
+      }
     }
   }
 
