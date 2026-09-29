@@ -113,6 +113,7 @@ export function MemberFocusDashboard({
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   const openTasks = useMemo(() => tasks.filter((task) => task.status !== "done"), [tasks]);
+  const hasNormalOpenTasks = openTasks.some((task) => !task.isFallback);
   const completedToday = useMemo(
     () =>
       tasks
@@ -138,7 +139,12 @@ export function MemberFocusDashboard({
   const readyPaused = focusStates
     .filter((state) => state.state === "paused" && state.resumeAfterCompletions === 0)
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
-    .filter((item): item is { state: TaskFocusState; task: Task } => !!item.task && item.task.status !== "done")
+    .filter(
+      (item): item is { state: TaskFocusState; task: Task } =>
+        !!item.task &&
+        item.task.status !== "done" &&
+        (!hasNormalOpenTasks || !item.task.isFallback),
+    )
     .sort((a, b) => sortQueue(a.task, b.task));
 
   const pausedIds = new Set(focusStates.filter((state) => state.state === "paused").map((state) => state.taskId));
