@@ -71,6 +71,7 @@ import type {
   ResaleDomainStatus,
   RichContent,
   Role,
+  JobRole,
   SearchIntent,
   Service,
   SeoModule,
@@ -877,6 +878,14 @@ export async function getAllTaskFocusStates(): Promise<TaskFocusState[]> {
  * - otherwise claim one monthly audit template from an assigned SEO project.
  */
 export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task | null> {
+  const { data: profileRow, error: profileError } = await getSupabase()
+    .from("freelance_hq_profiles")
+    .select("job_role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  if ((profileRow as { job_role?: JobRole } | null)?.job_role !== "seo_expert") return null;
+
   const { data: normalRows, error: normalError } = await getSupabase()
     .from("freelance_hq_tasks")
     .select("id")
@@ -1864,6 +1873,7 @@ interface ProfileRow {
   email: string;
   name: string;
   role: Role;
+  job_role: JobRole | null;
   can_access_renewals: boolean | null;
   can_access_backlink_credentials: boolean | null;
   can_access_finance: boolean | null;
@@ -1876,6 +1886,7 @@ function toProfile(row: ProfileRow): Profile {
     email: row.email,
     name: row.name,
     role: row.role,
+    jobRole: row.job_role ?? "general",
     canAccessRenewals: row.can_access_renewals ?? false,
     canAccessBacklinkCredentials: row.can_access_backlink_credentials ?? false,
     canAccessFinance: row.can_access_finance ?? false,
@@ -1895,10 +1906,10 @@ export async function getProfileCount(): Promise<number> {
   return count ?? 0;
 }
 
-export async function createProfile(input: { id: string; email: string; name: string; role: Role }): Promise<Profile> {
+export async function createProfile(input: { id: string; email: string; name: string; role: Role; jobRole?: JobRole }): Promise<Profile> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_profiles")
-    .insert({ id: input.id, email: input.email, name: input.name, role: input.role })
+    .insert({ id: input.id, email: input.email, name: input.name, role: input.role, job_role: input.jobRole ?? "general" })
     .select()
     .single();
   if (error) throw error;
@@ -1918,6 +1929,14 @@ export async function listTeamMembers(): Promise<Profile[]> {
 
 export async function updateMemberRole(userId: string, role: Role): Promise<void> {
   const { error } = await getSupabase().from("freelance_hq_profiles").update({ role, updated_at: nowIso() }).eq("id", userId);
+  if (error) throw error;
+}
+
+export async function updateMemberJobRole(userId: string, jobRole: JobRole): Promise<void> {
+  const { error } = await getSupabase()
+    .from("freelance_hq_profiles")
+    .update({ job_role: jobRole, updated_at: nowIso() })
+    .eq("id", userId);
   if (error) throw error;
 }
 
@@ -1970,6 +1989,7 @@ export async function inviteTeamMember(input: {
   password: string;
   name: string;
   role: Role;
+  jobRole?: JobRole;
 }): Promise<Profile> {
   const { data, error } = await getSupabase().auth.admin.createUser({
     email: input.email,
@@ -1978,7 +1998,7 @@ export async function inviteTeamMember(input: {
   });
   if (error) throw error;
 
-  return createProfile({ id: data.user.id, email: input.email, name: input.name, role: input.role });
+  return createProfile({ id: data.user.id, email: input.email, name: input.name, role: input.role, jobRole: input.jobRole });
 }
 
 export async function removeMember(userId: string): Promise<void> {
@@ -2043,12 +2063,35 @@ export async function setMemberAssignments(userId: string, projectIds: string[])
   }
 }
 
+export function redactProjectClientData(project: Project): Project {
+  return {
+    ...project,
+    client: "",
+    clientId: null,
+    clientDetails: {
+      name: "",
+      company: "",
+      email: "",
+      phone: "",
+      address: "",
+      notes: "",
+      logoUrl: "",
+    },
+    webDetails: project.webDetails
+      ? {
+          ...project.webDetails,
+          contactDetails: "",
+        }
+      : null,
+  };
+}
+
 export async function getProjectsForProfile(profile: Profile): Promise<Project[]> {
   const all = await getProjects();
   if (profile.role === "admin") return all;
 
   const assigned = new Set(await getAssignedProjectIds(profile.id));
-  return all.filter((p) => assigned.has(p.id));
+  return all.filter((p) => assigned.has(p.id)).map(redactProjectClientData);
 }
 
 interface PaymentPlanRow {
