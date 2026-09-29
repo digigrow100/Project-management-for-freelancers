@@ -23,6 +23,7 @@ import {
   listTechnicalIssues,
   getReportPreferences,
   getProject,
+  redactProjectClientData,
   getProjectProgress,
   isProjectAssignedToUser,
   listPaymentsForProject,
@@ -60,16 +61,17 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
-  const project = await getProject(params.id);
-  if (!project) notFound();
-
   const profile = await getCurrentProfile();
   if (!profile) notFound();
-  if (profile.role !== "admin" && !(await isProjectAssignedToUser(project.id, profile.id))) notFound();
+
+  const rawProject = await getProject(params.id);
+  if (!rawProject) notFound();
+  if (profile.role !== "admin" && !(await isProjectAssignedToUser(rawProject.id, profile.id))) notFound();
 
   const isAdmin = profile.role === "admin";
+  const project = isAdmin ? rawProject : redactProjectClientData(rawProject);
 
-  const [tasks, progress, businessProfile, paymentPlans, payments, keywords, assignableMembers] = await Promise.all([
+  const [tasks, progress, businessProfile, paymentPlans, payments, keywords, allTeamMembers] = await Promise.all([
     getTasksByProject(project.id),
     getProjectProgress(project.id),
     getBusinessProfile(),
@@ -78,6 +80,13 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     project.type === "seo" ? listKeywords(project.id) : Promise.resolve([]),
     listTeamMembers(),
   ]);
+
+  const assignableMembers = allTeamMembers.filter((member) => {
+    if (member.role === "admin") return true;
+    if (project.type === "seo") return member.jobRole === "seo_expert";
+    if (project.type === "web_dev" || project.type === "web_app") return member.jobRole === "web_developer";
+    return true;
+  });
 
   const keywordRankHistory =
     project.type === "seo" && keywords.length > 0
@@ -149,7 +158,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const theme = PROJECT_THEME[project.type];
   const Icon = theme.icon;
 
-  const clientDetailsTab = (
+  const clientDetailsTab = isAdmin ? (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ClientDetailsCard projectId={project.id} client={project.clientDetails} />
@@ -187,9 +196,9 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
       {project.type === "seo" && <ProjectAttachments projectId={project.id} attachments={projectAttachments} />}
 
-      {isAdmin && <PaymentsCard projectId={project.id} plans={paymentPlans} payments={payments} />}
+      <PaymentsCard projectId={project.id} plans={paymentPlans} payments={payments} />
     </div>
-  );
+  ) : undefined;
 
   const board = (
     <div className="flex flex-col gap-8">
@@ -247,7 +256,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             </span>
             <h1 className="text-2xl font-semibold text-neutral-50">{project.name}</h1>
           </div>
-          {clientName && <p className="mt-1 text-sm text-neutral-400">{clientName}</p>}
+          {isAdmin && clientName && <p className="mt-1 text-sm text-neutral-400">{clientName}</p>}
           <div className="mt-2 flex items-center gap-2">
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${theme.iconBg} ${theme.iconText}`}>
               {theme.label}
