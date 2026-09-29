@@ -149,7 +149,6 @@ export function MemberFocusDashboard({
   const safeOffset = browsePool.length === 0 ? 0 : Math.min(browseOffset, browsePool.length - 1);
   const currentTask = browsePool[safeOffset] ?? null;
   const currentFocus = currentTask ? focusByTask.get(currentTask.id) : undefined;
-  const nextTask = browsePool[safeOffset + 1] ?? queuedTasks.find((task) => task.id !== currentTask?.id) ?? null;
 
   const dailyCandidates = tasks.filter((task) => isPlannedForToday(task, today, focusByTask));
   const dailyTasks = dailyCandidates.length > 0 ? dailyCandidates : tasks.filter((task) => task.status !== "done" || isCompletedToday(task, today));
