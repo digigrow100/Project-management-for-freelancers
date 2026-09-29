@@ -8,6 +8,7 @@ import {
   getOpenTasks,
   getProjectsByIds,
   getTaskFocusStates,
+  getTaskTimeTotals,
   getProjectProgressMap,
   getProjectsForProfile,
   listAllPayments,
@@ -42,8 +43,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       getMyTasks(profile.id),
       getTaskFocusStates(profile.id),
     ]);
-    const memberProjects = await getProjectsByIds(tasks.map((task) => task.projectId));
-    return <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} />;
+    const [memberProjects, timeTotals] = await Promise.all([
+      getProjectsByIds(tasks.map((task) => task.projectId)),
+      getTaskTimeTotals(profile.id, tasks.map((task) => task.id)),
+    ]);
+    return <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} timeTotals={timeTotals} />;
   }
   const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, pinnedNotes, assignableMembers] =
     await Promise.all([
