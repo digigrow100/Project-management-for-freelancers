@@ -35,6 +35,7 @@ function localDateKey(date = new Date()): string {
 const priorityRank = { high: 0, medium: 1, low: 2 } as const;
 
 function sortQueue(a: Task, b: Task): number {
+  if (a.isFallback !== b.isFallback) return a.isFallback ? 1 : -1;
   const ad = a.dueDate ?? a.scheduledFor ?? "9999-12-31";
   const bd = b.dueDate ?? b.scheduledFor ?? "9999-12-31";
   if (ad !== bd) return ad < bd ? -1 : 1;
