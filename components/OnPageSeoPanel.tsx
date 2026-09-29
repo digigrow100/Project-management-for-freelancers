@@ -117,6 +117,8 @@ function PageCard({
   const totalVolume = keywords.reduce((sum, keyword) => sum + (keyword.searchVolume ?? 0), 0);
   const kdValues = keywords.map((keyword) => keyword.difficulty).filter((value): value is number => value !== null);
   const avgKd = kdValues.length ? Math.round(kdValues.reduce((sum, value) => sum + value, 0) / kdValues.length) : null;
+  const rankedValues = keywords.map((keyword) => keyword.currentRank).filter((value): value is number => value !== null);
+  const bestRank = rankedValues.length ? Math.min(...rankedValues) : null;
   const intentCounts = keywords.reduce<Record<string, number>>((acc, keyword) => {
     if (keyword.searchIntent) acc[keyword.searchIntent] = (acc[keyword.searchIntent] ?? 0) + 1;
     return acc;
@@ -159,11 +161,12 @@ function PageCard({
 
       {expanded && (
         <div className="flex flex-col gap-4 border-t border-base-700/60 p-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <Metric label="Keywords" value={keywords.length.toString()} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            <Metric label="Primary" value={primaryKeyword?.keyword ?? "Not set"} />
+            <Metric label="Secondary" value={secondaryKeywords.length.toString()} />
             <Metric label="Combined volume" value={totalVolume.toLocaleString()} />
             <Metric label="Avg KD" value={avgKd?.toString() ?? "—"} />
-            <Metric label="Primary" value={primaryKeyword?.keyword ?? "Not set"} />
+            <Metric label="Best rank" value={bestRank ? `#${bestRank}` : "—"} />
             <Metric label="Intent" value={dominantIntent ? dominantIntent.replace("_", " ") : "—"} />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
