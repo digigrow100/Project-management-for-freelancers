@@ -24,11 +24,15 @@ export function ProjectDetailTabs({
 }: {
   board: ReactNode;
   features?: ReactNode;
-  clientDetails: ReactNode;
+  clientDetails?: ReactNode;
 }) {
   const [active, setActive] = useState<TabKey>("board");
   const content = { board, features, client: clientDetails } as const;
-  const visibleTabs = TABS.filter((tab) => tab.key !== "features" || features !== undefined);
+  const visibleTabs = TABS.filter(
+    (tab) =>
+      (tab.key !== "features" || features !== undefined) &&
+      (tab.key !== "client" || clientDetails !== undefined),
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -54,7 +58,7 @@ export function ProjectDetailTabs({
         })}
       </div>
 
-      {content[active]}
+      {content[active] ?? content.board}
     </div>
   );
 }
