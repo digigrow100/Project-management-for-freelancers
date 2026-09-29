@@ -4,7 +4,9 @@ import { getCurrentProfile } from "@/lib/auth";
 import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
 import {
   getCompletedTasks,
+  ensureIdleSeoTaskForMember,
   getMyTasks,
+  ensureIdleSeoTaskForMember,
   getOpenTasks,
   getProjectsByIds,
   getTaskFocusStates,
@@ -39,6 +41,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const isAdmin = profile?.role === "admin";
 
   if (profile && profile.role === "member") {
+    await ensureIdleSeoTaskForMember(profile.id);
     const [tasks, focusStates] = await Promise.all([
       getMyTasks(profile.id),
       getTaskFocusStates(profile.id),
