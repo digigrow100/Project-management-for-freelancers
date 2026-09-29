@@ -71,6 +71,7 @@ import type {
   SeoReportMetrics,
   Stage,
   Task,
+  TaskFocusState,
   TaskFile,
   TaskNote,
   TechnicalIssue,
@@ -316,6 +317,21 @@ export async function getProject(id: string): Promise<Project | null> {
   if (stageError) throw stageError;
 
   return toProject(row, ((stageRows ?? []) as StageRow[]).map(toStage));
+}
+
+export async function getProjectsByIds(projectIds: string[]): Promise<Project[]> {
+  const ids = Array.from(new Set(projectIds.filter(Boolean)));
+  if (ids.length === 0) return [];
+
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_projects")
+    .select("*")
+    .in("id", ids);
+  if (error) throw error;
+
+  const rows = (data ?? []) as ProjectRow[];
+  const stagesByProject = await fetchStagesForProjects(rows.map((row) => row.id));
+  return rows.map((row) => toProject(row, stagesByProject.get(row.id) ?? []));
 }
 
 export async function createProject(input: {
@@ -615,6 +631,232 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   ]);
   if (error) throw error;
   return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
+}
+
+interface TaskFocusRow {
+  task_id: string;
+  user_id: string;
+  state: "active" | "paused";
+  started_at: string | null;
+  paused_at: string | null;
+  resume_after_completions: number;
+  updated_at: string;
+}
+
+function toTaskFocusState(row: TaskFocusRow): TaskFocusState {
+  return {
+    taskId: row.task_id,
+    userId: row.user_id,
+    state: row.state,
+    startedAt: row.started_at,
+    pausedAt: row.paused_at,
+    resumeAfterCompletions: row.resume_after_completions ?? 0,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getTaskFocusStates(userId: string): Promise<TaskFocusState[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as TaskFocusRow[]).map(toTaskFocusState);
+  } catch (error) {
+    // Keep the member dashboard usable before migration 064 is applied.
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+async function requireAssignedTask(taskId: string, userId: string): Promise<{
+  projectId: string;
+  checklist: ChecklistItem[];
+  status: TaskStatus;
+}> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("project_id, assigned_to, checklist, status")
+    .eq("id", taskId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Task not found.");
+
+  const row = data as {
+    project_id: string;
+    assigned_to: string | null;
+    checklist: ChecklistItem[];
+    status: TaskStatus;
+  };
+  if (row.assigned_to !== userId) throw new Error("This task is not assigned to you.");
+
+  return {
+    projectId: row.project_id,
+    checklist: row.checklist ?? [],
+    status: row.status,
+  };
+}
+
+async function decrementPausedResumeCounters(userId: string): Promise<void> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .select("task_id, resume_after_completions")
+      .eq("user_id", userId)
+      .eq("state", "paused")
+      .gt("resume_after_completions", 0);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Array<{ task_id: string; resume_after_completions: number }>) {
+      const next = Math.max(0, (row.resume_after_completions ?? 0) - 1);
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_task_focus")
+        .update({ resume_after_completions: next, updated_at: nowIso() })
+        .eq("task_id", row.task_id)
+        .eq("user_id", userId);
+      if (updateError) throw updateError;
+    }
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
+export async function startTaskFocus(taskId: string, userId: string): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (task.status === "done") return;
+
+  const now = nowIso();
+  try {
+    const { data: activeRows, error: activeError } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .select("task_id")
+      .eq("user_id", userId)
+      .eq("state", "active");
+    if (activeError) throw activeError;
+
+    const otherActiveIds = ((activeRows ?? []) as Array<{ task_id: string }>)
+      .map((row) => row.task_id)
+      .filter((id) => id !== taskId);
+
+    if (otherActiveIds.length > 0) {
+      const { error: pauseError } = await getSupabase()
+        .from("freelance_hq_task_focus")
+        .update({
+          state: "paused",
+          paused_at: now,
+          resume_after_completions: 1,
+          updated_at: now,
+        })
+        .eq("user_id", userId)
+        .in("task_id", otherActiveIds);
+      if (pauseError) throw pauseError;
+    }
+
+    const { error: focusError } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .upsert(
+        {
+          task_id: taskId,
+          user_id: userId,
+          state: "active",
+          started_at: now,
+          paused_at: null,
+          resume_after_completions: 0,
+          updated_at: now,
+        },
+        { onConflict: "task_id" },
+      );
+    if (focusError) throw focusError;
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+
+  const { error: taskError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({ status: "in_progress", updated_at: now })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (taskError) throw taskError;
+
+  await touchProject(task.projectId);
+}
+
+export async function pauseTaskFocus(taskId: string, userId: string): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (task.status === "done") return;
+
+  const now = nowIso();
+  try {
+    const { error } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .upsert(
+        {
+          task_id: taskId,
+          user_id: userId,
+          state: "paused",
+          started_at: now,
+          paused_at: now,
+          resume_after_completions: 1,
+          updated_at: now,
+        },
+        { onConflict: "task_id" },
+      );
+    if (error) throw error;
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+
+  const { error: taskError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({ status: "in_progress", updated_at: now })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (taskError) throw taskError;
+
+  await touchProject(task.projectId);
+}
+
+export async function completeTaskFromFocus(taskId: string, userId: string): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (task.status === "done") return;
+
+  const now = nowIso();
+  const completedChecklist = task.checklist.map((item) => ({ ...item, done: true }));
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({
+      status: "done",
+      checklist: completedChecklist,
+      completed_at: now,
+      scheduled_for: null,
+      updated_at: now,
+    })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (error) throw error;
+
+  try {
+    const { error: focusError } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .delete()
+      .eq("task_id", taskId)
+      .eq("user_id", userId);
+    if (focusError) throw focusError;
+  } catch (focusError) {
+    if (!isMissingTableError(focusError)) throw focusError;
+  }
+
+  await decrementPausedResumeCounters(userId);
+  await touchProject(task.projectId);
+}
+
+export async function completeTasksFromFocus(taskIds: string[], userId: string): Promise<void> {
+  for (const taskId of Array.from(new Set(taskIds)).slice(0, 25)) {
+    await completeTaskFromFocus(taskId, userId);
+  }
 }
 
 export async function createTask(input: {
