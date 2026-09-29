@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
-  const canSeeClients = isAdmin || !!profile?.canAccessFinance;
+  const canSeeClients = isAdmin;
   const [projects, unseenProjects, unseenNotes, unseenTasks, domains, domainClients, renewals, clients] = await Promise.all([
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     profile ? countUnseenProjects(profile.id, isAdmin) : Promise.resolve(0),

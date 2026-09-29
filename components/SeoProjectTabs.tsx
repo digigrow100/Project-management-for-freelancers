@@ -41,7 +41,7 @@ export function SeoProjectTabs({
   content: ReactNode;
   offPage: ReactNode;
   reporting: ReactNode;
-  clientDetails: ReactNode;
+  clientDetails?: ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -56,7 +56,7 @@ export function SeoProjectTabs({
     }
   }, [requestedTab]);
 
-  const panels: Record<TabKey, ReactNode> = {
+  const panels: Record<TabKey, ReactNode | undefined> = {
     pages,
     keywords,
     onPage,
@@ -66,11 +66,12 @@ export function SeoProjectTabs({
     reporting,
     client: clientDetails,
   };
+  const visibleTabs = TABS.filter((tab) => tab.key !== "client" || clientDetails !== undefined);
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap gap-2 border-b border-base-700/60 pb-3">
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = active === tab.key;
           return (
@@ -96,7 +97,7 @@ export function SeoProjectTabs({
         })}
       </div>
 
-      {panels[active]}
+      {panels[active] ?? panels.pages}
     </div>
   );
 }

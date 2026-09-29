@@ -31,8 +31,6 @@ export function Sidebar({
   unseenTasks?: number;
 }) {
   const isAdmin = profile?.role === "admin";
-  const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
-  const canAccessFinance = isAdmin || Boolean(profile?.canAccessFinance);
   const badgeByHref: Record<string, number> = {
     "/projects": unseenProjects,
     "/notes": unseenNotes,
@@ -62,7 +60,7 @@ export function Sidebar({
             <NotificationBadge count={badgeByHref[href] ?? 0} />
           </Link>
         ))}
-        {canAccessRenewals && (
+        {isAdmin && (
           <Link
             href="/domains"
             className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
@@ -71,7 +69,7 @@ export function Sidebar({
             Domains
           </Link>
         )}
-        {canAccessFinance && (
+        {isAdmin && (
           <Link
             href="/invoices"
             className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"

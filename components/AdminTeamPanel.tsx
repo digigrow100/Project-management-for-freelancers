@@ -1,19 +1,30 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { UserPlus, Trash2, ChevronDown, ShieldCheck, RefreshCcw, KeyRound, Wallet } from "lucide-react";
-import type { Profile, Project } from "@/lib/types";
+import { UserPlus, Trash2, ChevronDown, ShieldCheck, KeyRound, BriefcaseBusiness } from "lucide-react";
+import type { JobRole, Profile, Project } from "@/lib/types";
 import {
   assignProjectsAction,
   inviteTeamMemberAction,
   removeMemberAction,
   setMemberBacklinkCredentialAccessAction,
-  setMemberFinanceAccessAction,
-  setMemberRenewalsAccessAction,
   updateMemberRoleAction,
+  updateMemberJobRoleAction,
 } from "@/lib/actions";
 import { PROJECT_THEME } from "@/lib/projectTheme";
 import { cn } from "@/lib/utils";
+
+const JOB_ROLE_LABEL: Record<JobRole, string> = {
+  general: "General",
+  seo_expert: "SEO Expert",
+  web_developer: "Web Developer",
+};
+
+function projectMatchesJobRole(project: Project, jobRole: JobRole): boolean {
+  if (jobRole === "seo_expert") return project.type === "seo";
+  if (jobRole === "web_developer") return project.type === "web_dev" || project.type === "web_app";
+  return true;
+}
 
 export function AdminTeamPanel({
   currentUserId,
@@ -106,6 +117,15 @@ function InviteMemberForm() {
           <option value="member">Member (limited access)</option>
           <option value="admin">Admin (full access)</option>
         </select>
+        <select
+          name="jobRole"
+          defaultValue="general"
+          className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+        >
+          <option value="general">General</option>
+          <option value="seo_expert">SEO Expert</option>
+          <option value="web_developer">Web Developer</option>
+        </select>
       </div>
       <button
         type="submit"
@@ -155,6 +175,12 @@ function MemberRow({
                 Admin
               </span>
             )}
+            {member.role === "member" && (
+              <span className="flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-300">
+                <BriefcaseBusiness size={11} />
+                {JOB_ROLE_LABEL[member.jobRole]}
+              </span>
+            )}
           </div>
           <p className="text-xs text-neutral-500">{member.email}</p>
         </div>
@@ -174,6 +200,21 @@ function MemberRow({
             </select>
           )}
           {member.role === "member" && (
+            <select
+              value={member.jobRole}
+              disabled={isPending}
+              onChange={(e) =>
+                startTransition(() => updateMemberJobRoleAction(member.id, e.target.value as JobRole))
+              }
+              className="rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 focus:border-accent-500 focus:outline-none"
+              title="Work role"
+            >
+              <option value="general">General</option>
+              <option value="seo_expert">SEO Expert</option>
+              <option value="web_developer">Web Developer</option>
+            </select>
+          )}
+          {member.role === "member" && (
             <button
               type="button"
               onClick={() => setAssignOpen((v) => !v)}
@@ -181,25 +222,6 @@ function MemberRow({
             >
               Projects ({assignedIds.length})
               <ChevronDown size={13} className={cn("transition-transform", assignOpen && "rotate-180")} />
-            </button>
-          )}
-          {member.role === "member" && (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() =>
-                startTransition(() => setMemberRenewalsAccessAction(member.id, !member.canAccessRenewals))
-              }
-              className={cn(
-                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-50",
-                member.canAccessRenewals
-                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
-                  : "border-base-600 text-neutral-300 hover:border-accent-500/60 hover:text-accent-300",
-              )}
-              title={member.canAccessRenewals ? "Revoke Domains tab access" : "Grant Domains tab access"}
-            >
-              <RefreshCcw size={13} />
-              Domains {member.canAccessRenewals ? "on" : "off"}
             </button>
           )}
           {member.role === "member" && (
@@ -217,33 +239,10 @@ function MemberRow({
                   ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
                   : "border-base-600 text-neutral-300 hover:border-accent-500/60 hover:text-accent-300",
               )}
-              title={
-                member.canAccessBacklinkCredentials
-                  ? "Revoke backlink credential reveal access"
-                  : "Grant backlink credential reveal access"
-              }
+              title={member.canAccessBacklinkCredentials ? "Revoke backlink credential access" : "Grant backlink credential access"}
             >
               <KeyRound size={13} />
               Backlink creds {member.canAccessBacklinkCredentials ? "on" : "off"}
-            </button>
-          )}
-          {member.role === "member" && (
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() =>
-                startTransition(() => setMemberFinanceAccessAction(member.id, !member.canAccessFinance))
-              }
-              className={cn(
-                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-50",
-                member.canAccessFinance
-                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
-                  : "border-base-600 text-neutral-300 hover:border-accent-500/60 hover:text-accent-300",
-              )}
-              title={member.canAccessFinance ? "Revoke Finance access" : "Grant Finance access"}
-            >
-              <Wallet size={13} />
-              Finance {member.canAccessFinance ? "on" : "off"}
             </button>
           )}
           {!isSelf && (
@@ -275,7 +274,9 @@ function MemberRow({
           className="mt-3 flex flex-col gap-2 border-t border-base-700/60 pt-3"
         >
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {projects.map((project) => {
+            {projects
+              .filter((project) => projectMatchesJobRole(project, member.jobRole) || assignedIds.includes(project.id))
+              .map((project) => {
               const theme = PROJECT_THEME[project.type];
               return (
                 <label
@@ -294,7 +295,9 @@ function MemberRow({
                 </label>
               );
             })}
-            {projects.length === 0 && <p className="text-xs text-neutral-500">No projects yet.</p>}
+            {projects.filter((project) => projectMatchesJobRole(project, member.jobRole) || assignedIds.includes(project.id)).length === 0 && (
+              <p className="text-xs text-neutral-500">No projects match this work role.</p>
+            )}
           </div>
           <button
             type="submit"

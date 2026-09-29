@@ -165,12 +165,15 @@ export interface Project {
 }
 
 export type Role = "admin" | "member";
+export type JobRole = "general" | "seo_expert" | "web_developer";
 
 export interface Profile {
   id: string;
   email: string;
   name: string;
   role: Role;
+  /** Work specialty used for task routing. Separate from permission role. */
+  jobRole: JobRole;
   /** Members (non-admins) can be individually granted access to the Renewals tab. Admins always have access. */
   canAccessRenewals: boolean;
   /** Members (non-admins) can be individually granted permission to reveal backlink credentials. Admins always have access; project assignment alone is never enough. */

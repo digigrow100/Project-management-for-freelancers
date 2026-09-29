@@ -2,7 +2,6 @@ import { getCurrentProfile } from "@/lib/auth";
 import {
   getMyTasks,
   ensureIdleSeoTaskForMember,
-  getProjectsByIds,
   getProjectsForProfile,
   getTaskFocusStates,
   getTaskTimeTotals,
@@ -50,8 +49,9 @@ export default async function MyTasksPage() {
     getMyTasks(profile.id),
     getTaskFocusStates(profile.id),
   ]);
+  const taskProjectIds = new Set(tasks.map((task) => task.projectId));
   const [projects, timeTotals] = await Promise.all([
-    getProjectsByIds(tasks.map((task) => task.projectId)),
+    getProjectsForProfile(profile).then((items) => items.filter((project) => taskProjectIds.has(project.id))),
     getTaskTimeTotals(profile.id, tasks.map((task) => task.id)),
   ]);
   await markSectionSeen(profile.id, "tasks");

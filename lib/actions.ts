@@ -25,6 +25,7 @@ import type {
   DnsRecordType,
   DomainStatus,
   InvoiceStatus,
+  JobRole,
   KeywordGroupColor,
   KeywordRole,
   KeywordStatus,
@@ -722,10 +723,11 @@ export async function inviteTeamMemberAction(
   const password = str(formData, "password");
   const name = str(formData, "name");
   const role = (str(formData, "role") || "member") as Role;
+  const jobRole = (str(formData, "jobRole") || "general") as JobRole;
   if (!email || !password) return { ok: false, error: "Email and password are required." };
 
   try {
-    await store.inviteTeamMember({ email, password, name, role });
+    await store.inviteTeamMember({ email, password, name, role, jobRole });
     revalidatePath("/admin");
     return { ok: true };
   } catch (error) {
@@ -736,6 +738,12 @@ export async function inviteTeamMemberAction(
 export async function updateMemberRoleAction(userId: string, role: Role) {
   await requireAdmin();
   await store.updateMemberRole(userId, role);
+  revalidatePath("/admin");
+}
+
+export async function updateMemberJobRoleAction(userId: string, jobRole: JobRole) {
+  await requireAdmin();
+  await store.updateMemberJobRole(userId, jobRole);
   revalidatePath("/admin");
 }
 

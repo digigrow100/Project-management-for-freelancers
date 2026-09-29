@@ -52,8 +52,6 @@ export function MobileNav({
 }) {
   const pathname = usePathname();
   const isAdmin = profile?.role === "admin";
-  const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
-  const canAccessFinance = isAdmin || Boolean(profile?.canAccessFinance);
   const [moreOpen, setMoreOpen] = useState(false);
   const badgeByHref: Record<string, number> = {
     "/projects": unseenProjects,
@@ -62,14 +60,7 @@ export function MobileNav({
   };
 
   const financeItem = isAdmin ? MORE_NAV.find((item) => item.href === "/finance") : undefined;
-  const domainsItem = MORE_NAV.find((item) => item.href === "/domains");
-  const invoicesItem = MORE_NAV.find((item) => item.href === "/invoices");
-  const extraItems = isAdmin
-    ? MORE_NAV.filter((item) => item.href !== "/finance")
-    : [
-        ...(canAccessRenewals && domainsItem ? [domainsItem] : []),
-        ...(canAccessFinance && invoicesItem ? [invoicesItem] : []),
-      ];
+  const extraItems = isAdmin ? MORE_NAV.filter((item) => item.href !== "/finance") : [];
   const sheetItems = [...COMMON_MORE_NAV, ...extraItems];
 
   return (
