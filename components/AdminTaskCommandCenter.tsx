@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCircle2, Clock3, ExternalLink, PlayCircle, Search } from "lucide-react";
+import { Bell, CheckCircle2, Clock3, PlayCircle, Search } from "lucide-react";
 import type { Project, Task, TaskFocusState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
