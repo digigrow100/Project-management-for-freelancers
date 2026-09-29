@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, FileEdit, FileText, Link2, Search, TrendingUp, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type TabKey = "pages" | "keywords" | "onPage" | "technical" | "content" | "offPage" | "reporting" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
-  { key: "pages", label: "Pages", icon: FileText },
+  { key: "pages", label: "Website Pages", icon: FileText },
   { key: "keywords", label: "Keywords", icon: Search },
   { key: "onPage", label: "On-Page", icon: TrendingUp },
   { key: "technical", label: "Technical", icon: AlertTriangle },
@@ -42,7 +43,12 @@ export function SeoProjectTabs({
   reporting: ReactNode;
   clientDetails: ReactNode;
 }) {
-  const [active, setActive] = useState<TabKey>("pages");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("seoTab") as TabKey | null;
+  const initialTab = requestedTab && TABS.some((tab) => tab.key === requestedTab) ? requestedTab : "pages";
+  const [active, setActive] = useState<TabKey>(initialTab);
   const panels: Record<TabKey, ReactNode> = {
     pages,
     keywords,
@@ -63,7 +69,12 @@ export function SeoProjectTabs({
           return (
             <button
               key={tab.key}
-              onClick={() => setActive(tab.key)}
+              onClick={() => {
+                setActive(tab.key);
+                const next = new URLSearchParams(searchParams.toString());
+                next.set("seoTab", tab.key);
+                router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+              }}
               className={cn(
                 "flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
                 isActive
