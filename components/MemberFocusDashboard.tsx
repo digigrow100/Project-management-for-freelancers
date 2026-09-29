@@ -15,11 +15,9 @@ import {
   Pause,
   Play,
   Target,
-  Zap,
 } from "lucide-react";
 import type { Project, Task, TaskFocusState } from "@/lib/types";
 import {
-  bulkCompleteFocusTasksAction,
   completeFocusTaskAction,
   pauseFocusTaskAction,
   startFocusTaskAction,
@@ -90,7 +88,6 @@ export function MemberFocusDashboard({
 }) {
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
-  const [selectedBatch, setSelectedBatch] = useState<string[]>([]);
   const [browseOffset, setBrowseOffset] = useState(0);
 
   const today = localDateKey();
@@ -105,6 +102,14 @@ export function MemberFocusDashboard({
         .filter((task) => task.status === "done" && isCompletedToday(task, today))
         .sort((a, b) => (a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1),
     [tasks, today],
+  );
+
+  const doneTasks = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.status === "done")
+        .sort((a, b) => (a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1),
+    [tasks],
   );
 
   const activeTask = focusStates
@@ -144,7 +149,6 @@ export function MemberFocusDashboard({
   const safeOffset = browsePool.length === 0 ? 0 : Math.min(browseOffset, browsePool.length - 1);
   const currentTask = browsePool[safeOffset] ?? null;
   const currentFocus = currentTask ? focusByTask.get(currentTask.id) : undefined;
-  const nextTask = browsePool[safeOffset + 1] ?? queuedTasks.find((task) => task.id !== currentTask?.id) ?? null;
 
   const dailyCandidates = tasks.filter((task) => isPlannedForToday(task, today, focusByTask));
   const dailyTasks = dailyCandidates.length > 0 ? dailyCandidates : tasks.filter((task) => task.status !== "done" || isCompletedToday(task, today));
@@ -153,14 +157,15 @@ export function MemberFocusDashboard({
   const todayTotal = todayCompletedCount + todayOpenCount;
   const todayPercent = todayTotal === 0 ? 100 : Math.round((todayCompletedCount / todayTotal) * 100);
 
-  const quickBatchTasks = openTasks
-    .filter((task) => task.id !== currentTask?.id)
-    .sort(sortQueue)
-    .slice(0, 4);
+  const pausedTasks = focusStates
+    .filter((state) => state.state === "paused")
+    .map((state) => taskById.get(state.taskId))
+    .filter((task): task is Task => !!task && task.status !== "done")
+    .sort(sortQueue);
 
-  function toggleBatch(taskId: string) {
-    setSelectedBatch((ids) => (ids.includes(taskId) ? ids.filter((id) => id !== taskId) : [...ids, taskId]));
-  }
+  const upcomingTasks = openTasks
+    .filter((task) => task.id !== activeTask?.id && !pausedIds.has(task.id))
+    .sort(sortQueue);
 
   function startTask(task: Task) {
     startTransition(async () => {
@@ -179,16 +184,6 @@ export function MemberFocusDashboard({
   function completeTask(task: Task) {
     startTransition(async () => {
       await completeFocusTaskAction(task.id);
-      setBrowseOffset(0);
-    });
-  }
-
-  function completeBatch() {
-    if (selectedBatch.length === 0) return;
-    const ids = [...selectedBatch];
-    startTransition(async () => {
-      await bulkCompleteFocusTasksAction(ids);
-      setSelectedBatch([]);
       setBrowseOffset(0);
     });
   }
@@ -348,7 +343,7 @@ export function MemberFocusDashboard({
                     className="flex items-center justify-center gap-2 rounded-lg bg-accent-400 px-4 py-3 text-sm font-semibold text-base-950 hover:bg-accent-300"
                   >
                     <Play size={16} fill="currentColor" />
-                    {currentIsPaused ? "Resume" : "Start"}
+                    {currentIsPaused ? "Continue" : "Start"}
                   </button>
                 ) : (
                   <button
@@ -371,7 +366,7 @@ export function MemberFocusDashboard({
                 <button
                   type="button"
                   onClick={() => completeTask(currentTask)}
-                  className="flex items-center justify-center gap-2 rounded-lg border border-base-600 bg-base-800 px-4 py-3 text-sm font-medium text-neutral-200 hover:border-accent-500/50 hover:text-accent-300"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-base-950 shadow-sm hover:bg-emerald-400"
                 >
                   <Check size={17} />
                   Mark done
@@ -402,70 +397,26 @@ export function MemberFocusDashboard({
 
       <aside className="space-y-5">
         <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-          <div className="flex items-center gap-2">
-            <Zap size={22} className="text-accent-400" fill="currentColor" />
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold text-neutral-100">Quick Batch Update</h2>
-              <p className="text-xs text-neutral-500">Finished several tasks? Select them here.</p>
+              <h2 className="font-semibold text-neutral-100">Upcoming Tasks</h2>
+              <p className="mt-0.5 text-xs text-neutral-500">Tasks waiting in your queue.</p>
             </div>
+            <span className="grid h-7 min-w-7 place-items-center rounded-full bg-sky-500/10 px-2 text-xs font-semibold text-sky-300">
+              {upcomingTasks.length}
+            </span>
           </div>
-          <div className="mt-4 space-y-2">
-            {quickBatchTasks.length === 0 && <p className="py-4 text-center text-xs text-neutral-600">No other open tasks.</p>}
-            {quickBatchTasks.map((task) => {
-              const selected = selectedBatch.includes(task.id);
-              return (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => toggleBatch(task.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                    selected ? "border-accent-500/50 bg-accent-500/10" : "border-base-700 bg-base-900/60 hover:bg-base-800",
-                  )}
-                >
-                  <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-base-700 text-neutral-300", selected && "bg-accent-500 text-base-950")}>
-                    {selected ? <Check size={16} /> : <FileText size={15} />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-neutral-100">{task.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
-                      {projectById.get(task.projectId)?.name ?? "Project"}
-                    </span>
-                  </span>
-                  <span className="text-[11px] text-neutral-400">{selected ? "Selected" : "Done"}</span>
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            disabled={selectedBatch.length === 0}
-            onClick={completeBatch}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-accent-500/60 px-3 py-2.5 text-sm font-medium text-accent-300 hover:bg-accent-500/10 disabled:cursor-not-allowed disabled:border-base-700 disabled:text-neutral-600"
-          >
-            <Check size={16} />
-            Mark {selectedBatch.length || ""} {selectedBatch.length === 1 ? "Task" : "Tasks"} as Done
-          </button>
-        </section>
 
-        <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 size={21} className="text-accent-400" />
-              <h2 className="font-semibold text-neutral-100">Recently Finished</h2>
-            </div>
-            <span className="text-xs text-neutral-600">{completedToday.length} today</span>
-          </div>
-          <div className="mt-3 divide-y divide-base-700/70">
-            {completedToday.slice(0, 5).map((task) => (
+          <div className="mt-3 space-y-2">
+            {upcomingTasks.slice(0, 6).map((task, index) => (
               <button
                 key={task.id}
                 type="button"
                 onClick={() => setDetailTask(task)}
-                className="flex w-full items-center gap-3 py-3 text-left"
+                className="flex w-full items-center gap-3 rounded-lg border border-base-700 bg-base-900/60 px-3 py-2.5 text-left hover:bg-base-800"
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-base-700 text-neutral-300">
-                  <FileText size={15} />
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sky-500/10 text-xs font-semibold text-sky-300">
+                  {index + 1}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium text-neutral-100">{task.title}</span>
@@ -473,24 +424,91 @@ export function MemberFocusDashboard({
                     {projectById.get(task.projectId)?.name ?? "Project"}
                   </span>
                 </span>
-                <CheckCircle2 size={16} className="shrink-0 text-accent-400" />
+                <span className={cn("text-[10px] font-semibold uppercase", priorityTone(task.priority))}>
+                  {priorityLabel(task.priority)}
+                </span>
               </button>
             ))}
-            {completedToday.length === 0 && <p className="py-5 text-center text-xs text-neutral-600">Nothing finished today yet.</p>}
+            {upcomingTasks.length === 0 && (
+              <p className="py-4 text-center text-xs text-neutral-600">No upcoming tasks.</p>
+            )}
           </div>
         </section>
 
-        {nextTask && (
-          <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Up next</p>
-            <button type="button" onClick={() => setDetailTask(nextTask)} className="mt-2 w-full text-left">
-              <p className="text-sm font-semibold text-neutral-100 hover:text-accent-300">{nextTask.title}</p>
-              <p className="mt-1 text-xs text-neutral-500">{projectById.get(nextTask.projectId)?.name ?? "Project"}</p>
-            </button>
-          </section>
-        )}
-      </aside>
+        <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-neutral-100">Continue Tasks</h2>
+              <p className="mt-0.5 text-xs text-neutral-500">Started tasks that are paused for now.</p>
+            </div>
+            <span className="grid h-7 min-w-7 place-items-center rounded-full bg-amber-500/10 px-2 text-xs font-semibold text-amber-300">
+              {pausedTasks.length}
+            </span>
+          </div>
 
+          <div className="mt-3 space-y-2">
+            {pausedTasks.slice(0, 6).map((task, index) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => startTask(task)}
+                className="flex w-full items-center gap-3 rounded-lg border border-amber-500/15 bg-amber-500/5 px-3 py-2.5 text-left hover:bg-amber-500/10"
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-500/10 text-xs font-semibold text-amber-300">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-neutral-100">{task.title}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
+                    {projectById.get(task.projectId)?.name ?? "Project"}
+                  </span>
+                </span>
+                <span className="text-[11px] font-medium text-amber-300">Continue</span>
+              </button>
+            ))}
+            {pausedTasks.length === 0 && (
+              <p className="py-4 text-center text-xs text-neutral-600">No paused tasks.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-neutral-100">Done Tasks</h2>
+              <p className="mt-0.5 text-xs text-neutral-500">Recently completed assigned work.</p>
+            </div>
+            <span className="grid h-7 min-w-7 place-items-center rounded-full bg-emerald-500/10 px-2 text-xs font-semibold text-emerald-300">
+              {doneTasks.length}
+            </span>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {doneTasks.slice(0, 6).map((task, index) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => setDetailTask(task)}
+                className="flex w-full items-center gap-3 rounded-lg border border-base-700 bg-base-900/40 px-3 py-2.5 text-left"
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-xs font-semibold text-emerald-300">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-neutral-200">{task.title}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-neutral-600">
+                    {projectById.get(task.projectId)?.name ?? "Project"}
+                  </span>
+                </span>
+                <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+              </button>
+            ))}
+            {doneTasks.length === 0 && (
+              <p className="py-4 text-center text-xs text-neutral-600">No completed tasks yet.</p>
+            )}
+          </div>
+        </section>
+      </aside>
       {detailTask && (
         <MemberTaskDetailModal
           task={detailTask}
