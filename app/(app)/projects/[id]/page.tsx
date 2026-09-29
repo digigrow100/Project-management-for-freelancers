@@ -16,6 +16,8 @@ import {
   listKeywords,
   listMonthlyPositions,
   listPaymentPlansForProject,
+  listProjectPages,
+  listPageAuditChecks,
   listProjectAttachments,
   listSeoReports,
   listTechnicalIssues,
@@ -50,6 +52,7 @@ import { SeoReportingPanel } from "@/components/SeoReportingPanel";
 import { ProjectAttachments } from "@/components/ProjectAttachments";
 import { OffPagePanel } from "@/components/OffPagePanel";
 import { WebAppFeaturesPanel } from "@/components/WebAppFeaturesPanel";
+import { WebsitePagesPanel } from "@/components/WebsitePagesPanel";
 import { PROJECT_THEME } from "@/lib/projectTheme";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
@@ -115,6 +118,11 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const contentItems = project.type === "seo" ? await listContentItems(project.id) : [];
   const seoReports = project.type === "seo" ? await listSeoReports(project.id) : [];
   const reportPreferences = project.type === "seo" ? await getReportPreferences(project.id) : undefined;
+
+  const pageAuditMonth = new Date().toISOString().slice(0, 7);
+  const projectPages = project.type === "seo" ? await listProjectPages(project.id) : [];
+  const pageAuditChecks =
+    project.type === "seo" ? await listPageAuditChecks(project.id, pageAuditMonth) : [];
 
   const tasksByPage: Record<string, typeof tasks> = {};
   const tasksByContentItem: Record<string, typeof tasks> = {};
@@ -260,6 +268,14 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
       {project.type === "seo" ? (
         <SeoProjectTabs
+          pages={
+            <WebsitePagesPanel
+              projectId={project.id}
+              pages={projectPages}
+              checks={pageAuditChecks}
+              periodMonth={pageAuditMonth}
+            />
+          }
           keywords={
             <KeywordsPanel
               projectId={project.id}
