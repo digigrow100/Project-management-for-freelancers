@@ -2513,6 +2513,47 @@ export async function removeKeywordFromPage(keywordId: string, pageId: string): 
   }
 }
 
+/** Keeps cluster, role, primary target page, and the page-primary flag consistent. */
+export async function setKeywordMappingStrategy(
+  keywordId: string,
+  input: {
+    keywordRole: KeywordRole;
+    targetMode: KeywordTargetMode;
+    suggestedPageName: string;
+    clusterId: string | null;
+    primaryPageId: string | null;
+  },
+): Promise<void> {
+  const primaryPageId = input.targetMode === "new_page_required" ? null : input.primaryPageId;
+
+  const { error: updateError } = await getSupabase()
+    .from("freelance_hq_keywords")
+    .update({
+      keyword_role: input.keywordRole,
+      target_mode: input.targetMode,
+      suggested_page_name: input.suggestedPageName,
+      cluster_id: input.clusterId,
+      primary_page_id: primaryPageId,
+      updated_at: nowIso(),
+    })
+    .eq("id", keywordId);
+  if (updateError) throw updateError;
+
+  const { error: clearError } = await getSupabase()
+    .from("freelance_hq_keyword_page_links")
+    .update({ is_primary: false })
+    .eq("keyword_id", keywordId);
+  if (clearError) throw clearError;
+
+  if (!primaryPageId) return;
+
+  await addKeywordToPage(keywordId, primaryPageId);
+
+  if (input.keywordRole === "primary") {
+    await setPrimaryKeywordForPage(primaryPageId, keywordId);
+  }
+}
+
 interface KeywordGroupRow {
   id: string;
   project_id: string;
