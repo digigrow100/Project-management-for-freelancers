@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, FileEdit, FileText, Link2, Search, TrendingUp, User } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,13 @@ export function SeoProjectTabs({
   const requestedTab = searchParams.get("seoTab") as TabKey | null;
   const initialTab = requestedTab && TABS.some((tab) => tab.key === requestedTab) ? requestedTab : "pages";
   const [active, setActive] = useState<TabKey>(initialTab);
+
+  useEffect(() => {
+    if (requestedTab && TABS.some((tab) => tab.key === requestedTab)) {
+      setActive(requestedTab);
+    }
+  }, [requestedTab]);
+
   const panels: Record<TabKey, ReactNode> = {
     pages,
     keywords,
