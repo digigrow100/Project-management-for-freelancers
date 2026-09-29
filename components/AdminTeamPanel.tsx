@@ -1,13 +1,12 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { UserPlus, Trash2, ChevronDown, ShieldCheck, KeyRound, BriefcaseBusiness } from "lucide-react";
+import { UserPlus, Trash2, ChevronDown, ShieldCheck, BriefcaseBusiness } from "lucide-react";
 import type { JobRole, Profile, Project } from "@/lib/types";
 import {
   assignProjectsAction,
   inviteTeamMemberAction,
   removeMemberAction,
-  setMemberBacklinkCredentialAccessAction,
   updateMemberRoleAction,
   updateMemberJobRoleAction,
 } from "@/lib/actions";
