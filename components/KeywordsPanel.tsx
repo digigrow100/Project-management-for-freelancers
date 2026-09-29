@@ -8,6 +8,8 @@ import type {
   KeywordMonthlyPosition,
   KeywordPage,
   KeywordRankHistoryEntry,
+  KeywordRole,
+  KeywordTargetMode,
   KeywordStatus,
   Priority,
   SearchIntent,
@@ -27,6 +29,7 @@ import {
 import { cn, formatDateKey } from "@/lib/utils";
 import { MonthlyPositionTracker } from "@/components/MonthlyPositionTracker";
 import { KeywordGroupsCarousel } from "@/components/KeywordGroupsCarousel";
+import { KeywordMappingOverview } from "@/components/KeywordMappingOverview";
 
 type SortMode = "default" | "rank_asc" | "rank_desc";
 
@@ -68,6 +71,12 @@ const EXPORT_COLUMNS = [
   "Current Rank",
   "Target Rank",
   "Status",
+  "Search Intent",
+  "Priority",
+  "Keyword Role",
+  "Target Mode",
+  "Suggested Page",
+  "Cluster",
   "Notes",
 ] as const;
 
@@ -79,13 +88,37 @@ function normalizeStatus(value: unknown): KeywordStatus {
   return key in STATUS_LABEL ? (key as KeywordStatus) : "not_started";
 }
 
+function normalizeIntent(value: unknown): SearchIntent | null {
+  const key = String(value ?? "").trim().toLowerCase();
+  return ["informational", "navigational", "commercial", "transactional", "local"].includes(key)
+    ? (key as SearchIntent)
+    : null;
+}
+
+function normalizePriority(value: unknown): Priority {
+  const key = String(value ?? "").trim().toLowerCase();
+  return key === "high" || key === "low" ? key : "medium";
+}
+
+function normalizeKeywordRole(value: unknown): KeywordRole | undefined {
+  const key = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ["primary", "secondary", "supporting", "long_tail"].includes(key) ? (key as KeywordRole) : undefined;
+}
+
+function normalizeTargetMode(value: unknown): KeywordTargetMode | undefined {
+  const key = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["new_page", "new_page_required", "new"].includes(key)) return "new_page_required";
+  if (["existing", "existing_page", "mapped"].includes(key)) return "existing_page";
+  return undefined;
+}
+
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-async function exportKeywords(projectName: string, keywords: Keyword[]) {
+async function exportKeywords(projectName: string, keywords: Keyword[], groups: KeywordGroup[] = []) {
   const XLSX = await import("xlsx");
   const rows = keywords.map((k) => ({
     Keyword: k.keyword,
@@ -95,6 +128,12 @@ async function exportKeywords(projectName: string, keywords: Keyword[]) {
     "Current Rank": k.currentRank ?? "",
     "Target Rank": k.targetRank ?? "",
     Status: STATUS_LABEL[k.status],
+    "Search Intent": k.searchIntent ?? "",
+    Priority: k.priority,
+    "Keyword Role": k.keywordRole,
+    "Target Mode": k.targetMode,
+    "Suggested Page": k.suggestedPageName,
+    Cluster: groups.find((group) => group.id === k.clusterId)?.name ?? "",
     Notes: k.notes,
   }));
   const sheet = XLSX.utils.json_to_sheet(rows, { header: [...EXPORT_COLUMNS] });
@@ -131,6 +170,12 @@ async function parseKeywordFile(file: File) {
     targetRank: toNumberOrNull(pick(row, "target rank", "goal rank")),
     status: normalizeStatus(pick(row, "status")),
     notes: String(pick(row, "notes", "note") ?? "").trim(),
+    searchIntent: normalizeIntent(pick(row, "search intent", "intent")),
+    priority: normalizePriority(pick(row, "priority")),
+    keywordRole: normalizeKeywordRole(pick(row, "keyword role", "role")),
+    targetMode: normalizeTargetMode(pick(row, "target mode", "mapping")),
+    suggestedPageName: String(pick(row, "suggested page", "new page", "suggested page name") ?? "").trim(),
+    clusterName: String(pick(row, "cluster", "keyword cluster", "group") ?? "").trim(),
   }));
 }
 
@@ -212,6 +257,8 @@ export function KeywordsPanel({
         key={keyword.id}
         projectId={projectId}
         keyword={keyword}
+        groups={groups}
+        pagesByGroup={pagesByGroup}
         onCancel={() => setEditingId(null)}
         onSaved={() => setEditingId(null)}
       />
@@ -288,6 +335,8 @@ export function KeywordsPanel({
 
   return (
     <div className="flex flex-col gap-6">
+      <KeywordMappingOverview projectId={projectId} keywords={keywords} groups={groups} pagesByGroup={pagesByGroup} />
+
       <KeywordGroupsCarousel
         projectId={projectId}
         groups={groups}
@@ -322,7 +371,7 @@ export function KeywordsPanel({
           </button>
           <button
             type="button"
-            onClick={() => exportKeywords(projectName, keywords)}
+            onClick={() => exportKeywords(projectName, keywords, groups)}
             disabled={keywords.length === 0}
             className="flex items-center gap-1 text-xs text-neutral-400 hover:text-accent-300 disabled:opacity-40 disabled:hover:text-neutral-400"
           >
@@ -396,7 +445,7 @@ export function KeywordsPanel({
 
       {adding && (
         <div className="mb-3">
-          <KeywordForm projectId={projectId} keyword={null} onCancel={() => setAdding(false)} onSaved={() => setAdding(false)} />
+          <KeywordForm projectId={projectId} keyword={null} groups={groups} pagesByGroup={pagesByGroup} onCancel={() => setAdding(false)} onSaved={() => setAdding(false)} />
         </div>
       )}
 
@@ -421,7 +470,7 @@ export function KeywordsPanel({
               setSelectedUngrouped(new Set());
             });
           }}
-          onExport={() => exportKeywords(projectName, sortedKeywords.filter((k) => selectedUngrouped.has(k.id)))}
+          onExport={() => exportKeywords(projectName, sortedKeywords.filter((k) => selectedUngrouped.has(k.id)), groups)}
           onDelete={() => {
             if (!confirm(`Delete ${selectedUngrouped.size} keyword${selectedUngrouped.size === 1 ? "" : "s"}? This can't be undone.`)) return;
             const ids = [...selectedUngrouped];
@@ -456,7 +505,7 @@ export function KeywordsPanel({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords)}
+                onClick={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords, groups)}
                 disabled={modalKeywords.length === 0}
                 className="flex items-center gap-1 text-xs text-neutral-400 hover:text-accent-300 disabled:opacity-40"
               >
@@ -488,6 +537,8 @@ export function KeywordsPanel({
                 projectId={projectId}
                 keyword={null}
                 defaultPageId={modalPage.id}
+                groups={groups}
+                pagesByGroup={pagesByGroup}
                 onCancel={() => setAddingInModal(false)}
                 onSaved={() => setAddingInModal(false)}
               />
@@ -521,7 +572,7 @@ export function KeywordsPanel({
                     setSelectedInModal(new Set());
                   });
                 }}
-                onExport={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords.filter((k) => selectedInModal.has(k.id)))}
+                onExport={() => exportKeywords(`${projectName}-${modalPage.name}`, modalKeywords.filter((k) => selectedInModal.has(k.id)), groups)}
                 onDelete={() => {
                   if (!confirm(`Delete ${selectedInModal.size} keyword${selectedInModal.size === 1 ? "" : "s"}? This can't be undone.`))
                     return;
@@ -612,7 +663,7 @@ export function KeywordsPanel({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => exportKeywords(projectName, keywords)}
+                onClick={() => exportKeywords(projectName, keywords, groups)}
                 disabled={keywords.length === 0}
                 className="flex items-center gap-1 text-xs text-neutral-400 hover:text-accent-300 disabled:opacity-40"
               >
@@ -649,7 +700,7 @@ export function KeywordsPanel({
                     setSelectedAll(new Set());
                   });
                 }}
-                onExport={() => exportKeywords(projectName, keywords.filter((k) => selectedAll.has(k.id)))}
+                onExport={() => exportKeywords(projectName, keywords.filter((k) => selectedAll.has(k.id)), groups)}
                 onDelete={() => {
                   if (!confirm(`Delete ${selectedAll.size} keyword${selectedAll.size === 1 ? "" : "s"}? This can't be undone.`)) return;
                   const ids = [...selectedAll];
@@ -954,6 +1005,12 @@ function KeywordRow({
           <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="break-words text-base font-semibold text-neutral-100">{keyword.keyword}</p>
+            <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+              {keyword.keywordRole.replace("_", " ")}
+            </span>
+            {keyword.targetMode === "new_page_required" && (
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">New page required</span>
+            )}
             {keyword.currentRank !== null && (
               <span className="rounded-full bg-base-950 px-2 py-0.5 text-xs font-medium text-neutral-300">
                 #{keyword.currentRank}
@@ -1254,7 +1311,7 @@ function PageKeywordsTable({
               return (
                 <tr key={keyword.id} className="border-b border-base-700/60">
                   <td colSpan={7} className="bg-base-850 p-2">
-                    <KeywordForm projectId={projectId} keyword={keyword} onCancel={onCancelEdit} onSaved={onSaved} />
+                    <KeywordForm projectId={projectId} keyword={keyword} groups={groups} pagesByGroup={pagesByGroup} onCancel={onCancelEdit} onSaved={onSaved} />
                   </td>
                 </tr>
               );
@@ -1420,16 +1477,22 @@ function KeywordForm({
   projectId,
   keyword,
   defaultPageId,
+  groups,
+  pagesByGroup,
   onSaved,
   onCancel,
 }: {
   projectId: string;
   keyword: Keyword | null;
   defaultPageId?: string;
+  groups: KeywordGroup[];
+  pagesByGroup: Record<string, KeywordPage[]>;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
+  const [targetMode, setTargetMode] = useState<KeywordTargetMode>(keyword?.targetMode ?? "existing_page");
+  const defaultPrimaryPage = keyword?.primaryPageId ?? defaultPageId ?? "";
 
   return (
     <form
@@ -1442,86 +1505,101 @@ function KeywordForm({
           onSaved();
         });
       }}
-      className="flex flex-col gap-2 rounded-lg border border-base-700/60 bg-base-900 p-3"
+      className="flex flex-col gap-3 rounded-lg border border-base-700/60 bg-base-900 p-3"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-neutral-400">{keyword ? "Edit keyword" : "New keyword"}</span>
-        <button type="button" onClick={onCancel} className="text-neutral-500 hover:text-neutral-300">
-          <X size={14} />
-        </button>
+        <span className="text-xs font-medium text-neutral-400">{keyword ? "Edit keyword mapping" : "New keyword"}</span>
+        <button type="button" onClick={onCancel} className="text-neutral-500 hover:text-neutral-300"><X size={14} /></button>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <input
-          name="keyword"
-          required
-          placeholder="Keyword or phrase"
-          defaultValue={keyword?.keyword ?? ""}
-          className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
-        />
-        {/* targetPage is frozen (legacy free-text field) — shown read-only for
-            older keywords that still have one, never collected for new ones.
-            Use the Pages picker below (or the On-Page module) to set the
-            real target page going forward. */}
-        {keyword?.targetPage ? (
-          <input
-            disabled
-            value={keyword.targetPage}
-            title="Legacy target page — read-only. Use the page picker instead."
-            className="w-full rounded-md border border-base-700/60 bg-base-900/60 px-2.5 py-1.5 text-sm text-neutral-500"
-          />
-        ) : (
-          <div />
-        )}
-      </div>
+
+      <input
+        name="keyword"
+        required
+        placeholder="Keyword or phrase"
+        defaultValue={keyword?.keyword ?? ""}
+        className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+      />
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <NumberField name="searchVolume" label="Volume" defaultValue={keyword?.searchVolume} />
         <NumberField name="difficulty" label="Difficulty" defaultValue={keyword?.difficulty} />
         <NumberField name="currentRank" label="Current rank" defaultValue={keyword?.currentRank} />
         <NumberField name="targetRank" label="Target rank" defaultValue={keyword?.targetRank} />
       </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <SelectField name="status" label="Status" defaultValue={keyword?.status ?? "not_started"} options={[
+          ["not_started","Not started"],["in_progress","In progress"],["ranking","Ranking"],["achieved","Achieved"]
+        ]} />
+        <SelectField name="priority" label="Priority" defaultValue={keyword?.priority ?? "medium"} options={[
+          ["low","Low"],["medium","Medium"],["high","High"]
+        ]} />
+        <SelectField name="searchIntent" label="Search intent" defaultValue={keyword?.searchIntent ?? ""} options={[
+          ["","Not set"],["local","Local"],["commercial","Commercial"],["transactional","Transactional"],["informational","Informational"],["navigational","Navigational"]
+        ]} />
+        <SelectField name="keywordRole" label="Keyword role" defaultValue={keyword?.keywordRole ?? "secondary"} options={[
+          ["primary","Primary"],["secondary","Secondary"],["supporting","Supporting"],["long_tail","Long-tail"]
+        ]} />
+      </div>
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div>
-          <label className="mb-1 block text-[11px] text-neutral-500">Status</label>
+          <label className="mb-1 block text-[11px] text-neutral-500">Target</label>
           <select
-            name="status"
-            defaultValue={keyword?.status ?? "not_started"}
+            name="targetMode"
+            value={targetMode}
+            onChange={(e) => setTargetMode(e.target.value as KeywordTargetMode)}
             className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
           >
-            {(Object.keys(STATUS_LABEL) as KeywordStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
+            <option value="existing_page">Existing page</option>
+            <option value="new_page_required">New page required</option>
           </select>
         </div>
+
         <div>
-          <label className="mb-1 block text-[11px] text-neutral-500">Priority</label>
+          <label className="mb-1 block text-[11px] text-neutral-500">Cluster</label>
           <select
-            name="priority"
-            defaultValue={keyword?.priority ?? "medium"}
+            name="clusterId"
+            defaultValue={keyword?.clusterId ?? ""}
             className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
           >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
+            <option value="">No cluster</option>
+            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
           </select>
         </div>
-        <div>
-          <label className="mb-1 block text-[11px] text-neutral-500">Search intent</label>
-          <select
-            name="searchIntent"
-            defaultValue={keyword?.searchIntent ?? ""}
-            className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
-          >
-            <option value="">Not set</option>
-            <option value="local">Local</option>
-            <option value="commercial">Commercial</option>
-            <option value="transactional">Transactional</option>
-            <option value="informational">Informational</option>
-            <option value="navigational">Navigational</option>
-          </select>
-        </div>
+
+        {targetMode === "existing_page" ? (
+          <div>
+            <label className="mb-1 block text-[11px] text-neutral-500">Primary target page</label>
+            <select
+              name="primaryPageId"
+              defaultValue={defaultPrimaryPage}
+              className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+            >
+              <option value="">Not mapped yet</option>
+              {groups.map((group) => (
+                <optgroup key={group.id} label={group.name}>
+                  {(pagesByGroup[group.id] ?? []).map((page) => <option key={page.id} value={page.id}>{page.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="mb-1 block text-[11px] text-neutral-500">Suggested new page</label>
+            <input
+              name="suggestedPageName"
+              defaultValue={keyword?.suggestedPageName ?? ""}
+              placeholder="e.g. Car Recovery Bishop Auckland"
+              className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+            />
+          </div>
+        )}
       </div>
+
+      {targetMode === "existing_page" && <input type="hidden" name="suggestedPageName" value="" />}
+      {targetMode === "new_page_required" && <input type="hidden" name="primaryPageId" value="" />}
+
       <textarea
         name="notes"
         rows={2}
@@ -1529,23 +1607,35 @@ function KeywordForm({
         defaultValue={keyword?.notes ?? ""}
         className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
       />
+
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="w-fit rounded-md bg-accent-500 px-3 py-1.5 text-xs font-medium text-base-950 hover:bg-accent-400 disabled:opacity-60"
-        >
+        <button type="submit" disabled={isPending} className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-medium text-base-950 hover:bg-accent-400 disabled:opacity-60">
           {isPending ? "Saving…" : "Save keyword"}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="w-fit rounded-md border border-base-600 px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200"
-        >
-          Cancel
-        </button>
+        <button type="button" onClick={onCancel} className="rounded-md border border-base-600 px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200">Cancel</button>
       </div>
     </form>
+  );
+}
+
+function SelectField({
+  name,
+  label,
+  defaultValue,
+  options,
+}: {
+  name: string;
+  label: string;
+  defaultValue: string;
+  options: Array<[string, string]>;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] text-neutral-500">{label}</label>
+      <select name={name} defaultValue={defaultValue} className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none">
+        {options.map(([value, text]) => <option key={value || "empty"} value={value}>{text}</option>)}
+      </select>
+    </div>
   );
 }
 

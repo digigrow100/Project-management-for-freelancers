@@ -188,6 +188,8 @@ export type KeywordStatus = "not_started" | "in_progress" | "ranking" | "achieve
 
 export type SearchIntent = "informational" | "navigational" | "commercial" | "transactional" | "local";
 export type Priority = "low" | "medium" | "high";
+export type KeywordRole = "primary" | "secondary" | "supporting" | "long_tail";
+export type KeywordTargetMode = "existing_page" | "new_page_required";
 
 export interface Keyword {
   id: string;
@@ -205,6 +207,16 @@ export interface Keyword {
   pageIds: string[];
   searchIntent: SearchIntent | null;
   priority: Priority;
+  /** Role inside the keyword-to-page strategy. */
+  keywordRole: KeywordRole;
+  /** Whether this keyword targets an existing page or indicates a new page should be created. */
+  targetMode: KeywordTargetMode;
+  /** Suggested page name when targetMode is new_page_required. */
+  suggestedPageName: string;
+  /** Optional topic cluster, independent of whether a final page has been chosen yet. */
+  clusterId: string | null;
+  /** The single primary target page for this keyword. Other pageIds are related/supporting links. */
+  primaryPageId: string | null;
   createdAt: string;
   updatedAt: string;
 }
