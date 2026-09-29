@@ -6,7 +6,6 @@ import {
   getCompletedTasks,
   ensureIdleSeoTaskForMember,
   getMyTasks,
-  ensureIdleSeoTaskForMember,
   getOpenTasks,
   getProjectsByIds,
   getTaskFocusStates,
