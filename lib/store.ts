@@ -1093,7 +1093,7 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
     .eq("assigned_to", userId);
   if (error) throw error;
 
-  await closeOpenTimeEntries(userId, now);
+  await closeOpenTimeEntriesForTask(taskId, now);
 
   try {
     const { error: focusError } = await getSupabase()
