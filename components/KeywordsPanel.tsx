@@ -71,6 +71,12 @@ const EXPORT_COLUMNS = [
   "Current Rank",
   "Target Rank",
   "Status",
+  "Search Intent",
+  "Priority",
+  "Keyword Role",
+  "Target Mode",
+  "Suggested Page",
+  "Cluster",
   "Notes",
 ] as const;
 
@@ -122,6 +128,12 @@ async function exportKeywords(projectName: string, keywords: Keyword[]) {
     "Current Rank": k.currentRank ?? "",
     "Target Rank": k.targetRank ?? "",
     Status: STATUS_LABEL[k.status],
+    "Search Intent": k.searchIntent ?? "",
+    Priority: k.priority,
+    "Keyword Role": k.keywordRole,
+    "Target Mode": k.targetMode,
+    "Suggested Page": k.suggestedPageName,
+    Cluster: k.clusterId ?? "",
     Notes: k.notes,
   }));
   const sheet = XLSX.utils.json_to_sheet(rows, { header: [...EXPORT_COLUMNS] });
@@ -163,6 +175,7 @@ async function parseKeywordFile(file: File) {
     keywordRole: normalizeKeywordRole(pick(row, "keyword role", "role")),
     targetMode: normalizeTargetMode(pick(row, "target mode", "mapping")),
     suggestedPageName: String(pick(row, "suggested page", "new page", "suggested page name") ?? "").trim(),
+    clusterName: String(pick(row, "cluster", "keyword cluster", "group") ?? "").trim(),
   }));
 }
 
