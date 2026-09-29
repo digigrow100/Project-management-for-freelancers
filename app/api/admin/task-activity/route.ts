@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentProfile } from "@/lib/auth";
-import { getAllTaskFocusStates, getCompletedTasks, getOpenTasks } from "@/lib/store";
+import { getAllTaskFocusStates, getOpenTasks, getRecentCompletedTasks } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +12,13 @@ export async function GET() {
 
   const [openTasks, completedTasks, focusStates] = await Promise.all([
     getOpenTasks(),
-    getCompletedTasks(),
+    getRecentCompletedTasks(50),
     getAllTaskFocusStates(),
   ]);
 
   return NextResponse.json({
     openTasks,
-    completedTasks: completedTasks.slice(0, 50),
+    completedTasks,
     focusStates,
   });
 }
