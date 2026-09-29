@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { UserPlus, Trash2, ChevronDown, ShieldCheck, RefreshCcw, KeyRound, Wallet } from "lucide-react";
-import type { Profile, Project } from "@/lib/types";
+import { UserPlus, Trash2, ChevronDown, ShieldCheck, RefreshCcw, KeyRound, Wallet, BriefcaseBusiness } from "lucide-react";
+import type { JobRole, Profile, Project } from "@/lib/types";
 import {
   assignProjectsAction,
   inviteTeamMemberAction,
@@ -11,9 +11,22 @@ import {
   setMemberFinanceAccessAction,
   setMemberRenewalsAccessAction,
   updateMemberRoleAction,
+  updateMemberJobRoleAction,
 } from "@/lib/actions";
 import { PROJECT_THEME } from "@/lib/projectTheme";
 import { cn } from "@/lib/utils";
+
+const JOB_ROLE_LABEL: Record<JobRole, string> = {
+  general: "General",
+  seo_expert: "SEO Expert",
+  web_developer: "Web Developer",
+};
+
+function projectMatchesJobRole(project: Project, jobRole: JobRole): boolean {
+  if (jobRole === "seo_expert") return project.type === "seo";
+  if (jobRole === "web_developer") return project.type === "web_dev" || project.type === "web_app";
+  return true;
+}
 
 export function AdminTeamPanel({
   currentUserId,
@@ -106,6 +119,15 @@ function InviteMemberForm() {
           <option value="member">Member (limited access)</option>
           <option value="admin">Admin (full access)</option>
         </select>
+        <select
+          name="jobRole"
+          defaultValue="general"
+          className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
+        >
+          <option value="general">General</option>
+          <option value="seo_expert">SEO Expert</option>
+          <option value="web_developer">Web Developer</option>
+        </select>
       </div>
       <button
         type="submit"
@@ -155,6 +177,12 @@ function MemberRow({
                 Admin
               </span>
             )}
+            {member.role === "member" && (
+              <span className="flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-300">
+                <BriefcaseBusiness size={11} />
+                {JOB_ROLE_LABEL[member.jobRole]}
+              </span>
+            )}
           </div>
           <p className="text-xs text-neutral-500">{member.email}</p>
         </div>
@@ -171,6 +199,21 @@ function MemberRow({
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>
+            </select>
+          )}
+          {member.role === "member" && (
+            <select
+              value={member.jobRole}
+              disabled={isPending}
+              onChange={(e) =>
+                startTransition(() => updateMemberJobRoleAction(member.id, e.target.value as JobRole))
+              }
+              className="rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 focus:border-accent-500 focus:outline-none"
+              title="Work role"
+            >
+              <option value="general">General</option>
+              <option value="seo_expert">SEO Expert</option>
+              <option value="web_developer">Web Developer</option>
             </select>
           )}
           {member.role === "member" && (
@@ -275,7 +318,9 @@ function MemberRow({
           className="mt-3 flex flex-col gap-2 border-t border-base-700/60 pt-3"
         >
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {projects.map((project) => {
+            {projects
+              .filter((project) => projectMatchesJobRole(project, member.jobRole) || assignedIds.includes(project.id))
+              .map((project) => {
               const theme = PROJECT_THEME[project.type];
               return (
                 <label
@@ -294,7 +339,9 @@ function MemberRow({
                 </label>
               );
             })}
-            {projects.length === 0 && <p className="text-xs text-neutral-500">No projects yet.</p>}
+            {projects.filter((project) => projectMatchesJobRole(project, member.jobRole) || assignedIds.includes(project.id)).length === 0 && (
+              <p className="text-xs text-neutral-500">No projects match this work role.</p>
+            )}
           </div>
           <button
             type="submit"
