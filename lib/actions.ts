@@ -33,6 +33,8 @@ import type {
   OnPageStatus,
   OutreachStatus,
   PageType,
+  PageAuditStatus,
+  ProjectPageType,
   PaymentKind,
   PaymentPlanType,
   Priority,
@@ -1029,6 +1031,46 @@ export async function generateDueInvoiceDraftsAction(): Promise<number> {
   revalidatePath("/invoices");
   revalidatePath("/finance");
   return created.length;
+}
+
+
+export async function createProjectPageAction(formData: FormData) {
+  const projectId = str(formData, "projectId");
+  const name = str(formData, "name");
+  if (!projectId || !name) return;
+  await requireProjectAccess(projectId);
+  await store.createProjectPage({
+    projectId,
+    name,
+    url: str(formData, "url"),
+    pageType: (str(formData, "pageType") || "other") as ProjectPageType,
+  });
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteProjectPageAction(pageId: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  await store.deleteProjectPage(pageId, projectId);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updatePageAuditCheckAction(input: {
+  projectId: string;
+  pageId: string;
+  periodMonth: string;
+  checkKey: string;
+  status: PageAuditStatus;
+}) {
+  const profile = await requireProfile();
+  await requireProjectAccess(input.projectId);
+  await store.updatePageAuditCheck(
+    input.pageId,
+    input.periodMonth,
+    input.checkKey,
+    input.status,
+    profile.id,
+  );
+  revalidatePath(`/projects/${input.projectId}`);
 }
 
 export async function createKeywordAction(formData: FormData) {

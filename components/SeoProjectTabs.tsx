@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, BarChart3, FileEdit, Link2, Search, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, BarChart3, FileEdit, FileText, Link2, Search, TrendingUp, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "keywords" | "onPage" | "technical" | "content" | "offPage" | "reporting" | "client";
+type TabKey = "pages" | "keywords" | "onPage" | "technical" | "content" | "offPage" | "reporting" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
+  { key: "pages", label: "Pages", icon: FileText },
   { key: "keywords", label: "Keywords", icon: Search },
   { key: "onPage", label: "On-Page", icon: TrendingUp },
   { key: "technical", label: "Technical", icon: AlertTriangle },
@@ -23,6 +24,7 @@ const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
  * connects to.
  */
 export function SeoProjectTabs({
+  pages,
   keywords,
   onPage,
   technical,
@@ -31,6 +33,7 @@ export function SeoProjectTabs({
   reporting,
   clientDetails,
 }: {
+  pages: ReactNode;
   keywords: ReactNode;
   onPage: ReactNode;
   technical: ReactNode;
@@ -39,8 +42,9 @@ export function SeoProjectTabs({
   reporting: ReactNode;
   clientDetails: ReactNode;
 }) {
-  const [active, setActive] = useState<TabKey>("keywords");
+  const [active, setActive] = useState<TabKey>("pages");
   const panels: Record<TabKey, ReactNode> = {
+    pages,
     keywords,
     onPage,
     technical,

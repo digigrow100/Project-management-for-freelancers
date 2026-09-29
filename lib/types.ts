@@ -265,6 +265,42 @@ export interface KeywordGroup {
 export type PageType = "service" | "location" | "blog" | "landing" | "other";
 export type OnPageStatus = "not_started" | "in_progress" | "done";
 
+export type ProjectPageType = "home" | "service" | "location" | "blog" | "landing" | "legal" | "contact" | "other";
+export type PageAuditStatus = "pending" | "done" | "needs_work" | "not_applicable";
+
+export interface ProjectPage {
+  id: string;
+  projectId: string;
+  name: string;
+  url: string;
+  pageType: ProjectPageType;
+  isActive: boolean;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PageCheckTemplate {
+  checkKey: string;
+  label: string;
+  order: number;
+  isActive: boolean;
+}
+
+export interface PageAuditCheck {
+  id: string;
+  pageId: string;
+  periodMonth: string;
+  checkKey: string;
+  status: PageAuditStatus;
+  notes: string;
+  checkedAt: string | null;
+  checkedBy: string | null;
+  label: string;
+  order: number;
+}
+
+
 /**
  * A page within a Group that one or more keywords can target — the on-page
  * SEO workspace for that page. `primaryKeywordId` is the one linked keyword
