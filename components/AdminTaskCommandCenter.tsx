@@ -162,6 +162,35 @@ export function AdminTaskCommandCenter({
         <Summary label="Recently completed" value={recentCompleted.length} icon={CheckCircle2} />
       </div>
 
+      {projects.some((project) => project.type === "seo") && (
+        <div className="mt-5 rounded-xl border border-base-700/60 bg-base-900/35 p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">SEO Quick Access</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {projects
+              .filter((project) => project.type === "seo")
+              .map((project) => (
+                <div key={project.id} className="flex items-center gap-1 rounded-lg border border-base-700/60 bg-base-850 px-2 py-1.5">
+                  <span className="max-w-40 truncate px-1 text-[11px] font-medium text-neutral-300" title={project.name}>
+                    {project.name}
+                  </span>
+                  <Link
+                    href={`/projects/${project.id}?seoTab=pages`}
+                    className="rounded-md px-2 py-1 text-[10px] text-sky-300 hover:bg-sky-500/10"
+                  >
+                    Pages
+                  </Link>
+                  <Link
+                    href={`/projects/${project.id}?seoTab=reporting`}
+                    className="rounded-md px-2 py-1 text-[10px] text-violet-300 hover:bg-violet-500/10"
+                  >
+                    Reports
+                  </Link>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 space-y-3">
         {filteredProjects.map((project) => {
           const projectOpen = openTasks.filter((task) => task.projectId === project.id);
