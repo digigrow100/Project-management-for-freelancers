@@ -154,6 +154,8 @@ interface TaskRow {
   content_item_id: string | null;
   backlink_entry_id: string | null;
   outreach_prospect_id: string | null;
+  is_fallback: boolean;
+  fallback_template_key: string | null;
 }
 
 /** Normalizes legacy plain-string image URLs (from before file attachments were
@@ -196,6 +198,8 @@ function toTask(row: TaskRow, nameById?: Map<string, string>): Task {
     contentItemId: row.content_item_id,
     backlinkEntryId: row.backlink_entry_id,
     outreachProspectId: row.outreach_prospect_id,
+    isFallback: row.is_fallback ?? false,
+    fallbackTemplateKey: row.fallback_template_key ?? null,
   };
 }
 
@@ -816,6 +820,188 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
   return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
 }
 
+interface IdleTaskTemplateRow {
+  template_key: string;
+  title: string;
+  notes: string;
+  why: string;
+  expected_outcome: string;
+  priority: TaskPriority;
+  seo_module: SeoModule;
+  order_index: number;
+  is_active: boolean;
+}
+
+interface IdleTaskClaimRow {
+  id: string;
+  project_id: string;
+  assigned_to: string;
+  template_key: string;
+  period_month: string;
+  task_id: string | null;
+}
+
+export async function getAllTaskFocusStates(): Promise<TaskFocusState[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as TaskFocusRow[]).map(toTaskFocusState);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+/**
+ * Keeps the member productive without crowding normal work:
+ * - normal assigned open tasks always win;
+ * - an existing fallback stays available if there is no normal work;
+ * - otherwise claim one monthly audit template from an assigned SEO project.
+ */
+export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task | null> {
+  const { data: normalRows, error: normalError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("id")
+    .eq("assigned_to", userId)
+    .neq("status", "done")
+    .eq("is_fallback", false)
+    .limit(1);
+  if (normalError) throw normalError;
+
+  if ((normalRows ?? []).length > 0) {
+    // Normal work supersedes fallback work. Pause any running fallback timer/focus.
+    const { data: fallbackRows, error: fallbackError } = await getSupabase()
+      .from("freelance_hq_tasks")
+      .select("id")
+      .eq("assigned_to", userId)
+      .neq("status", "done")
+      .eq("is_fallback", true);
+    if (fallbackError) throw fallbackError;
+
+    const fallbackIds = ((fallbackRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+    if (fallbackIds.length > 0) {
+      const now = nowIso();
+      const { error: focusError } = await getSupabase()
+        .from("freelance_hq_task_focus")
+        .update({ state: "paused", paused_at: now, updated_at: now })
+        .eq("user_id", userId)
+        .eq("state", "active")
+        .in("task_id", fallbackIds);
+      if (focusError && !isMissingTableError(focusError)) throw focusError;
+      await closeOpenTimeEntries(userId, now);
+    }
+    return null;
+  }
+
+  const { data: existingFallbackRows, error: existingFallbackError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("*")
+    .eq("assigned_to", userId)
+    .neq("status", "done")
+    .eq("is_fallback", true)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (existingFallbackError) throw existingFallbackError;
+  if ((existingFallbackRows ?? []).length > 0) {
+    return toTask((existingFallbackRows ?? [])[0] as TaskRow, await taskNameLookup());
+  }
+
+  const assignedProjectIds = await getAssignedProjectIds(userId);
+  if (assignedProjectIds.length === 0) return null;
+
+  const { data: seoProjectRows, error: projectError } = await getSupabase()
+    .from("freelance_hq_projects")
+    .select("id, name")
+    .in("id", assignedProjectIds)
+    .eq("type", "seo")
+    .eq("archived", false)
+    .order("name");
+  if (projectError) throw projectError;
+  const seoProjects = (seoProjectRows ?? []) as Array<{ id: string; name: string }>;
+  if (seoProjects.length === 0) return null;
+
+  const [{ data: templateRows, error: templateError }, { data: claimRows, error: claimError }] = await Promise.all([
+    getSupabase()
+      .from("freelance_hq_idle_task_templates")
+      .select("*")
+      .eq("is_active", true)
+      .order("order_index"),
+    getSupabase()
+      .from("freelance_hq_idle_task_claims")
+      .select("*")
+      .eq("period_month", new Date().toISOString().slice(0, 7))
+      .in("project_id", seoProjects.map((project) => project.id)),
+  ]);
+  if (templateError) throw templateError;
+  if (claimError) throw claimError;
+
+  const templates = (templateRows ?? []) as IdleTaskTemplateRow[];
+  const claims = (claimRows ?? []) as IdleTaskClaimRow[];
+  const claimed = new Set(claims.map((row) => `${row.project_id}:${row.template_key}`));
+  const projectClaimCount = new Map<string, number>();
+  for (const claim of claims) projectClaimCount.set(claim.project_id, (projectClaimCount.get(claim.project_id) ?? 0) + 1);
+
+  const candidateProjects = [...seoProjects].sort((a, b) => {
+    const ac = projectClaimCount.get(a.id) ?? 0;
+    const bc = projectClaimCount.get(b.id) ?? 0;
+    if (ac !== bc) return ac - bc;
+    return a.name.localeCompare(b.name);
+  });
+
+  const month = new Date().toISOString().slice(0, 7);
+  for (const project of candidateProjects) {
+    for (const template of templates) {
+      if (claimed.has(`${project.id}:${template.template_key}`)) continue;
+
+      const { data: claim, error: insertClaimError } = await getSupabase()
+        .from("freelance_hq_idle_task_claims")
+        .insert({
+          project_id: project.id,
+          assigned_to: userId,
+          template_key: template.template_key,
+          period_month: month,
+        })
+        .select("*")
+        .maybeSingle();
+
+      if (insertClaimError) {
+        // Another idle member may have claimed the same audit at the same moment.
+        if ((insertClaimError as { code?: string }).code === "23505") continue;
+        throw insertClaimError;
+      }
+      if (!claim) continue;
+
+      const task = await createTask({
+        projectId: project.id,
+        stageId: null,
+        title: template.title,
+        notes: template.notes,
+        priority: template.priority,
+        scheduledFor: null,
+        assignedTo: userId,
+        seoModule: template.seo_module,
+        why: template.why,
+        expectedOutcome: template.expected_outcome,
+        isFallback: true,
+        fallbackTemplateKey: template.template_key,
+      });
+
+      const { error: updateClaimError } = await getSupabase()
+        .from("freelance_hq_idle_task_claims")
+        .update({ task_id: task.id })
+        .eq("id", (claim as IdleTaskClaimRow).id);
+      if (updateClaimError) throw updateClaimError;
+
+      return task;
+    }
+  }
+
+  return null;
+}
+
 interface TaskFocusRow {
   task_id: string;
   user_id: string;
@@ -1312,6 +1498,10 @@ export async function createTask(input: {
   contentItemId?: string | null;
   backlinkEntryId?: string | null;
   outreachProspectId?: string | null;
+  why?: string;
+  expectedOutcome?: string;
+  isFallback?: boolean;
+  fallbackTemplateKey?: string | null;
 }): Promise<Task> {
   const { count, error: countError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -1343,6 +1533,10 @@ export async function createTask(input: {
       content_item_id: input.contentItemId ?? null,
       backlink_entry_id: input.backlinkEntryId ?? null,
       outreach_prospect_id: input.outreachProspectId ?? null,
+      why: input.why ?? "",
+      expected_outcome: input.expectedOutcome ?? "",
+      is_fallback: input.isFallback ?? false,
+      fallback_template_key: input.fallbackTemplateKey ?? null,
     })
     .select()
     .single();
