@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3 } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft } from "lucide-react";
 import type { Profile, Project } from "@/lib/types";
 import { SidebarProjectGroups } from "./SidebarProjectGroups";
 import { InstallAppButton } from "./InstallAppButton";
@@ -12,6 +12,7 @@ const NAV = [
   { href: "/today", label: "Today", icon: ListChecks },
   { href: "/my-tasks", label: "My Tasks", icon: ListTodo },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/seo/pages", label: "SEO Pages", icon: PanelsTopLeft },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
 ];
