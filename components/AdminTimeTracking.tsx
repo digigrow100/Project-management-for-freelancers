@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Activity, CheckCircle2, Clock3, FolderKanban, Search, TimerReset, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { TaskTimeSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,15 +24,8 @@ function formatDetailedDuration(totalSeconds: number): string {
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-function relativeTime(value: string): string {
-  const diff = Date.now() - new Date(value).getTime();
-  const mins = Math.max(0, Math.floor(diff / 60000));
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function formatActivityTime(value: string): string {
+  return value.slice(0, 16).replace("T", " ") + " UTC";
 }
 
 export function AdminTimeTracking({ summaries }: { summaries: TaskTimeSummary[] }) {
@@ -167,7 +161,7 @@ export function AdminTimeTracking({ summaries }: { summaries: TaskTimeSummary[] 
                         {row.isActive ? "Running" : row.taskStatus === "done" ? "Completed" : "Paused / open"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-neutral-500">{relativeTime(row.lastActivityAt)}</td>
+                    <td className="px-4 py-3 text-xs text-neutral-500">{formatActivityTime(row.lastActivityAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -185,7 +179,7 @@ function Stat({
   value,
   active = false,
 }: {
-  icon: typeof Clock3;
+  icon: LucideIcon;
   label: string;
   value: string;
   active?: boolean;
