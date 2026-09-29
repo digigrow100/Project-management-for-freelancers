@@ -65,11 +65,11 @@ export function AdminTaskCommandCenter({
           (task) => task.completedAt && (!previousSeen || task.completedAt > previousSeen),
         );
 
-        if (fresh.length > 0) {
-          const newest = fresh[0];
+        const newest = fresh[0];
+        if (newest) {
           setToastTask(newest);
           setUnread((count) => count + fresh.length);
-          if (newest?.completedAt) {
+          if (newest.completedAt) {
             window.localStorage.setItem("admin-last-seen-completed-task-at", newest.completedAt);
           }
         }
