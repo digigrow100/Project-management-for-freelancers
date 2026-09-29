@@ -82,6 +82,30 @@ function normalizeStatus(value: unknown): KeywordStatus {
   return key in STATUS_LABEL ? (key as KeywordStatus) : "not_started";
 }
 
+function normalizeIntent(value: unknown): SearchIntent | null {
+  const key = String(value ?? "").trim().toLowerCase();
+  return ["informational", "navigational", "commercial", "transactional", "local"].includes(key)
+    ? (key as SearchIntent)
+    : null;
+}
+
+function normalizePriority(value: unknown): Priority {
+  const key = String(value ?? "").trim().toLowerCase();
+  return key === "high" || key === "low" ? key : "medium";
+}
+
+function normalizeKeywordRole(value: unknown): KeywordRole | undefined {
+  const key = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ["primary", "secondary", "supporting", "long_tail"].includes(key) ? (key as KeywordRole) : undefined;
+}
+
+function normalizeTargetMode(value: unknown): KeywordTargetMode | undefined {
+  const key = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["new_page", "new_page_required", "new"].includes(key)) return "new_page_required";
+  if (["existing", "existing_page", "mapped"].includes(key)) return "existing_page";
+  return undefined;
+}
+
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -134,10 +158,10 @@ async function parseKeywordFile(file: File) {
     targetRank: toNumberOrNull(pick(row, "target rank", "goal rank")),
     status: normalizeStatus(pick(row, "status")),
     notes: String(pick(row, "notes", "note") ?? "").trim(),
-    searchIntent: String(pick(row, "search intent", "intent") ?? "").trim().toLowerCase() || null,
-    priority: (String(pick(row, "priority") ?? "medium").trim().toLowerCase() || "medium"),
-    keywordRole: (String(pick(row, "keyword role", "role") ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_") || undefined),
-    targetMode: (String(pick(row, "target mode", "mapping") ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_") || undefined),
+    searchIntent: normalizeIntent(pick(row, "search intent", "intent")),
+    priority: normalizePriority(pick(row, "priority")),
+    keywordRole: normalizeKeywordRole(pick(row, "keyword role", "role")),
+    targetMode: normalizeTargetMode(pick(row, "target mode", "mapping")),
     suggestedPageName: String(pick(row, "suggested page", "new page", "suggested page name") ?? "").trim(),
   }));
 }
@@ -1455,7 +1479,6 @@ function KeywordForm({
 }) {
   const [isPending, startTransition] = useTransition();
   const [targetMode, setTargetMode] = useState<KeywordTargetMode>(keyword?.targetMode ?? "existing_page");
-  const allPages = Object.values(pagesByGroup).flat();
   const defaultPrimaryPage = keyword?.primaryPageId ?? defaultPageId ?? "";
 
   return (
