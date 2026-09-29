@@ -1091,19 +1091,28 @@ export async function updateKeywordAction(formData: FormData) {
     notes: str(formData, "notes"),
     searchIntent: (str(formData, "searchIntent") || null) as SearchIntent | null,
     priority: (str(formData, "priority") || "medium") as Priority,
-    keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole,
-    targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode,
-    suggestedPageName: str(formData, "suggestedPageName"),
-    clusterId: str(formData, "clusterId") || null,
-    primaryPageId: str(formData, "primaryPageId") || null,
+    ...(formData.has("keywordRole") ? { keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole } : {}),
+    ...(formData.has("targetMode") ? { targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode } : {}),
+    ...(formData.has("suggestedPageName") ? { suggestedPageName: str(formData, "suggestedPageName") } : {}),
+    ...(formData.has("clusterId") ? { clusterId: str(formData, "clusterId") || null } : {}),
+    ...(formData.has("primaryPageId") ? { primaryPageId: str(formData, "primaryPageId") || null } : {}),
   });
-  await store.setKeywordMappingStrategy(id, {
-    keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole,
-    targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode,
-    suggestedPageName: str(formData, "suggestedPageName"),
-    clusterId: str(formData, "clusterId") || null,
-    primaryPageId: str(formData, "primaryPageId") || null,
-  });
+
+  if (
+    formData.has("keywordRole") ||
+    formData.has("targetMode") ||
+    formData.has("suggestedPageName") ||
+    formData.has("clusterId") ||
+    formData.has("primaryPageId")
+  ) {
+    await store.setKeywordMappingStrategy(id, {
+      keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole,
+      targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode,
+      suggestedPageName: str(formData, "suggestedPageName"),
+      clusterId: str(formData, "clusterId") || null,
+      primaryPageId: str(formData, "primaryPageId") || null,
+    });
+  }
   revalidatePath(`/projects/${projectId}`);
 }
 
