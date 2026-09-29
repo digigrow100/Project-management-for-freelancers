@@ -127,11 +127,6 @@ export function MemberTaskDetailModal({
                 </div>
               )}
 
-              {!requirements.trim() && !promptSteps.trim() && (
-                <p className="text-xs text-neutral-600">
-                  No extra requirements or prompt/steps were added for this task.
-                </p>
-              )}
             </main>
 
             <aside className="space-y-4 lg:border-l lg:border-base-700/70 lg:pl-5">
