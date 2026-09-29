@@ -1534,6 +1534,29 @@ export async function completeTasksFromFocus(taskIds: string[], userId: string):
   }
 }
 
+async function assertAssigneeMatchesProjectRole(projectId: string, userId: string | null | undefined): Promise<void> {
+  if (!userId) return;
+
+  const [{ data: projectRow, error: projectError }, { data: profileRow, error: profileError }] = await Promise.all([
+    getSupabase().from("freelance_hq_projects").select("type").eq("id", projectId).maybeSingle(),
+    getSupabase().from("freelance_hq_profiles").select("role, job_role").eq("id", userId).maybeSingle(),
+  ]);
+  if (projectError) throw projectError;
+  if (profileError) throw profileError;
+  if (!projectRow || !profileRow) throw new Error("Project or team member not found.");
+
+  const member = profileRow as { role: Role; job_role: JobRole | null };
+  if (member.role === "admin") return;
+
+  const projectType = (projectRow as { type: ProjectType }).type;
+  if (projectType === "seo" && member.job_role !== "seo_expert") {
+    throw new Error("SEO tasks can only be assigned to an SEO Expert.");
+  }
+  if ((projectType === "web_dev" || projectType === "web_app") && member.job_role !== "web_developer") {
+    throw new Error("Web development tasks can only be assigned to a Web Developer.");
+  }
+}
+
 export async function createTask(input: {
   projectId: string;
   stageId: string | null;
@@ -1556,6 +1579,8 @@ export async function createTask(input: {
   isFallback?: boolean;
   fallbackTemplateKey?: string | null;
 }): Promise<Task> {
+  await assertAssigneeMatchesProjectRole(input.projectId, input.assignedTo);
+
   const { count, error: countError } = await getSupabase()
     .from("freelance_hq_tasks")
     .select("*", { count: "exact", head: true })
@@ -1655,6 +1680,15 @@ export async function updateTaskDetails(
     outreachProspectId?: string | null;
   },
 ): Promise<void> {
+  const { data: taskProjectRow, error: taskProjectError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("project_id")
+    .eq("id", taskId)
+    .maybeSingle();
+  if (taskProjectError) throw taskProjectError;
+  if (!taskProjectRow) throw new Error("Task not found.");
+  await assertAssigneeMatchesProjectRole((taskProjectRow as { project_id: string }).project_id, patch.assignedTo);
+
   const status = patch.status === "done" && !isChecklistComplete(patch.checklist) ? "in_progress" : patch.status;
 
   const update: Record<string, unknown> = {
