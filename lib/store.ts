@@ -804,6 +804,21 @@ export async function getCompletedTasks(): Promise<Task[]> {
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
 }
 
+export async function getRecentCompletedTasks(limit = 50): Promise<Task[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  const [{ data, error }, nameById] = await Promise.all([
+    getSupabase()
+      .from("freelance_hq_tasks")
+      .select("*")
+      .eq("status", "done")
+      .order("completed_at", { ascending: false, nullsFirst: false })
+      .limit(safeLimit),
+    taskNameLookup(),
+  ]);
+  if (error) throw error;
+  return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
+}
+
 /**
  * Every task assigned to `userId`, regardless of status — the "My Tasks" page
  * buckets these itself (overdue / due today / upcoming / waiting review /
@@ -1005,6 +1020,24 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
           .delete()
           .eq("id", (claim as IdleTaskClaimRow).id)
           .is("task_id", null);
+
+        if ((error as { code?: string } | null)?.code === "23505") {
+          const { data: concurrentFallback, error: concurrentError } = await getSupabase()
+            .from("freelance_hq_tasks")
+            .select("*")
+            .eq("assigned_to", userId)
+            .eq("is_fallback", true)
+            .neq("status", "done")
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (concurrentError) throw concurrentError;
+          if (concurrentFallback) {
+            return toTask(concurrentFallback as TaskRow, await taskNameLookup());
+          }
+          continue;
+        }
+
         throw error;
       }
     }
