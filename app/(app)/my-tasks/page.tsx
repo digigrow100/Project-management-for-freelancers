@@ -4,6 +4,7 @@ import {
   getProjectsByIds,
   getProjectsForProfile,
   getTaskFocusStates,
+  getTaskTimeTotals,
   listTeamMembers,
   markSectionSeen,
 } from "@/lib/store";
@@ -47,8 +48,11 @@ export default async function MyTasksPage() {
     getMyTasks(profile.id),
     getTaskFocusStates(profile.id),
   ]);
-  const projects = await getProjectsByIds(tasks.map((task) => task.projectId));
+  const [projects, timeTotals] = await Promise.all([
+    getProjectsByIds(tasks.map((task) => task.projectId)),
+    getTaskTimeTotals(profile.id, tasks.map((task) => task.id)),
+  ]);
   await markSectionSeen(profile.id, "tasks");
 
-  return <MemberFocusDashboard tasks={tasks} projects={projects} focusStates={focusStates} />;
+  return <MemberFocusDashboard tasks={tasks} projects={projects} focusStates={focusStates} timeTotals={timeTotals} />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CalendarDays,
   Check,
@@ -63,6 +63,14 @@ function priorityTone(priority: Task["priority"]): string {
   return "text-amber-400";
 }
 
+function formatTrackedTime(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 function isCompletedToday(task: Task, today: string): boolean {
   if (!task.completedAt) return false;
   const date = new Date(task.completedAt);
@@ -81,14 +89,22 @@ export function MemberFocusDashboard({
   tasks,
   projects,
   focusStates,
+  timeTotals,
 }: {
   tasks: Task[];
   projects: Project[];
   focusStates: TaskFocusState[];
+  timeTotals: Record<string, number>;
 }) {
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [browseOffset, setBrowseOffset] = useState(0);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const today = localDateKey();
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
@@ -193,6 +209,13 @@ export function MemberFocusDashboard({
   const currentIsActive = currentFocus?.state === "active";
   const currentIsPaused = currentFocus?.state === "paused";
 
+  const currentClosedSeconds = currentTask ? (timeTotals[currentTask.id] ?? 0) : 0;
+  const currentLiveSeconds =
+    currentIsActive && currentFocus?.startedAt
+      ? Math.max(0, Math.floor((clockNow - new Date(currentFocus.startedAt).getTime()) / 1000))
+      : 0;
+  const currentTrackedSeconds = currentClosedSeconds + currentLiveSeconds;
+
   return (
     <div className={cn("grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]", isPending && "opacity-80")}>
       <main className="min-w-0 space-y-5">
@@ -294,6 +317,29 @@ export function MemberFocusDashboard({
                   </p>
                 )}
               </button>
+
+              <div className="mt-5 rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-lg bg-sky-500/10 text-sky-300">
+                      <Clock3 size={18} />
+                    </span>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-500">Time tracked</p>
+                      <p className="mt-0.5 font-mono text-2xl font-semibold tracking-tight text-neutral-50">
+                        {formatTrackedTime(currentTrackedSeconds)}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={cn(
+                    "flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium",
+                    currentIsActive ? "bg-emerald-500/10 text-emerald-300" : "bg-base-800 text-neutral-400",
+                  )}>
+                    <span className={cn("h-2 w-2 rounded-full", currentIsActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600")} />
+                    {currentIsActive ? "Timer running" : currentIsPaused ? "Timer paused" : "Timer ready"}
+                  </span>
+                </div>
+              </div>
 
               <div className="mt-5 grid gap-3 border-y border-base-700/70 py-4 sm:grid-cols-3">
                 <div className="flex items-center gap-3">

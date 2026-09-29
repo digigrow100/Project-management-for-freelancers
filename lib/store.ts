@@ -74,6 +74,8 @@ import type {
   Stage,
   Task,
   TaskFocusState,
+  TaskTimeEntry,
+  TaskTimeSummary,
   TaskFile,
   TaskNote,
   TechnicalIssue,
@@ -673,6 +675,209 @@ export async function getTaskFocusStates(userId: string): Promise<TaskFocusState
   }
 }
 
+interface TaskTimeEntryRow {
+  id: string;
+  task_id: string;
+  project_id: string;
+  user_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number;
+  created_at: string;
+}
+
+function toTaskTimeEntry(row: TaskTimeEntryRow): TaskTimeEntry {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    projectId: row.project_id,
+    userId: row.user_id,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    durationSeconds: row.duration_seconds ?? 0,
+    createdAt: row.created_at,
+  };
+}
+
+async function closeOpenTimeEntries(userId: string, endedAt: string): Promise<void> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_time_entries")
+      .select("id, started_at")
+      .eq("user_id", userId)
+      .is("ended_at", null);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Array<{ id: string; started_at: string }>) {
+      const seconds = Math.max(
+        0,
+        Math.floor((new Date(endedAt).getTime() - new Date(row.started_at).getTime()) / 1000),
+      );
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_task_time_entries")
+        .update({ ended_at: endedAt, duration_seconds: seconds })
+        .eq("id", row.id)
+        .is("ended_at", null);
+      if (updateError) throw updateError;
+    }
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
+async function startTaskTimeEntry(taskId: string, projectId: string, userId: string, startedAt: string): Promise<void> {
+  try {
+    await closeOpenTimeEntries(userId, startedAt);
+    const { error } = await getSupabase().from("freelance_hq_task_time_entries").insert({
+      task_id: taskId,
+      project_id: projectId,
+      user_id: userId,
+      started_at: startedAt,
+      duration_seconds: 0,
+    });
+    if (error) throw error;
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
+async function closeOpenTimeEntriesForTask(taskId: string, endedAt: string): Promise<void> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_time_entries")
+      .select("id, started_at")
+      .eq("task_id", taskId)
+      .is("ended_at", null);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as Array<{ id: string; started_at: string }>) {
+      const seconds = Math.max(
+        0,
+        Math.floor((new Date(endedAt).getTime() - new Date(row.started_at).getTime()) / 1000),
+      );
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_task_time_entries")
+        .update({ ended_at: endedAt, duration_seconds: seconds })
+        .eq("id", row.id)
+        .is("ended_at", null);
+      if (updateError) throw updateError;
+    }
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+}
+
+/** Closed-session totals only. The member UI adds the live active session from TaskFocusState.startedAt. */
+export async function getTaskTimeTotals(userId: string, taskIds: string[]): Promise<Record<string, number>> {
+  if (taskIds.length === 0) return {};
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_time_entries")
+      .select("task_id, duration_seconds, ended_at")
+      .eq("user_id", userId)
+      .in("task_id", Array.from(new Set(taskIds)))
+      .not("ended_at", "is", null);
+    if (error) throw error;
+
+    const totals: Record<string, number> = {};
+    for (const row of (data ?? []) as Array<{ task_id: string; duration_seconds: number; ended_at: string | null }>) {
+      totals[row.task_id] = (totals[row.task_id] ?? 0) + (row.duration_seconds ?? 0);
+    }
+    return totals;
+  } catch (error) {
+    if (isMissingTableError(error)) return {};
+    throw error;
+  }
+}
+
+export async function listTaskTimeEntries(): Promise<TaskTimeEntry[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_task_time_entries")
+      .select("*")
+      .order("started_at", { ascending: false })
+      .limit(2000);
+    if (error) throw error;
+    return ((data ?? []) as TaskTimeEntryRow[]).map(toTaskTimeEntry);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function getAdminTaskTimeSummaries(): Promise<TaskTimeSummary[]> {
+  const entries = await listTaskTimeEntries();
+  if (entries.length === 0) return [];
+
+  const taskIds = Array.from(new Set(entries.map((entry) => entry.taskId)));
+  const projectIds = Array.from(new Set(entries.map((entry) => entry.projectId)));
+  const userIds = Array.from(new Set(entries.map((entry) => entry.userId)));
+
+  const [{ data: taskRows, error: taskError }, projects, members] = await Promise.all([
+    getSupabase()
+      .from("freelance_hq_tasks")
+      .select("id, title, status, completed_at")
+      .in("id", taskIds),
+    getProjectsByIds(projectIds),
+    listTeamMembers(),
+  ]);
+  if (taskError) throw taskError;
+
+  const tasks = new Map(
+    ((taskRows ?? []) as Array<{ id: string; title: string; status: TaskStatus; completed_at: string | null }>).map((row) => [
+      row.id,
+      row,
+    ]),
+  );
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const memberById = new Map(members.filter((member) => userIds.includes(member.id)).map((member) => [member.id, member]));
+  const now = Date.now();
+  const grouped = new Map<string, TaskTimeSummary>();
+
+  for (const entry of entries) {
+    const task = tasks.get(entry.taskId);
+    if (!task) continue;
+    const project = projectById.get(entry.projectId);
+    const member = memberById.get(entry.userId);
+    const key = `${entry.taskId}:${entry.userId}`;
+    const activeSeconds = entry.endedAt
+      ? 0
+      : Math.max(0, Math.floor((now - new Date(entry.startedAt).getTime()) / 1000));
+    const seconds = (entry.durationSeconds ?? 0) + activeSeconds;
+    const previous = grouped.get(key);
+
+    if (!previous) {
+      grouped.set(key, {
+        taskId: entry.taskId,
+        projectId: entry.projectId,
+        taskTitle: task.title,
+        taskStatus: task.status,
+        userId: entry.userId,
+        userName: member?.name || member?.email || "Unknown member",
+        projectName: project?.name ?? "Unknown project",
+        totalSeconds: seconds,
+        sessionCount: 1,
+        isActive: !entry.endedAt,
+        activeStartedAt: entry.endedAt ? null : entry.startedAt,
+        lastActivityAt: entry.endedAt ?? entry.startedAt,
+        completedAt: task.completed_at,
+      });
+      continue;
+    }
+
+    previous.totalSeconds += seconds;
+    previous.sessionCount += 1;
+    if (!entry.endedAt) {
+      previous.isActive = true;
+      previous.activeStartedAt = entry.startedAt;
+    }
+    const activityAt = entry.endedAt ?? entry.startedAt;
+    if (activityAt > previous.lastActivityAt) previous.lastActivityAt = activityAt;
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));
+}
+
 async function requireAssignedTask(taskId: string, userId: string): Promise<{
   projectId: string;
   checklist: ChecklistItem[];
@@ -733,14 +938,15 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
   try {
     const { data: activeRows, error: activeError } = await getSupabase()
       .from("freelance_hq_task_focus")
-      .select("task_id")
+      .select("task_id, started_at")
       .eq("user_id", userId)
       .eq("state", "active");
     if (activeError) throw activeError;
 
-    const otherActiveIds = ((activeRows ?? []) as Array<{ task_id: string }>)
-      .map((row) => row.task_id)
-      .filter((id) => id !== taskId);
+    const activeFocusRows = (activeRows ?? []) as Array<{ task_id: string; started_at: string | null }>;
+    const activeIds = activeFocusRows.map((row) => row.task_id);
+    const alreadyActive = activeIds.includes(taskId);
+    const otherActiveIds = activeIds.filter((id) => id !== taskId);
 
     if (otherActiveIds.length > 0) {
       const { error: pauseError } = await getSupabase()
@@ -756,21 +962,38 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
       if (pauseError) throw pauseError;
     }
 
-    const { error: focusError } = await getSupabase()
-      .from("freelance_hq_task_focus")
-      .upsert(
-        {
-          task_id: taskId,
-          user_id: userId,
-          state: "active",
-          started_at: now,
-          paused_at: null,
-          resume_after_completions: 0,
-          updated_at: now,
-        },
-        { onConflict: "task_id" },
-      );
-    if (focusError) throw focusError;
+    if (!alreadyActive) {
+      const { error: focusError } = await getSupabase()
+        .from("freelance_hq_task_focus")
+        .upsert(
+          {
+            task_id: taskId,
+            user_id: userId,
+            state: "active",
+            started_at: now,
+            paused_at: null,
+            resume_after_completions: 0,
+            updated_at: now,
+          },
+          { onConflict: "task_id" },
+        );
+      if (focusError) throw focusError;
+
+      await startTaskTimeEntry(taskId, task.projectId, userId, now);
+    } else {
+      const { data: openTimer, error: openTimerError } = await getSupabase()
+        .from("freelance_hq_task_time_entries")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("task_id", taskId)
+        .is("ended_at", null)
+        .maybeSingle();
+      if (openTimerError && !isMissingTableError(openTimerError)) throw openTimerError;
+      if (!openTimer && !isMissingTableError(openTimerError)) {
+        const existingStartedAt = activeFocusRows.find((row) => row.task_id === taskId)?.started_at ?? now;
+        await startTaskTimeEntry(taskId, task.projectId, userId, existingStartedAt);
+      }
+    }
   } catch (error) {
     if (!isMissingTableError(error)) throw error;
   }
@@ -809,6 +1032,8 @@ export async function pauseTaskFocus(taskId: string, userId: string): Promise<vo
   } catch (error) {
     if (!isMissingTableError(error)) throw error;
   }
+
+  await closeOpenTimeEntries(userId, now);
 
   const { error: taskError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -867,6 +1092,8 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
     .eq("id", taskId)
     .eq("assigned_to", userId);
   if (error) throw error;
+
+  await closeOpenTimeEntriesForTask(taskId, now);
 
   try {
     const { error: focusError } = await getSupabase()
@@ -975,6 +1202,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
     .maybeSingle();
   if (error) throw error;
 
+  if (resolvedStatus === "done") await closeOpenTimeEntriesForTask(taskId, nowIso());
   if (data) await touchProject((data as { project_id: string }).project_id);
 }
 
@@ -1035,6 +1263,7 @@ export async function updateTaskDetails(
     .maybeSingle();
   if (error) throw error;
 
+  if (status === "done") await closeOpenTimeEntriesForTask(taskId, nowIso());
   if (data) await touchProject((data as { project_id: string }).project_id);
 }
 

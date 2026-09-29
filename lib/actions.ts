@@ -362,6 +362,7 @@ export async function startFocusTaskAction(taskId: string) {
   await store.startTaskFocus(taskId, profile.id);
   revalidatePath("/my-tasks");
   revalidatePath("/");
+  revalidatePath("/admin/time-tracking");
 }
 
 export async function pauseFocusTaskAction(taskId: string) {
@@ -369,6 +370,7 @@ export async function pauseFocusTaskAction(taskId: string) {
   await store.pauseTaskFocus(taskId, profile.id);
   revalidatePath("/my-tasks");
   revalidatePath("/");
+  revalidatePath("/admin/time-tracking");
 }
 
 export async function completeFocusTaskAction(taskId: string) {
@@ -377,6 +379,7 @@ export async function completeFocusTaskAction(taskId: string) {
   revalidatePath("/my-tasks");
   revalidatePath("/");
   revalidatePath("/today");
+  revalidatePath("/admin/time-tracking");
 }
 
 export async function bulkCompleteFocusTasksAction(taskIds: string[]) {
@@ -385,6 +388,7 @@ export async function bulkCompleteFocusTasksAction(taskIds: string[]) {
   revalidatePath("/my-tasks");
   revalidatePath("/");
   revalidatePath("/today");
+  revalidatePath("/admin/time-tracking");
 }
 
 export async function deleteTaskAction(taskId: string, projectId: string) {

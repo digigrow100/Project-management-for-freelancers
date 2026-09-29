@@ -69,6 +69,34 @@ export interface TaskFocusState {
   updatedAt: string;
 }
 
+export interface TaskTimeEntry {
+  id: string;
+  taskId: string;
+  projectId: string;
+  userId: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number;
+  createdAt: string;
+}
+
+export interface TaskTimeSummary {
+  taskId: string;
+  projectId: string;
+  taskTitle: string;
+  taskStatus: TaskStatus;
+  userId: string;
+  userName: string;
+  projectName: string;
+  totalSeconds: number;
+  sessionCount: number;
+  isActive: boolean;
+  activeStartedAt: string | null;
+  lastActivityAt: string;
+  completedAt: string | null;
+}
+
+
 export type SeoModule = "on_page" | "technical" | "off_page" | "content" | "reporting";
 
 export interface ClientDetails {
