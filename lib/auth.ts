@@ -42,6 +42,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
         email: user.email ?? "",
         name: user.email?.split("@")[0] ?? "",
         role: "admin",
+        jobRole: "general",
         canAccessRenewals: true,
         canAccessBacklinkCredentials: true,
         canAccessFinance: true,
