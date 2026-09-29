@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X, Receipt, Package, Clock3 } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X, Receipt, Package, Clock3, PanelsTopLeft } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -17,6 +17,7 @@ const PRIMARY_NAV = [
 
 const COMMON_MORE_NAV = [
   { href: "/my-tasks", label: "My Tasks", icon: ListTodo },
+  { href: "/seo/pages", label: "SEO Pages", icon: PanelsTopLeft },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
 ];
