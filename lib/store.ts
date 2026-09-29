@@ -818,6 +818,34 @@ export async function pauseTaskFocus(taskId: string, userId: string): Promise<vo
   await touchProject(task.projectId);
 }
 
+export async function updateAssignedTaskBasics(
+  taskId: string,
+  userId: string,
+  patch: {
+    priority: TaskPriority;
+    dueDate: string | null;
+    notes: string;
+    requirements: string;
+    promptSteps: string;
+  },
+): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  const { error } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({
+      priority: patch.priority,
+      due_date: patch.dueDate,
+      notes: patch.notes,
+      why: patch.requirements,
+      expected_outcome: patch.promptSteps,
+      updated_at: nowIso(),
+    })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (error) throw error;
+  await touchProject(task.projectId);
+}
+
 export async function completeTaskFromFocus(taskId: string, userId: string): Promise<void> {
   const task = await requireAssignedTask(taskId, userId);
   if (task.status === "done") return;

@@ -24,7 +24,7 @@ import {
   pauseFocusTaskAction,
   startFocusTaskAction,
 } from "@/lib/actions";
-import { TaskDetailModal } from "./TaskDetailModal";
+import { MemberTaskDetailModal } from "./MemberTaskDetailModal";
 import { cn, formatDateKey } from "@/lib/utils";
 
 function localDateKey(date = new Date()): string {
@@ -492,9 +492,8 @@ export function MemberFocusDashboard({
       </aside>
 
       {detailTask && (
-        <TaskDetailModal
+        <MemberTaskDetailModal
           task={detailTask}
-          stages={projectById.get(detailTask.projectId)?.stages ?? []}
           projectName={projectById.get(detailTask.projectId)?.name}
           onClose={() => setDetailTask(null)}
         />

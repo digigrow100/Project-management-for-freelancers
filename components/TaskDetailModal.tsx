@@ -144,23 +144,23 @@ export function TaskDetailModal({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-400">Why this matters</label>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Requirements</label>
             <textarea
               name="why"
               defaultValue={task.why}
               rows={2}
-              placeholder="Why does this task matter?"
+              placeholder="Add requirements for this task (optional)"
               className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-400">Done when</label>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Prompt / Steps</label>
             <textarea
               name="expectedOutcome"
               defaultValue={task.expectedOutcome}
               rows={2}
-              placeholder="What does finishing this task look like?"
+              placeholder="Add a prompt, process, or steps to follow (optional)"
               className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
             />
           </div>
