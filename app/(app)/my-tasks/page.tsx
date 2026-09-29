@@ -1,6 +1,7 @@
 import { getCurrentProfile } from "@/lib/auth";
 import {
   getMyTasks,
+  ensureIdleSeoTaskForMember,
   getProjectsByIds,
   getProjectsForProfile,
   getTaskFocusStates,
@@ -44,6 +45,7 @@ export default async function MyTasksPage() {
     );
   }
 
+  await ensureIdleSeoTaskForMember(profile.id);
   const [tasks, focusStates] = await Promise.all([
     getMyTasks(profile.id),
     getTaskFocusStates(profile.id),

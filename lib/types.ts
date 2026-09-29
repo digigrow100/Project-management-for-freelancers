@@ -56,6 +56,9 @@ export interface Task {
   contentItemId: string | null;
   backlinkEntryId: string | null;
   outreachProspectId: string | null;
+  /** Automatic SEO audit work surfaced only when the member has no normal open task. */
+  isFallback: boolean;
+  fallbackTemplateKey: string | null;
 }
 
 export interface TaskFocusState {

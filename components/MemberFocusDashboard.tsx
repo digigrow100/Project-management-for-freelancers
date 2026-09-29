@@ -35,6 +35,7 @@ function localDateKey(date = new Date()): string {
 const priorityRank = { high: 0, medium: 1, low: 2 } as const;
 
 function sortQueue(a: Task, b: Task): number {
+  if (a.isFallback !== b.isFallback) return a.isFallback ? 1 : -1;
   const ad = a.dueDate ?? a.scheduledFor ?? "9999-12-31";
   const bd = b.dueDate ?? b.scheduledFor ?? "9999-12-31";
   if (ad !== bd) return ad < bd ? -1 : 1;
@@ -112,6 +113,7 @@ export function MemberFocusDashboard({
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   const openTasks = useMemo(() => tasks.filter((task) => task.status !== "done"), [tasks]);
+  const hasNormalOpenTasks = openTasks.some((task) => !task.isFallback);
   const completedToday = useMemo(
     () =>
       tasks
@@ -137,7 +139,12 @@ export function MemberFocusDashboard({
   const readyPaused = focusStates
     .filter((state) => state.state === "paused" && state.resumeAfterCompletions === 0)
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
-    .filter((item): item is { state: TaskFocusState; task: Task } => !!item.task && item.task.status !== "done")
+    .filter(
+      (item): item is { state: TaskFocusState; task: Task } =>
+        !!item.task &&
+        item.task.status !== "done" &&
+        (!hasNormalOpenTasks || !item.task.isFallback),
+    )
     .sort((a, b) => sortQueue(a.task, b.task));
 
   const pausedIds = new Set(focusStates.filter((state) => state.state === "paused").map((state) => state.taskId));

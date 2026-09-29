@@ -1,36 +1,26 @@
 import Link from "next/link";
-import { ListTodo, FolderKanban, CheckCircle2, ArrowRight, Plus, Wallet, TrendingUp, AlertCircle, PiggyBank, Hourglass, Pin, FileText, Activity, Users, BarChart3 } from "lucide-react";
+import { AlertCircle, ArrowRight, Hourglass, PiggyBank, Plus, TrendingUp, Wallet } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
+import { AdminTaskCommandCenter } from "@/components/AdminTaskCommandCenter";
 import {
-  getCompletedTasks,
+  ensureIdleSeoTaskForMember,
+  getAllTaskFocusStates,
+  getRecentCompletedTasks,
   getMyTasks,
   getOpenTasks,
+  getProjectProgressMap,
   getProjectsByIds,
+  getProjectsForProfile,
   getTaskFocusStates,
   getTaskTimeTotals,
-  getProjectProgressMap,
-  getProjectsForProfile,
   listAllPayments,
   listPaymentPlans,
-  listPinnedNotes,
-  listTeamMembers,
 } from "@/lib/store";
-import { getDashboardActivity, getSeoOverview, getTeamPerformance } from "@/lib/activity";
 import { StatCard } from "@/components/StatCard";
-import { ScheduledTodayStat } from "@/components/ScheduledTodayStat";
-import { TaskRow } from "@/components/TaskRow";
 import { ProjectTypeTabs } from "@/components/ProjectTypeTabs";
-import { ActivityFeed } from "@/components/ActivityFeed";
-import { TeamActivityPanel } from "@/components/TeamActivityPanel";
-import { SeoOverviewCard } from "@/components/SeoOverviewCard";
 import type { ProjectPaymentSummary } from "@/components/ProjectCardClient";
-import { currentMonthKey, formatMoney, formatRelativeDate, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
-
-function todayDateKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+import { currentMonthKey, formatMoney, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +29,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const isAdmin = profile?.role === "admin";
 
   if (profile && profile.role === "member") {
+    await ensureIdleSeoTaskForMember(profile.id);
     const [tasks, focusStates] = await Promise.all([
       getMyTasks(profile.id),
       getTaskFocusStates(profile.id),
@@ -49,46 +40,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     ]);
     return <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} timeTotals={timeTotals} />;
   }
-  const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, pinnedNotes, assignableMembers] =
-    await Promise.all([
-      getOpenTasks(),
-      profile ? getProjectsForProfile(profile) : Promise.resolve([]),
-      getCompletedTasks(),
-      getProjectProgressMap(),
-      isAdmin ? listPaymentPlans() : Promise.resolve([]),
-      isAdmin ? listAllPayments() : Promise.resolve([]),
-      profile ? listPinnedNotes(profile.id, isAdmin) : Promise.resolve([]),
-      listTeamMembers(),
-    ]);
 
-  const visibleIds = new Set(projects.map((p) => p.id));
-  const openTasks = allOpenTasks.filter((t) => visibleIds.has(t.projectId));
-  const completedTasks = allCompletedTasks.filter((t) => visibleIds.has(t.projectId));
-
-  const activeProjects = projects.filter((p) => !p.archived);
-  const projectById = new Map(projects.map((p) => [p.id, p]));
-  const stageNameById = (projectId: string, stageId: string | null) => {
-    if (!stageId) return null;
-    return projectById.get(projectId)?.stages.find((s) => s.id === stageId)?.name ?? null;
-  };
-
-  const todayKey = todayDateKey();
-  const seoProjects = activeProjects.filter((p) => p.type === "seo");
-  const [todayActivity, teamPerformance, seoOverview] = await Promise.all([
-    getDashboardActivity(activeProjects, todayKey),
-    getTeamPerformance(activeProjects, assignableMembers, todayKey),
-    seoProjects.length > 0
-      ? getSeoOverview(seoProjects, todayKey)
-      : Promise.resolve({
-          keywordsTracked: 0,
-          keywordsImproved: 0,
-          keywordsDropped: 0,
-          backlinksCreated: 0,
-          backlinksLive: 0,
-          contentPublished: 0,
-          technicalFixed: 0,
-        }),
+  const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, focusStates] = await Promise.all([
+    getOpenTasks(),
+    profile ? getProjectsForProfile(profile) : Promise.resolve([]),
+    getRecentCompletedTasks(50),
+    getProjectProgressMap(),
+    isAdmin ? listPaymentPlans() : Promise.resolve([]),
+    isAdmin ? listAllPayments() : Promise.resolve([]),
+    isAdmin ? getAllTaskFocusStates() : Promise.resolve([]),
   ]);
+
+  const visibleIds = new Set(projects.map((project) => project.id));
+  const openTasks = allOpenTasks.filter((task) => visibleIds.has(task.projectId));
+  const completedTasks = allCompletedTasks.filter((task) => visibleIds.has(task.projectId));
+  const activeProjects = projects.filter((project) => !project.archived);
 
   const paymentsByProject = new Map<string, typeof payments>();
   for (const payment of payments) {
@@ -100,12 +66,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   const thisMonth = currentMonthKey();
   const summaryForPlan = (plan: (typeof plans)[number]): ProjectPaymentSummary => {
-    const projectPayments = (paymentsByProject.get(plan.projectId) ?? []).filter((p) => p.currency === plan.currency);
+    const projectPayments = (paymentsByProject.get(plan.projectId) ?? []).filter(
+      (payment) => payment.currency === plan.currency,
+    );
     const received =
       plan.planType === "monthly_fixed"
-        ? projectPayments.filter((p) => p.kind === "monthly" && p.period === thisMonth).reduce((sum, p) => sum + p.amount, 0)
-        : projectPayments.reduce((sum, p) => sum + p.amount, 0);
-    return { currency: plan.currency, received, pending: Math.max(0, plan.amount - received) };
+        ? projectPayments
+            .filter((payment) => payment.kind === "monthly" && payment.period === thisMonth)
+            .reduce((sum, payment) => sum + payment.amount, 0)
+        : projectPayments.reduce((sum, payment) => sum + payment.amount, 0);
+
+    return {
+      currency: plan.currency,
+      received,
+      pending: Math.max(0, plan.amount - received),
+    };
   };
 
   const paymentByProject: Record<string, ProjectPaymentSummary[]> = {};
@@ -115,21 +90,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     paymentByProject[plan.projectId] = list;
   }
 
-  const currencies = sortCurrencies(Array.from(new Set(plans.map((p) => p.currency))));
+  const currencies = sortCurrencies(Array.from(new Set(plans.map((plan) => plan.currency))));
   const summaryCurrency = resolveSelectedCurrency(currencies, searchParams.currency);
 
   const collectedThisMonth = payments
-    .filter((p) => p.kind === "monthly" && p.period === thisMonth && p.currency === summaryCurrency)
-    .reduce((sum, p) => sum + p.amount, 0);
+    .filter((payment) => payment.kind === "monthly" && payment.period === thisMonth && payment.currency === summaryCurrency)
+    .reduce((sum, payment) => sum + payment.amount, 0);
+
   const monthlyRecurring = plans
-    .filter((p) => p.planType === "monthly_fixed" && p.currency === summaryCurrency)
-    .reduce((sum, p) => sum + p.amount, 0);
+    .filter((plan) => plan.planType === "monthly_fixed" && plan.currency === summaryCurrency)
+    .reduce((sum, plan) => sum + plan.amount, 0);
+
   const outstanding = plans
-    .filter((p) => p.planType === "one_time" && p.currency === summaryCurrency)
+    .filter((plan) => plan.planType === "one_time" && plan.currency === summaryCurrency)
     .map(summaryForPlan)
     .reduce((sum, summary) => sum + summary.pending, 0);
 
-  const summariesForCurrency = plans.filter((p) => p.currency === summaryCurrency).map(summaryForPlan);
+  const summariesForCurrency = plans.filter((plan) => plan.currency === summaryCurrency).map(summaryForPlan);
   const totalReceived = summariesForCurrency.reduce((sum, summary) => sum + summary.received, 0);
   const totalPending = summariesForCurrency.reduce((sum, summary) => sum + summary.pending, 0);
 
@@ -139,12 +116,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-neutral-50">Projects</h1>
-            <p className="mt-1 text-sm text-neutral-500">SEO and web development, kept in their own lanes.</p>
+            <p className="mt-1 text-sm text-neutral-500">
+              Open a project, or use the live task controls below to see what the team is doing.
+            </p>
           </div>
-          {profile?.role === "admin" && (
+          {isAdmin && (
             <Link
               href="/projects/new"
-              className="flex items-center gap-2 rounded-lg bg-accent-500 px-3 py-2 text-sm font-medium text-base-950 hover:bg-accent-400 shadow-glow"
+              className="flex items-center gap-2 rounded-lg bg-accent-500 px-3 py-2 text-sm font-medium text-base-950 shadow-glow hover:bg-accent-400"
             >
               <Plus size={16} />
               New Project
@@ -154,63 +133,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         <ProjectTypeTabs projects={activeProjects} progress={progress} paymentByProject={paymentByProject} />
       </section>
 
-      {pinnedNotes.length > 0 && (
-        <section>
-          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            <Pin size={13} className="text-accent-400" />
-            Pinned Notes
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {pinnedNotes.map((note) => (
-              <Link
-                key={note.id}
-                href={`/notes/${note.id}`}
-                className="flex flex-col gap-1.5 rounded-xl2 border border-base-700/60 bg-base-850 p-4 hover:border-accent-500/50"
-              >
-                <div className="flex items-center gap-1.5 text-neutral-100">
-                  <FileText size={14} className="shrink-0 text-neutral-500" />
-                  <p className="truncate text-sm font-medium">{note.title || "Untitled"}</p>
-                </div>
-                <p className="text-[11px] text-neutral-500">Updated {formatRelativeDate(note.updatedAt)}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Open tasks" value={openTasks.length} icon={ListTodo} tone="accent" />
-        <ScheduledTodayStat tasks={openTasks} />
-        <StatCard label="Active projects" value={activeProjects.length} icon={FolderKanban} tone="sky" />
-        <StatCard label="Completed" value={completedTasks.length} icon={CheckCircle2} tone="accent" />
-      </div>
-
-      {seoProjects.length > 0 && (
-        <section>
-          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            <BarChart3 size={13} className="text-accent-400" />
-            SEO Overview · This week
-          </h2>
-          <SeoOverviewCard metrics={seoOverview} />
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          <Activity size={13} className="text-accent-400" />
-          Today&apos;s Activity
-        </h2>
-        <ActivityFeed events={todayActivity} />
-      </section>
-
-      {teamPerformance.length > 0 && (
-        <section>
-          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            <Users size={13} className="text-accent-400" />
-            Team Activity
-          </h2>
-          <TeamActivityPanel performance={teamPerformance} />
-        </section>
+      {isAdmin && (
+        <AdminTaskCommandCenter
+          projects={activeProjects}
+          initialOpenTasks={openTasks}
+          initialCompletedTasks={completedTasks}
+          initialFocusStates={focusStates}
+        />
       )}
 
       {isAdmin && plans.length > 0 && (
@@ -222,15 +151,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
             <div className="flex flex-wrap items-center gap-3">
               {currencies.length > 1 && (
                 <div className="flex gap-1 rounded-lg border border-base-700/60 bg-base-850 p-1">
-                  {currencies.map((c) => (
+                  {currencies.map((currency) => (
                     <Link
-                      key={c}
-                      href={`/?currency=${c}`}
-                      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                        summaryCurrency === c ? "bg-accent-500 text-base-950" : "text-neutral-400 hover:text-neutral-200"
-                      }`}
+                      key={currency}
+                      href={`/?currency=${currency}`}
+                      className={
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition-colors " +
+                        (summaryCurrency === currency
+                          ? "bg-accent-500 text-base-950"
+                          : "text-neutral-400 hover:text-neutral-200")
+                      }
                     >
-                      {c}
+                      {currency}
                     </Link>
                   ))}
                 </div>
@@ -240,6 +172,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
               </Link>
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <StatCard label="Total received" value={formatMoney(totalReceived, summaryCurrency)} icon={PiggyBank} tone="accent" />
             <StatCard label="Total pending" value={formatMoney(totalPending, summaryCurrency)} icon={Hourglass} tone="rose" />
@@ -249,57 +182,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
           </div>
         </section>
       )}
-
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            Pending Work
-          </h2>
-          <Link href="/today" className="flex items-center gap-1 text-xs text-accent-400 hover:text-accent-300">
-            Plan today <ArrowRight size={12} />
-          </Link>
-        </div>
-        <div className="flex flex-col gap-2 rounded-xl2 border border-base-700/60 bg-base-850 p-2 md:border-0 md:bg-transparent md:p-0">
-          {openTasks.length === 0 && (
-            <p className="rounded-lg border border-dashed border-base-700 p-6 text-center text-sm text-neutral-500">
-              Nothing open. You&apos;re fully caught up.
-            </p>
-          )}
-          {openTasks.slice(0, 8).map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              stageName={stageNameById(task.projectId, task.stageId)}
-              stages={projectById.get(task.projectId)?.stages ?? []}
-              showProject
-              projectName={projectById.get(task.projectId)?.name}
-              assignableMembers={assignableMembers}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">Recent Completed Work</h2>
-        <div className="flex flex-col gap-2 rounded-xl2 border border-base-700/60 bg-base-850 p-2 md:border-0 md:bg-transparent md:p-0">
-          {completedTasks.length === 0 && (
-            <p className="rounded-lg border border-dashed border-base-700 p-6 text-center text-sm text-neutral-500">
-              Nothing completed yet.
-            </p>
-          )}
-          {completedTasks.slice(0, 8).map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              stageName={stageNameById(task.projectId, task.stageId)}
-              stages={projectById.get(task.projectId)?.stages ?? []}
-              showProject
-              projectName={projectById.get(task.projectId)?.name}
-              assignableMembers={assignableMembers}
-            />
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
