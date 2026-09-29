@@ -26,7 +26,9 @@ import type {
   DomainStatus,
   InvoiceStatus,
   KeywordGroupColor,
+  KeywordRole,
   KeywordStatus,
+  KeywordTargetMode,
   LoginMethod,
   OnPageStatus,
   OutreachStatus,
@@ -1045,15 +1047,28 @@ export async function createKeywordAction(formData: FormData) {
     notes: str(formData, "notes"),
     searchIntent: (str(formData, "searchIntent") || null) as SearchIntent | null,
     priority: (str(formData, "priority") || "medium") as Priority,
+    keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole,
+    targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode,
+    suggestedPageName: str(formData, "suggestedPageName"),
+    clusterId: str(formData, "clusterId") || null,
+    primaryPageId: str(formData, "primaryPageId") || null,
   });
 
-  const pageId = str(formData, "pageId");
-  if (pageId && !created.pageIds.includes(pageId)) {
-    try {
-      await store.addKeywordToPage(created.id, pageId);
-    } catch {
-      // Non-critical: the keyword itself was created fine even if this assignment failed.
-    }
+  const defaultPageId = str(formData, "pageId");
+  const primaryPageId = str(formData, "primaryPageId") || defaultPageId || null;
+  const keywordRole = (str(formData, "keywordRole") || (defaultPageId ? "primary" : "secondary")) as KeywordRole;
+  const targetMode = (str(formData, "targetMode") || "existing_page") as KeywordTargetMode;
+
+  try {
+    await store.setKeywordMappingStrategy(created.id, {
+      keywordRole,
+      targetMode,
+      suggestedPageName: str(formData, "suggestedPageName"),
+      clusterId: str(formData, "clusterId") || null,
+      primaryPageId,
+    });
+  } catch {
+    // The keyword itself is still usable if its mapping metadata cannot be saved.
   }
 
   revalidatePath(`/projects/${projectId}`);
@@ -1076,6 +1091,18 @@ export async function updateKeywordAction(formData: FormData) {
     notes: str(formData, "notes"),
     searchIntent: (str(formData, "searchIntent") || null) as SearchIntent | null,
     priority: (str(formData, "priority") || "medium") as Priority,
+    keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole,
+    targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode,
+    suggestedPageName: str(formData, "suggestedPageName"),
+    clusterId: str(formData, "clusterId") || null,
+    primaryPageId: str(formData, "primaryPageId") || null,
+  });
+  await store.setKeywordMappingStrategy(id, {
+    keywordRole: (str(formData, "keywordRole") || "secondary") as KeywordRole,
+    targetMode: (str(formData, "targetMode") || "existing_page") as KeywordTargetMode,
+    suggestedPageName: str(formData, "suggestedPageName"),
+    clusterId: str(formData, "clusterId") || null,
+    primaryPageId: str(formData, "primaryPageId") || null,
   });
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1094,6 +1121,29 @@ export async function importKeywordsAction(
   const count = await store.createKeywordsBulk(projectId, rows);
   revalidatePath(`/projects/${projectId}`);
   return count;
+}
+
+export async function createKeywordSeoTaskAction(keywordId: string, projectId: string) {
+  await requireProjectAccess(projectId);
+  const keywords = await store.listKeywords(projectId);
+  const keyword = keywords.find((item) => item.id === keywordId);
+  if (!keyword) return;
+
+  await store.createTask({
+    projectId,
+    stageId: null,
+    title: keyword.targetMode === "new_page_required"
+      ? `Create SEO page: ${keyword.suggestedPageName || keyword.keyword}`
+      : `SEO work: ${keyword.keyword}`,
+    notes: keyword.targetMode === "new_page_required"
+      ? `Create and optimize a new page targeting "${keyword.keyword}".`
+      : `Review and optimize the mapped page for "${keyword.keyword}".`,
+    priority: keyword.priority,
+    seoModule: "on_page",
+    keywordId: keyword.id,
+    pageId: keyword.primaryPageId,
+  });
+  revalidatePath(`/projects/${projectId}`);
 }
 
 export async function setKeywordTrackedAction(id: string, projectId: string, isTracked: boolean) {
