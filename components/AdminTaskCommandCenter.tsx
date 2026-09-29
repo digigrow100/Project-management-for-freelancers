@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bell, CheckCircle2, Clock3, ExternalLink, PlayCircle, Search } from "lucide-react";
 import type { Project, Task, TaskFocusState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -40,7 +40,6 @@ export function AdminTaskCommandCenter({
   const [query, setQuery] = useState("");
   const [toastTask, setToastTask] = useState<Task | null>(null);
   const [unread, setUnread] = useState(0);
-  const firstPoll = useRef(true);
 
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const activeTaskIds = useMemo(
@@ -66,7 +65,7 @@ export function AdminTaskCommandCenter({
           (task) => task.completedAt && (!previousSeen || task.completedAt > previousSeen),
         );
 
-        if (!firstPoll.current && fresh.length > 0) {
+        if (fresh.length > 0) {
           const newest = fresh[0];
           setToastTask(newest);
           setUnread((count) => count + fresh.length);
@@ -78,7 +77,6 @@ export function AdminTaskCommandCenter({
         setOpenTasks(payload.openTasks);
         setCompletedTasks(payload.completedTasks);
         setFocusStates(payload.focusStates);
-        firstPoll.current = false;
       } catch {
         // Keep the dashboard usable if a background refresh briefly fails.
       }
