@@ -2548,6 +2548,14 @@ export async function setKeywordMappingStrategy(
 ): Promise<void> {
   const primaryPageId = input.targetMode === "new_page_required" ? null : input.primaryPageId;
 
+  if (input.targetMode === "new_page_required") {
+    const { error: unlinkError } = await getSupabase()
+      .from("freelance_hq_keyword_page_links")
+      .delete()
+      .eq("keyword_id", keywordId);
+    if (unlinkError) throw unlinkError;
+  }
+
   const { error: updateError } = await getSupabase()
     .from("freelance_hq_keywords")
     .update({
