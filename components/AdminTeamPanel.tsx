@@ -214,6 +214,16 @@ function MemberRow({
               <option value="web_developer">Web Developer</option>
             </select>
           )}
+          {member.role === "member" && (
+            <button
+              type="button"
+              onClick={() => setAssignOpen((v) => !v)}
+              className="flex items-center gap-1 rounded-md border border-base-600 px-2.5 py-1.5 text-xs text-neutral-300 hover:border-accent-500/60 hover:text-accent-300"
+            >
+              Projects ({assignedIds.length})
+              <ChevronDown size={13} className={cn("transition-transform", assignOpen && "rotate-180")} />
+            </button>
+          )}
           {!isSelf && (
             <button
               type="button"
