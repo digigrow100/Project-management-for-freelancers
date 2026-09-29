@@ -2508,6 +2508,26 @@ export async function removeKeywordFromPage(keywordId: string, pageId: string): 
       .eq("keyword_id", keywordId)
       .eq("page_id", pageId);
     if (error) throw error;
+
+    const { data: keywordRow, error: keywordError } = await getSupabase()
+      .from("freelance_hq_keywords")
+      .select("primary_page_id, keyword_role")
+      .eq("id", keywordId)
+      .maybeSingle();
+    if (keywordError) throw keywordError;
+
+    if ((keywordRow as { primary_page_id: string | null } | null)?.primary_page_id === pageId) {
+      const { error: clearKeywordError } = await getSupabase()
+        .from("freelance_hq_keywords")
+        .update({
+          primary_page_id: null,
+          keyword_role:
+            (keywordRow as { keyword_role?: KeywordRole } | null)?.keyword_role === "primary" ? "secondary" : (keywordRow as { keyword_role?: KeywordRole } | null)?.keyword_role,
+          updated_at: nowIso(),
+        })
+        .eq("id", keywordId);
+      if (clearKeywordError) throw clearKeywordError;
+    }
   } catch (error) {
     if (!isMissingTableError(error)) throw error;
   }
@@ -2910,14 +2930,20 @@ export async function createKeywordsBulk(projectId: string, rows: KeywordImportR
         search_intent: r.searchIntent ?? null,
         priority: r.priority ?? "medium",
         keyword_role: r.keywordRole ?? (r.targetPage ? "primary" : "secondary"),
-        target_mode: r.targetMode ?? "existing_page",
+        target_mode: r.targetMode ?? (r.suggestedPageName ? "new_page_required" : "existing_page"),
         suggested_page_name: r.suggestedPageName ?? "",
       })),
     )
-    .select("id, current_rank, target_page");
+    .select("id, current_rank, target_page, keyword_role, target_mode");
   if (error) throw error;
 
-  const inserted = (data ?? []) as { id: string; current_rank: number | null; target_page: string }[];
+  const inserted = (data ?? []) as {
+    id: string;
+    current_rank: number | null;
+    target_page: string;
+    keyword_role: KeywordRole;
+    target_mode: KeywordTargetMode;
+  }[];
   const withRank = inserted.filter((row) => row.current_rank !== null);
   if (withRank.length > 0) {
     try {
@@ -2943,20 +2969,25 @@ export async function createKeywordsBulk(projectId: string, rows: KeywordImportR
   }
 
   for (const row of inserted) {
-    if (!row.target_page) continue;
+    if (!row.target_page || row.target_mode === "new_page_required") continue;
     const page = pageByKey.get(normalizePage(row.target_page));
     if (!page) continue;
+
     await addKeywordToPage(row.id, page.id);
-    await getSupabase()
+    const { error: mapError } = await getSupabase()
       .from("freelance_hq_keywords")
       .update({
         primary_page_id: page.id,
         cluster_id: page.groupId,
-        keyword_role: "primary",
         target_mode: "existing_page",
         updated_at: nowIso(),
       })
       .eq("id", row.id);
+    if (mapError) throw mapError;
+
+    if (row.keyword_role === "primary") {
+      await setPrimaryKeywordForPage(page.id, row.id);
+    }
   }
 
   return valid.length;
