@@ -6,7 +6,7 @@ import { AdminTaskCommandCenter } from "@/components/AdminTaskCommandCenter";
 import {
   ensureIdleSeoTaskForMember,
   getAllTaskFocusStates,
-  getCompletedTasks,
+  getRecentCompletedTasks,
   getMyTasks,
   getOpenTasks,
   getProjectProgressMap,
@@ -44,7 +44,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
   const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, focusStates] = await Promise.all([
     getOpenTasks(),
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
-    getCompletedTasks(),
+    getRecentCompletedTasks(50),
     getProjectProgressMap(),
     isAdmin ? listPaymentPlans() : Promise.resolve([]),
     isAdmin ? listAllPayments() : Promise.resolve([]),
@@ -137,7 +137,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         <AdminTaskCommandCenter
           projects={activeProjects}
           initialOpenTasks={openTasks}
-          initialCompletedTasks={completedTasks.slice(0, 50)}
+          initialCompletedTasks={completedTasks}
           initialFocusStates={focusStates}
         />
       )}
