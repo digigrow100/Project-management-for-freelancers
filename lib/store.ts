@@ -2522,7 +2522,9 @@ export async function removeKeywordFromPage(keywordId: string, pageId: string): 
         .update({
           primary_page_id: null,
           keyword_role:
-            (keywordRow as { keyword_role?: KeywordRole } | null)?.keyword_role === "primary" ? "secondary" : (keywordRow as { keyword_role?: KeywordRole } | null)?.keyword_role,
+            (keywordRow as { keyword_role?: KeywordRole } | null)?.keyword_role === "primary"
+              ? "secondary"
+              : ((keywordRow as { keyword_role?: KeywordRole } | null)?.keyword_role ?? "secondary"),
           updated_at: nowIso(),
         })
         .eq("id", keywordId);
