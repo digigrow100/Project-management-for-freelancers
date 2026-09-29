@@ -41,6 +41,8 @@ import type {
   KeywordGroupColor,
   KeywordMonthlyPosition,
   KeywordPage,
+  KeywordRole,
+  KeywordTargetMode,
   KeywordRankHistoryEntry,
   KeywordStatus,
   LoginMethod,
@@ -2208,6 +2210,11 @@ interface KeywordRow {
   is_tracked: boolean;
   search_intent: SearchIntent | null;
   priority: Priority;
+  keyword_role: KeywordRole;
+  target_mode: KeywordTargetMode;
+  suggested_page_name: string;
+  cluster_id: string | null;
+  primary_page_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2228,6 +2235,11 @@ function toKeyword(row: KeywordRow, pageIds: string[]): Keyword {
     pageIds,
     searchIntent: row.search_intent ?? null,
     priority: row.priority ?? "medium",
+    keywordRole: row.keyword_role ?? "secondary",
+    targetMode: row.target_mode ?? "existing_page",
+    suggestedPageName: row.suggested_page_name ?? "",
+    clusterId: row.cluster_id ?? null,
+    primaryPageId: row.primary_page_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -2289,6 +2301,11 @@ export async function createKeyword(input: {
   notes: string;
   searchIntent?: SearchIntent | null;
   priority?: Priority;
+  keywordRole?: KeywordRole;
+  targetMode?: KeywordTargetMode;
+  suggestedPageName?: string;
+  clusterId?: string | null;
+  primaryPageId?: string | null;
 }): Promise<Keyword> {
   const { data: existingRows, error: existingError } = await getSupabase()
     .from("freelance_hq_keywords")
@@ -2318,6 +2335,11 @@ export async function createKeyword(input: {
       notes: input.notes,
       search_intent: input.searchIntent ?? null,
       priority: input.priority ?? "medium",
+      keyword_role: input.keywordRole ?? "secondary",
+      target_mode: input.targetMode ?? "existing_page",
+      suggested_page_name: input.suggestedPageName ?? "",
+      cluster_id: input.clusterId ?? null,
+      primary_page_id: input.primaryPageId ?? null,
     })
     .select()
     .single();
@@ -2358,6 +2380,11 @@ export async function updateKeyword(
       | "notes"
       | "searchIntent"
       | "priority"
+      | "keywordRole"
+      | "targetMode"
+      | "suggestedPageName"
+      | "clusterId"
+      | "primaryPageId"
     >
   >,
 ): Promise<void> {
@@ -2373,6 +2400,11 @@ export async function updateKeyword(
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (patch.searchIntent !== undefined) update.search_intent = patch.searchIntent;
   if (patch.priority !== undefined) update.priority = patch.priority;
+  if (patch.keywordRole !== undefined) update.keyword_role = patch.keywordRole;
+  if (patch.targetMode !== undefined) update.target_mode = patch.targetMode;
+  if (patch.suggestedPageName !== undefined) update.suggested_page_name = patch.suggestedPageName;
+  if (patch.clusterId !== undefined) update.cluster_id = patch.clusterId;
+  if (patch.primaryPageId !== undefined) update.primary_page_id = patch.primaryPageId;
 
   if (patch.currentRank !== undefined) {
     const { data: existing, error: fetchError } = await getSupabase()
@@ -2387,6 +2419,10 @@ export async function updateKeyword(
 
   const { error } = await getSupabase().from("freelance_hq_keywords").update(update).eq("id", id);
   if (error) throw error;
+
+  if (patch.primaryPageId) {
+    await addKeywordToPage(id, patch.primaryPageId);
+  }
 }
 
 interface KeywordRankHistoryRow {
@@ -2671,13 +2707,40 @@ export async function updateKeywordPage(
 
 /** Marks `keywordId` as the primary keyword for `pageId` (must already be linked to it), clearing any previous primary on that page. Pass `keywordId: null` to clear the page's primary without setting a new one. */
 export async function setPrimaryKeywordForPage(pageId: string, keywordId: string | null): Promise<void> {
+  const { data: previousRows, error: previousError } = await getSupabase()
+    .from("freelance_hq_keyword_page_links")
+    .select("keyword_id")
+    .eq("page_id", pageId)
+    .eq("is_primary", true);
+  if (previousError) throw previousError;
+
+  const previousIds = ((previousRows ?? []) as { keyword_id: string }[]).map((row) => row.keyword_id);
+
   const { error: clearError } = await getSupabase()
     .from("freelance_hq_keyword_page_links")
     .update({ is_primary: false })
     .eq("page_id", pageId);
   if (clearError) throw clearError;
 
+  if (previousIds.length > 0) {
+    const { error: keywordClearError } = await getSupabase()
+      .from("freelance_hq_keywords")
+      .update({ keyword_role: "secondary", primary_page_id: null, updated_at: nowIso() })
+      .in("id", previousIds)
+      .eq("primary_page_id", pageId);
+    if (keywordClearError) throw keywordClearError;
+  }
+
   if (!keywordId) return;
+
+  await addKeywordToPage(keywordId, pageId);
+
+  const { data: pageRow, error: pageError } = await getSupabase()
+    .from("freelance_hq_keyword_pages")
+    .select("group_id")
+    .eq("id", pageId)
+    .single();
+  if (pageError) throw pageError;
 
   const { error } = await getSupabase()
     .from("freelance_hq_keyword_page_links")
@@ -2685,6 +2748,18 @@ export async function setPrimaryKeywordForPage(pageId: string, keywordId: string
     .eq("page_id", pageId)
     .eq("keyword_id", keywordId);
   if (error) throw error;
+
+  const { error: keywordError } = await getSupabase()
+    .from("freelance_hq_keywords")
+    .update({
+      keyword_role: "primary",
+      target_mode: "existing_page",
+      primary_page_id: pageId,
+      cluster_id: (pageRow as { group_id: string }).group_id,
+      updated_at: nowIso(),
+    })
+    .eq("id", keywordId);
+  if (keywordError) throw keywordError;
 }
 
 export async function deleteKeywordPage(id: string): Promise<void> {
@@ -2748,6 +2823,11 @@ export interface KeywordImportRow {
   targetRank: number | null;
   status: KeywordStatus;
   notes: string;
+  searchIntent?: SearchIntent | null;
+  priority?: Priority;
+  keywordRole?: KeywordRole;
+  targetMode?: KeywordTargetMode;
+  suggestedPageName?: string;
 }
 
 /** Bulk-inserts imported keywords in a single round trip; rows without a keyword are dropped. */
@@ -2786,12 +2866,17 @@ export async function createKeywordsBulk(projectId: string, rows: KeywordImportR
         target_rank: r.targetRank,
         status: r.status,
         notes: r.notes,
+        search_intent: r.searchIntent ?? null,
+        priority: r.priority ?? "medium",
+        keyword_role: r.keywordRole ?? (r.targetPage ? "primary" : "secondary"),
+        target_mode: r.targetMode ?? "existing_page",
+        suggested_page_name: r.suggestedPageName ?? "",
       })),
     )
-    .select("id, current_rank");
+    .select("id, current_rank, target_page");
   if (error) throw error;
 
-  const inserted = (data ?? []) as { id: string; current_rank: number | null }[];
+  const inserted = (data ?? []) as { id: string; current_rank: number | null; target_page: string }[];
   const withRank = inserted.filter((row) => row.current_rank !== null);
   if (withRank.length > 0) {
     try {
@@ -2802,6 +2887,35 @@ export async function createKeywordsBulk(projectId: string, rows: KeywordImportR
     } catch (error) {
       if (!isMissingTableError(error)) throw error;
     }
+  }
+
+  // If an import contains a Target Page matching an existing page name or URL,
+  // map it automatically as the keyword's primary target.
+  const groups = await listKeywordGroups(projectId);
+  const pagesByGroup = await listKeywordPages(groups.map((group) => group.id));
+  const allPages = Object.values(pagesByGroup).flat();
+  const normalizePage = (value: string) => value.trim().toLowerCase().replace(/\/$/, "");
+  const pageByKey = new Map<string, KeywordPage>();
+  for (const page of allPages) {
+    pageByKey.set(normalizePage(page.name), page);
+    if (page.url) pageByKey.set(normalizePage(page.url), page);
+  }
+
+  for (const row of inserted) {
+    if (!row.target_page) continue;
+    const page = pageByKey.get(normalizePage(row.target_page));
+    if (!page) continue;
+    await addKeywordToPage(row.id, page.id);
+    await getSupabase()
+      .from("freelance_hq_keywords")
+      .update({
+        primary_page_id: page.id,
+        cluster_id: page.groupId,
+        keyword_role: "primary",
+        target_mode: "existing_page",
+        updated_at: nowIso(),
+      })
+      .eq("id", row.id);
   }
 
   return valid.length;
