@@ -2891,6 +2891,7 @@ export interface KeywordImportRow {
   keywordRole?: KeywordRole;
   targetMode?: KeywordTargetMode;
   suggestedPageName?: string;
+  clusterName?: string;
 }
 
 /** Bulk-inserts imported keywords in a single round trip; rows without a keyword are dropped. */
@@ -2936,11 +2937,12 @@ export async function createKeywordsBulk(projectId: string, rows: KeywordImportR
         suggested_page_name: r.suggestedPageName ?? "",
       })),
     )
-    .select("id, current_rank, target_page, keyword_role, target_mode");
+    .select("id, keyword, current_rank, target_page, keyword_role, target_mode");
   if (error) throw error;
 
   const inserted = (data ?? []) as {
     id: string;
+    keyword: string;
     current_rank: number | null;
     target_page: string;
     keyword_role: KeywordRole;
@@ -2965,12 +2967,26 @@ export async function createKeywordsBulk(projectId: string, rows: KeywordImportR
   const allPages = Object.values(pagesByGroup).flat();
   const normalizePage = (value: string) => value.trim().toLowerCase().replace(/\/$/, "");
   const pageByKey = new Map<string, KeywordPage>();
+  const groupByName = new Map(groups.map((group) => [normalizeKeywordText(group.name), group]));
   for (const page of allPages) {
     pageByKey.set(normalizePage(page.name), page);
     if (page.url) pageByKey.set(normalizePage(page.url), page);
   }
 
   for (const row of inserted) {
+    const source = valid.find((item) => normalizeKeywordText(item.keyword) === normalizeKeywordText(row.keyword));
+    const importedCluster = source?.clusterName
+      ? groupByName.get(normalizeKeywordText(source.clusterName))
+      : undefined;
+
+    if (importedCluster) {
+      const { error: clusterError } = await getSupabase()
+        .from("freelance_hq_keywords")
+        .update({ cluster_id: importedCluster.id, updated_at: nowIso() })
+        .eq("id", row.id);
+      if (clusterError) throw clusterError;
+    }
+
     if (!row.target_page || row.target_mode === "new_page_required") continue;
     const page = pageByKey.get(normalizePage(row.target_page));
     if (!page) continue;
