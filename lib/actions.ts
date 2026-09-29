@@ -335,6 +335,36 @@ export async function toggleChecklistItemAction(taskId: string, projectId: strin
   refresh(projectId);
 }
 
+export async function startFocusTaskAction(taskId: string) {
+  const profile = await requireProfile();
+  await store.startTaskFocus(taskId, profile.id);
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+}
+
+export async function pauseFocusTaskAction(taskId: string) {
+  const profile = await requireProfile();
+  await store.pauseTaskFocus(taskId, profile.id);
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+}
+
+export async function completeFocusTaskAction(taskId: string) {
+  const profile = await requireProfile();
+  await store.completeTaskFromFocus(taskId, profile.id);
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+  revalidatePath("/today");
+}
+
+export async function bulkCompleteFocusTasksAction(taskIds: string[]) {
+  const profile = await requireProfile();
+  await store.completeTasksFromFocus(taskIds, profile.id);
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+  revalidatePath("/today");
+}
+
 export async function deleteTaskAction(taskId: string, projectId: string) {
   await requireProjectAccess(projectId);
   await store.deleteTask(taskId);
