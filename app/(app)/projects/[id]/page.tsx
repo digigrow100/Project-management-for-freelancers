@@ -8,7 +8,6 @@ import {
   listBacklinkTemplateItems,
   listBacklinkTemplates,
   listCompetitorBacklinks,
-  listContentItems,
   listOutreachProspects,
   listKeywordGroups,
   listKeywordPages,
@@ -18,7 +17,6 @@ import {
   listPageAuditChecks,
   listProjectAttachments,
   listSeoReports,
-  listTechnicalIssues,
   getReportPreferences,
   getProject,
   redactProjectClientData,
@@ -43,9 +41,6 @@ import { ProjectDetailTabs } from "@/components/ProjectDetailTabs";
 import { SeoProjectTabs } from "@/components/SeoProjectTabs";
 import { ShareLinkPanel } from "@/components/ShareLinkPanel";
 import { PaymentsCard } from "@/components/PaymentsCard";
-import { OnPageSeoPanel } from "@/components/OnPageSeoPanel";
-import { TechnicalSeoPanel } from "@/components/TechnicalSeoPanel";
-import { ContentPipelinePanel } from "@/components/ContentPipelinePanel";
 import { SeoReportingPanel } from "@/components/SeoReportingPanel";
 import { ProjectAttachments } from "@/components/ProjectAttachments";
 import { OffPagePanel } from "@/components/OffPagePanel";
@@ -111,8 +106,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const webAppSubFeaturesByFeature =
     webAppFeatures.length > 0 ? await listWebAppSubFeatures(webAppFeatures.map((f) => f.id)) : {};
 
-  const technicalIssues = project.type === "seo" ? await listTechnicalIssues(project.id) : [];
-  const contentItems = project.type === "seo" ? await listContentItems(project.id) : [];
   const seoReports = project.type === "seo" ? await listSeoReports(project.id) : [];
   const reportPreferences = project.type === "seo" ? await getReportPreferences(project.id) : undefined;
 
@@ -121,12 +114,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const pageAuditChecks =
     project.type === "seo" ? await listPageAuditChecks(project.id, pageAuditMonth) : [];
 
-  const tasksByPage: Record<string, typeof tasks> = {};
-  const tasksByContentItem: Record<string, typeof tasks> = {};
   const tasksByProspect: Record<string, typeof tasks> = {};
   for (const task of tasks) {
-    if (task.pageId) (tasksByPage[task.pageId] ??= []).push(task);
-    if (task.contentItemId) (tasksByContentItem[task.contentItemId] ??= []).push(task);
     if (task.outreachProspectId) (tasksByProspect[task.outreachProspectId] ??= []).push(task);
   }
   const completed = tasks
@@ -268,28 +257,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               periodMonth={pageAuditMonth}
               keywords={keywords}
               keywordPages={Object.values(keywordPagesByGroup).flat()}
-            />
-          }
-          onPage={
-            <OnPageSeoPanel
-              projectId={project.id}
-              groups={keywordGroups}
-              pagesByGroup={keywordPagesByGroup}
-              keywords={keywords}
-              tasksByPage={tasksByPage}
-              assignableMembers={assignableMembers}
-            />
-          }
-          technical={
-            <TechnicalSeoPanel projectId={project.id} issues={technicalIssues} assignableMembers={assignableMembers} />
-          }
-          content={
-            <ContentPipelinePanel
-              projectId={project.id}
-              items={contentItems}
-              keywords={keywords}
-              tasksByContentItem={tasksByContentItem}
-              assignableMembers={assignableMembers}
             />
           }
           offPage={
