@@ -2,16 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, BarChart3, FileEdit, FileText, Link2, Search, TrendingUp, User } from "lucide-react";
+import { BarChart3, FileText, Link2, Search, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "pages" | "onPage" | "technical" | "content" | "offPage" | "reporting" | "client";
+type TabKey = "pages" | "offPage" | "reporting" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
   { key: "pages", label: "Website Pages", icon: FileText },
-  { key: "onPage", label: "On-Page", icon: TrendingUp },
-  { key: "technical", label: "Technical", icon: AlertTriangle },
-  { key: "content", label: "Content", icon: FileEdit },
   { key: "offPage", label: "Off-Page", icon: Link2 },
   { key: "reporting", label: "Reporting", icon: BarChart3 },
   { key: "client", label: "Client Details", icon: User },
@@ -25,17 +22,11 @@ const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
  */
 export function SeoProjectTabs({
   pages,
-  onPage,
-  technical,
-  content,
   offPage,
   reporting,
   clientDetails,
 }: {
   pages: ReactNode;
-  onPage: ReactNode;
-  technical: ReactNode;
-  content: ReactNode;
   offPage: ReactNode;
   reporting: ReactNode;
   clientDetails?: ReactNode;
@@ -55,9 +46,6 @@ export function SeoProjectTabs({
 
   const panels: Record<TabKey, ReactNode | undefined> = {
     pages,
-    onPage,
-    technical,
-    content,
     offPage,
     reporting,
     client: clientDetails,
