@@ -1603,6 +1603,31 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
     if (!isMissingTableError(focusError)) throw focusError;
   }
 
+  if (task.isFallback && task.fallbackTemplateKey?.startsWith("workflow:")) {
+    const [, module, refId] = task.fallbackTemplateKey.split(":");
+    if (module === "website_pages" && refId) {
+      const periodMonth = new Date().toISOString().slice(0, 7);
+      const { error: pageSyncError } = await getSupabase()
+        .from("freelance_hq_page_audit_checks")
+        .update({
+          status: "done",
+          checked_at: now,
+          checked_by: userId,
+          updated_at: now,
+        })
+        .eq("page_id", refId)
+        .eq("period_month", periodMonth);
+      if (pageSyncError) throw pageSyncError;
+    } else if (refId) {
+      const { error: workflowSyncError } = await getSupabase()
+        .from("freelance_hq_seo_workflow_items")
+        .update({ status: "done", completed_at: now, updated_at: now })
+        .eq("id", refId)
+        .eq("project_id", task.projectId);
+      if (workflowSyncError && !isMissingTableError(workflowSyncError)) throw workflowSyncError;
+    }
+  }
+
   await decrementPausedResumeCounters(userId);
   await touchProject(task.projectId);
 }
