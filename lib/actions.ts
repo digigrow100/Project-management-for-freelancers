@@ -48,6 +48,11 @@ import type {
   Role,
   SearchIntent,
   SeoModule,
+  SeoWorkflowApprovalStatus,
+  SeoWorkflowLoginMethod,
+  SeoWorkflowOutreachStatus,
+  SeoWorkflowPaymentStatus,
+  SeoWorkflowVerificationStatus,
   SubFeatureStatus,
   TaskPriority,
   TaskStatus,
@@ -1180,6 +1185,63 @@ export async function updateSeoWorkflowItemStatusAction(input: {
   await requireProjectAccess(input.projectId);
   await store.updateSeoWorkflowItemStatus(input.itemId, input.projectId, input.status);
   revalidatePath(`/projects/${input.projectId}`);
+}
+
+export async function updateSeoWorkflowItemDetailsAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const projectId = str(formData, "projectId");
+  const itemId = str(formData, "itemId");
+  if (!projectId || !itemId) return { ok: false, error: "Missing workflow item." };
+  await requireProjectAccess(projectId);
+
+  const rawPrice = str(formData, "price");
+  const price = rawPrice === "" ? null : Number(rawPrice);
+  if (rawPrice !== "" && !Number.isFinite(price)) {
+    return { ok: false, error: "Price must be a valid number." };
+  }
+
+  try {
+    await store.updateSeoWorkflowItemDetails(itemId, projectId, {
+      loginMethod: (str(formData, "loginMethod") || "") as SeoWorkflowLoginMethod,
+      loginEmail: str(formData, "loginEmail"),
+      username: str(formData, "username"),
+      password: str(formData, "password") || undefined,
+      clearPassword: formData.get("clearPassword") === "true",
+      profileUrl: str(formData, "profileUrl"),
+      notes: str(formData, "notes"),
+      verificationStatus: (str(formData, "verificationStatus") || "") as SeoWorkflowVerificationStatus,
+      contactName: str(formData, "contactName"),
+      contactEmail: str(formData, "contactEmail"),
+      outreachStatus: (str(formData, "outreachStatus") || "") as SeoWorkflowOutreachStatus,
+      price,
+      currency: str(formData, "currency") || "GBP",
+      paymentStatus: (str(formData, "paymentStatus") || "") as SeoWorkflowPaymentStatus,
+      approvalStatus: (str(formData, "approvalStatus") || "") as SeoWorkflowApprovalStatus,
+    });
+    revalidatePath(`/projects/${projectId}`);
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("BACKLINKS_SECRET")) {
+      return { ok: false, error: "Password encryption is not configured on the server yet." };
+    }
+    return { ok: false, error: "Could not save these details. Please try again." };
+  }
+}
+
+export async function revealSeoWorkflowPasswordAction(input: {
+  projectId: string;
+  itemId: string;
+}): Promise<{ ok: true; password: string } | { ok: false; error: string }> {
+  await requireProjectAccess(input.projectId);
+  try {
+    const password = await store.revealSeoWorkflowPassword(input.itemId, input.projectId);
+    if (!password) return { ok: false, error: "No password is saved for this login." };
+    return { ok: true, password };
+  } catch {
+    return { ok: false, error: "Could not reveal the password." };
+  }
 }
 
 export async function updateKeywordRankAction(input: {
