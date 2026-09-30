@@ -384,6 +384,68 @@ export async function deleteProjectPage(pageId: string, projectId: string): Prom
   if (error) throw error;
 }
 
+interface SeoWorkflowItemRow {
+  id: string;
+  project_id: string;
+  module: SeoWorkflowModule;
+  item_key: string;
+  title: string;
+  url: string;
+  status: "pending" | "done";
+  sort_order: number;
+  details: { steps?: string[] } | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toSeoWorkflowItem(row: SeoWorkflowItemRow): SeoWorkflowItem {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    module: row.module,
+    itemKey: row.item_key,
+    title: row.title,
+    url: row.url ?? "",
+    status: row.status,
+    sortOrder: row.sort_order ?? 0,
+    details: row.details ?? {},
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listSeoWorkflowItems(projectId: string): Promise<SeoWorkflowItem[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_seo_workflow_items")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("module")
+      .order("sort_order");
+    if (error) throw error;
+    return ((data ?? []) as SeoWorkflowItemRow[]).map(toSeoWorkflowItem);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function updateSeoWorkflowItemStatus(
+  id: string,
+  projectId: string,
+  status: "pending" | "done",
+): Promise<void> {
+  const now = nowIso();
+  const { error } = await getSupabase()
+    .from("freelance_hq_seo_workflow_items")
+    .update({ status, completed_at: status === "done" ? now : null, updated_at: now })
+    .eq("id", id)
+    .eq("project_id", projectId);
+  if (error) throw error;
+}
+
 export async function listPageCheckTemplates(): Promise<PageCheckTemplate[]> {
   try {
     const { data, error } = await getSupabase()
