@@ -167,13 +167,13 @@ export function AdminDashboardOverview({
       </section>
 
       <nav className="grid grid-cols-5 overflow-hidden rounded-xl border border-base-700/70 bg-base-850">
-        {[
+        {([
           ["Overview", "/admin"],
           ["Projects", "/projects"],
           ["Team", "#team-access"],
           ["Reports", "/seo/pages"],
           ["Accounts", "/invoices"],
-        ].map(([label, href], index) => (
+        ] as const).map(([label, href], index) => (
           <Link
             key={label}
             href={href}
