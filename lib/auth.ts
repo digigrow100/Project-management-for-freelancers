@@ -67,13 +67,13 @@ export async function requireAdmin(): Promise<Profile> {
 
 export async function requireRenewalsAccess(): Promise<Profile> {
   const profile = await requireProfile();
-  if (profile.role !== "admin") throw new Error("Admin access required.");
+  if (profile.role !== "admin" && !profile.canAccessRenewals) throw new Error("You don't have access to Renewals.");
   return profile;
 }
 
 export async function requireFinanceAccess(): Promise<Profile> {
   const profile = await requireProfile();
-  if (profile.role !== "admin") throw new Error("Admin access required.");
+  if (profile.role !== "admin" && !profile.canAccessFinance) throw new Error("You don't have access to Finance.");
   return profile;
 }
 
