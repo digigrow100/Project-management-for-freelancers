@@ -2101,22 +2101,11 @@ export function redactProjectClientData(project: Project): Project {
   return {
     ...project,
     client: "",
-    clientId: null,
     clientDetails: {
+      ...project.clientDetails,
       name: "",
       company: "",
-      email: "",
-      phone: "",
-      address: "",
-      notes: "",
-      logoUrl: "",
     },
-    webDetails: project.webDetails
-      ? {
-          ...project.webDetails,
-          contactDetails: "",
-        }
-      : null,
   };
 }
 
