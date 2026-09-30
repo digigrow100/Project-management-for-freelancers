@@ -288,6 +288,12 @@ export interface ProjectPage {
 
 export type SeoWorkflowModule = "social_media" | "local_listing" | "blog_onsite" | "web_2_0" | "guest_blogging";
 
+export type SeoWorkflowLoginMethod = "" | "email_password" | "google" | "facebook" | "apple" | "other";
+export type SeoWorkflowVerificationStatus = "" | "not_started" | "pending" | "verified" | "rejected";
+export type SeoWorkflowOutreachStatus = "" | "not_contacted" | "contacted" | "replied" | "negotiating" | "approved" | "rejected";
+export type SeoWorkflowPaymentStatus = "" | "not_required" | "pending" | "confirmed" | "paid";
+export type SeoWorkflowApprovalStatus = "" | "pending" | "approved" | "rejected";
+
 export interface SeoWorkflowItem {
   id: string;
   projectId: string;
@@ -298,6 +304,20 @@ export interface SeoWorkflowItem {
   status: "pending" | "done";
   sortOrder: number;
   details: { steps?: string[] };
+  loginMethod: SeoWorkflowLoginMethod;
+  loginEmail: string;
+  username: string;
+  hasPassword: boolean;
+  profileUrl: string;
+  notes: string;
+  verificationStatus: SeoWorkflowVerificationStatus;
+  contactName: string;
+  contactEmail: string;
+  outreachStatus: SeoWorkflowOutreachStatus;
+  price: number | null;
+  currency: string;
+  paymentStatus: SeoWorkflowPaymentStatus;
+  approvalStatus: SeoWorkflowApprovalStatus;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
