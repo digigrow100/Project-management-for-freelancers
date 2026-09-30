@@ -51,17 +51,20 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-col gap-1">
-        {NAV.map(({ href, label, icon: Icon }) => (
+        {NAV.map(({ href, label, icon: Icon }) => {
+          const resolvedHref = isAdmin && href === "/" ? "/admin" : href;
+          return (
           <Link
             key={href}
-            href={href}
+            href={resolvedHref}
             className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
           >
             <Icon size={17} className="text-neutral-500 group-hover:text-accent-400" />
             <span className="flex-1">{label}</span>
             <NotificationBadge count={badgeByHref[href] ?? 0} />
           </Link>
-        ))}
+          );
+        })}
         {canAccessRenewals && (
           <Link
             href="/domains"
