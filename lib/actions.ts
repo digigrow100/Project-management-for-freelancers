@@ -1172,6 +1172,16 @@ export async function updateKeywordAction(formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+export async function updateSeoWorkflowItemStatusAction(input: {
+  projectId: string;
+  itemId: string;
+  status: "pending" | "done";
+}) {
+  await requireProjectAccess(input.projectId);
+  await store.updateSeoWorkflowItemStatus(input.itemId, input.projectId, input.status);
+  revalidatePath(`/projects/${input.projectId}`);
+}
+
 export async function updateKeywordRankAction(input: {
   projectId: string;
   keywordId: string;
