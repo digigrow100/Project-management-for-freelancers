@@ -169,29 +169,20 @@ export function WebsitePagesPanel({
                       </p>
                     </div>
                   ) : (
-                    <div key={check.id} className="flex items-center gap-3 rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5">
-                      <button
-                        type="button"
-                        onClick={() => changeStatus(check, check.status === "done" ? "pending" : "done")}
-                        className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : check.status === "needs_work" ? "text-amber-400" : "text-neutral-600")}
-                      >
+                    <button
+                      key={check.id}
+                      type="button"
+                      onClick={() => changeStatus(check, check.status === "done" ? "pending" : "done")}
+                      className="flex w-full items-center gap-3 rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5 text-left transition-colors hover:border-base-600 hover:bg-base-900"
+                    >
+                      <span className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : "text-neutral-600")}>
                         {check.status === "done" ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                      </button>
+                      </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-neutral-200">{check.label}</p>
-                        <p className="mt-0.5 text-[10px] text-neutral-600">{check.status.replace("_", " ")}</p>
+                        <p className="mt-0.5 text-[10px] text-neutral-600">{check.status === "done" ? "Done" : "Pending"}</p>
                       </div>
-                      <select
-                        value={check.status}
-                        onChange={(e) => changeStatus(check, e.target.value as PageAuditStatus)}
-                        className="rounded-md border border-base-700 bg-base-950 px-2 py-1 text-[10px] text-neutral-400"
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="done">Done</option>
-                        <option value="needs_work">Needs work</option>
-                        <option value="not_applicable">N/A</option>
-                      </select>
-                    </div>
+                    </button>
                   ),
                 )}
               </div>
