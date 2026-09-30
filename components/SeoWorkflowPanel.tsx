@@ -92,7 +92,7 @@ export function SeoWorkflowPanel({
         return;
       }
       password = result.password;
-      setRevealed((current) => ({ ...current, [item.id]: password }));
+      setRevealed((current) => ({ ...current, [item.id]: result.password }));
     }
 
     await navigator.clipboard.writeText(password);
