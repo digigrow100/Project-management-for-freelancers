@@ -529,6 +529,20 @@ export async function updateSeoWorkflowItemDetails(
   if (error) throw error;
 }
 
+export async function revealSeoWorkflowPassword(id: string, projectId: string): Promise<string | null> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_seo_workflow_items")
+    .select("password_encrypted")
+    .eq("id", id)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const encrypted = (data as { password_encrypted: string | null } | null)?.password_encrypted ?? null;
+  if (!encrypted) return null;
+  return decryptSecret(encrypted);
+}
+
 export async function listPageCheckTemplates(): Promise<PageCheckTemplate[]> {
   try {
     const { data, error } = await getSupabase()
