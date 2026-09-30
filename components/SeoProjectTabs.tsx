@@ -2,14 +2,18 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BarChart3, FileText, Link2, Search, User } from "lucide-react";
+import { BarChart3, FileText, Globe2, ListChecks, MessageSquareText, Search, Share2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "pages" | "offPage" | "reporting" | "client";
+type TabKey = "pages" | "social" | "local" | "blog" | "web2" | "guest" | "reporting" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
   { key: "pages", label: "Website Pages", icon: FileText },
-  { key: "offPage", label: "Off-Page", icon: Link2 },
+  { key: "social", label: "Social Media", icon: Share2 },
+  { key: "local", label: "Local Listing", icon: Globe2 },
+  { key: "blog", label: "Blog Onsite", icon: MessageSquareText },
+  { key: "web2", label: "Web 2.0", icon: ListChecks },
+  { key: "guest", label: "Guest Blogging", icon: Search },
   { key: "reporting", label: "Reporting", icon: BarChart3 },
   { key: "client", label: "Client Details", icon: User },
 ];
@@ -22,12 +26,20 @@ const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
  */
 export function SeoProjectTabs({
   pages,
-  offPage,
+  social,
+  local,
+  blog,
+  web2,
+  guest,
   reporting,
   clientDetails,
 }: {
   pages: ReactNode;
-  offPage: ReactNode;
+  social: ReactNode;
+  local: ReactNode;
+  blog: ReactNode;
+  web2: ReactNode;
+  guest: ReactNode;
   reporting: ReactNode;
   clientDetails?: ReactNode;
 }) {
@@ -46,7 +58,11 @@ export function SeoProjectTabs({
 
   const panels: Record<TabKey, ReactNode | undefined> = {
     pages,
-    offPage,
+    social,
+    local,
+    blog,
+    web2,
+    guest,
     reporting,
     client: clientDetails,
   };
