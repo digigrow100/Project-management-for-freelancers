@@ -1172,6 +1172,16 @@ export async function updateKeywordAction(formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+export async function updateKeywordRankAction(input: {
+  projectId: string;
+  keywordId: string;
+  currentRank: number | null;
+}) {
+  await requireProjectAccess(input.projectId);
+  await store.updateKeyword(input.keywordId, { currentRank: input.currentRank });
+  revalidatePath(`/projects/${input.projectId}`);
+}
+
 export async function deleteKeywordAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
   await store.deleteKeyword(id);
