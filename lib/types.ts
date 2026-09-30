@@ -286,11 +286,14 @@ export interface ProjectPage {
   updatedAt: string;
 }
 
+export type PageCheckInputType = "status" | "text";
+
 export interface PageCheckTemplate {
   checkKey: string;
   label: string;
   order: number;
   isActive: boolean;
+  inputType: PageCheckInputType;
 }
 
 export interface PageAuditCheck {
@@ -300,10 +303,12 @@ export interface PageAuditCheck {
   checkKey: string;
   status: PageAuditStatus;
   notes: string;
+  value: string;
   checkedAt: string | null;
   checkedBy: string | null;
   label: string;
   order: number;
+  inputType: PageCheckInputType;
 }
 
 

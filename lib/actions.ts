@@ -1068,6 +1068,7 @@ export async function updatePageAuditCheckAction(input: {
   periodMonth: string;
   checkKey: string;
   status: PageAuditStatus;
+  value?: string;
 }) {
   const profile = await requireProfile();
   await requireProjectAccess(input.projectId);
@@ -1077,6 +1078,7 @@ export async function updatePageAuditCheckAction(input: {
     input.checkKey,
     input.status,
     profile.id,
+    input.value,
   );
   revalidatePath(`/projects/${input.projectId}`);
 }
