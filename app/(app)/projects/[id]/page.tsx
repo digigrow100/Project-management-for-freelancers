@@ -12,9 +12,7 @@ import {
   listOutreachProspects,
   listKeywordGroups,
   listKeywordPages,
-  listKeywordRankHistory,
   listKeywords,
-  listMonthlyPositions,
   listPaymentPlansForProject,
   listProjectPages,
   listPageAuditChecks,
@@ -45,7 +43,6 @@ import { ProjectDetailTabs } from "@/components/ProjectDetailTabs";
 import { SeoProjectTabs } from "@/components/SeoProjectTabs";
 import { ShareLinkPanel } from "@/components/ShareLinkPanel";
 import { PaymentsCard } from "@/components/PaymentsCard";
-import { KeywordsPanel } from "@/components/KeywordsPanel";
 import { OnPageSeoPanel } from "@/components/OnPageSeoPanel";
 import { TechnicalSeoPanel } from "@/components/TechnicalSeoPanel";
 import { ContentPipelinePanel } from "@/components/ContentPipelinePanel";
@@ -87,15 +84,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     if (project.type === "web_dev" || project.type === "web_app") return member.jobRole === "web_developer";
     return true;
   });
-
-  const keywordRankHistory =
-    project.type === "seo" && keywords.length > 0
-      ? await listKeywordRankHistory(keywords.map((k) => k.id))
-      : {};
-
-  const trackedKeywordIds = keywords.filter((k) => k.isTracked).map((k) => k.id);
-  const keywordMonthlyPositions =
-    project.type === "seo" && trackedKeywordIds.length > 0 ? await listMonthlyPositions(trackedKeywordIds) : {};
 
   const keywordGroups = project.type === "seo" ? await listKeywordGroups(project.id) : [];
   const keywordPagesByGroup =
@@ -283,18 +271,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               pages={projectPages}
               checks={pageAuditChecks}
               periodMonth={pageAuditMonth}
-            />
-          }
-          keywords={
-            <KeywordsPanel
-              projectId={project.id}
-              projectName={project.name}
               keywords={keywords}
-              rankHistory={keywordRankHistory}
-              monthlyPositions={keywordMonthlyPositions}
-              groups={keywordGroups}
-              pagesByGroup={keywordPagesByGroup}
-              taskCountByKeyword={taskCountByKeyword}
+              keywordPages={Object.values(keywordPagesByGroup).flat()}
             />
           }
           onPage={
