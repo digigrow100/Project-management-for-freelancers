@@ -84,7 +84,7 @@ export default async function AdminPage() {
         domains={domains}
         domainClients={domainClients}
         renewals={renewals}
-        personalTasks={personalTasks}
+        personalTasks={personalTasks.filter((task) => task.status !== "done")}
       />
 
       <section id="team-access" className="scroll-mt-6">
