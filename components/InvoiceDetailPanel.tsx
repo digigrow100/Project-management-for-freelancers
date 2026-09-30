@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Download, Eye, FileText, Plus, Trash2, X } from "lucide-react";
 import type { BusinessProfile, Client, Invoice, InvoiceItem, InvoiceStatus, Payment, Project, SeoReport } from "@/lib/types";
 import {
@@ -59,6 +59,8 @@ export function InvoiceDetailPanel({
   availableReports: SeoReport[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const autoDownloadStarted = useRef(false);
   const [isPending, startTransition] = useTransition();
   const [draftItems, setDraftItems] = useState<DraftItem[]>(
     items.length > 0 ? items.map((i) => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice })) : [{ description: "", quantity: 1, unitPrice: 0 }],
@@ -88,6 +90,12 @@ export function InvoiceDetailPanel({
       setPdfBusy(null);
     }
   }
+
+  useEffect(() => {
+    if (searchParams.get("download") !== "1" || autoDownloadStarted.current) return;
+    autoDownloadStarted.current = true;
+    void runPdf("download");
+  }, [searchParams]);
 
   return (
     <div className="flex flex-col gap-6">
