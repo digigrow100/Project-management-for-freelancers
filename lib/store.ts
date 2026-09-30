@@ -1379,10 +1379,12 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
   projectId: string;
   checklist: ChecklistItem[];
   status: TaskStatus;
+  isFallback: boolean;
+  fallbackTemplateKey: string | null;
 }> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
-    .select("project_id, assigned_to, checklist, status")
+    .select("project_id, assigned_to, checklist, status, is_fallback, fallback_template_key")
     .eq("id", taskId)
     .maybeSingle();
   if (error) throw error;
@@ -1393,6 +1395,8 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     assigned_to: string | null;
     checklist: ChecklistItem[];
     status: TaskStatus;
+    is_fallback: boolean;
+    fallback_template_key: string | null;
   };
   if (row.assigned_to !== userId) throw new Error("This task is not assigned to you.");
 
@@ -1400,6 +1404,8 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     projectId: row.project_id,
     checklist: row.checklist ?? [],
     status: row.status,
+    isFallback: row.is_fallback ?? false,
+    fallbackTemplateKey: row.fallback_template_key ?? null,
   };
 }
 
