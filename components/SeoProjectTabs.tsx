@@ -5,11 +5,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, BarChart3, FileEdit, FileText, Link2, Search, TrendingUp, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "pages" | "keywords" | "onPage" | "technical" | "content" | "offPage" | "reporting" | "client";
+type TabKey = "pages" | "onPage" | "technical" | "content" | "offPage" | "reporting" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
   { key: "pages", label: "Website Pages", icon: FileText },
-  { key: "keywords", label: "Keywords", icon: Search },
   { key: "onPage", label: "On-Page", icon: TrendingUp },
   { key: "technical", label: "Technical", icon: AlertTriangle },
   { key: "content", label: "Content", icon: FileEdit },
@@ -26,7 +25,6 @@ const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
  */
 export function SeoProjectTabs({
   pages,
-  keywords,
   onPage,
   technical,
   content,
@@ -35,7 +33,6 @@ export function SeoProjectTabs({
   clientDetails,
 }: {
   pages: ReactNode;
-  keywords: ReactNode;
   onPage: ReactNode;
   technical: ReactNode;
   content: ReactNode;
@@ -58,7 +55,6 @@ export function SeoProjectTabs({
 
   const panels: Record<TabKey, ReactNode | undefined> = {
     pages,
-    keywords,
     onPage,
     technical,
     content,
