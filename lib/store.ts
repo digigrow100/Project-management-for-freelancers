@@ -75,6 +75,8 @@ import type {
   SearchIntent,
   Service,
   SeoModule,
+  SeoWorkflowItem,
+  SeoWorkflowModule,
   SeoReport,
   SeoReportMetrics,
   Stage,
