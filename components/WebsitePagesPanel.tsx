@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, Circle, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
-import type { PageAuditCheck, PageAuditStatus, ProjectPage, ProjectPageType } from "@/lib/types";
+import type { Keyword, KeywordPage, PageAuditCheck, PageAuditStatus, ProjectPage, ProjectPageType } from "@/lib/types";
 import { createProjectPageAction, deleteProjectPageAction, updatePageAuditCheckAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
@@ -11,16 +11,48 @@ const PAGE_TYPES: Array<[ProjectPageType, string]> = [
   ["landing","Landing"],["legal","Legal"],["contact","Contact"],["other","Other"],
 ];
 
+function normalizePageUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://example.com${trimmed.startsWith("/") ? "" : "/"}${trimmed}`);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return path.toLowerCase();
+  } catch {
+    return trimmed.replace(/^https?:\/\/[^/]+/i, "").replace(/\/+$/, "").toLowerCase() || "/";
+  }
+}
+
+function keywordBelongsToPage(keyword: Keyword, page: ProjectPage, keywordPageById: Map<string, KeywordPage>) {
+  const candidateIds = [keyword.primaryPageId, ...keyword.pageIds].filter(Boolean) as string[];
+  if (candidateIds.length === 0) return false;
+
+  const pageUrl = normalizePageUrl(page.url);
+  const pageName = page.name.trim().toLowerCase();
+
+  return candidateIds.some((id) => {
+    const mappedPage = keywordPageById.get(id);
+    if (!mappedPage) return false;
+    const mappedUrl = normalizePageUrl(mappedPage.url);
+    const mappedName = mappedPage.name.trim().toLowerCase();
+    return (pageUrl && mappedUrl && pageUrl === mappedUrl) || (pageName && mappedName && pageName === mappedName);
+  });
+}
+
 export function WebsitePagesPanel({
   projectId,
   pages,
   checks,
   periodMonth,
+  keywords,
+  keywordPages,
 }: {
   projectId: string;
   pages: ProjectPage[];
   checks: PageAuditCheck[];
   periodMonth: string;
+  keywords: Keyword[];
+  keywordPages: KeywordPage[];
 }) {
   const [adding, setAdding] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -30,8 +62,10 @@ export function WebsitePagesPanel({
     return map;
   }, [checks]);
 
-  const totalChecks = checks.length;
-  const doneChecks = checks.filter((c) => c.status === "done" || c.status === "not_applicable").length;
+  const visibleChecks = checks.filter((check) => check.checkKey !== "main_keyword" && check.checkKey !== "main_keyword_rank");
+  const totalChecks = visibleChecks.length;
+  const doneChecks = visibleChecks.filter((c) => c.status === "done" || c.status === "not_applicable").length;
+  const keywordPageById = useMemo(() => new Map(keywordPages.map((page) => [page.id, page])), [keywordPages]);
   const progress = totalChecks === 0 ? 0 : Math.round((doneChecks / totalChecks) * 100);
 
   function changeStatus(check: PageAuditCheck, status: PageAuditStatus) {
@@ -67,7 +101,7 @@ export function WebsitePagesPanel({
           <div>
             <h2 className="text-base font-semibold text-neutral-100">Website Pages</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Monthly SEO quality checks for {periodMonth}, including keyword, ranking, technical, content and image checks.
+              Pages, mapped keywords, search volume, current ranking and monthly SEO checks for {periodMonth}.
             </p>
           </div>
           <button
@@ -109,41 +143,99 @@ export function WebsitePagesPanel({
 
       <div className="space-y-3">
         {pages.map((page, index) => {
-          const pageChecks = checksByPage[page.id] ?? [];
+          const pageChecks = (checksByPage[page.id] ?? []).filter(
+            (check) => check.checkKey !== "main_keyword" && check.checkKey !== "main_keyword_rank",
+          );
+          const mappedKeywords = keywords
+            .filter((keyword) => keywordBelongsToPage(keyword, page, keywordPageById))
+            .sort((a, b) => {
+              const roleOrder = { primary: 0, secondary: 1, supporting: 2, long_tail: 3 } as const;
+              return roleOrder[a.keywordRole] - roleOrder[b.keywordRole] || a.keyword.localeCompare(b.keyword);
+            });
           const completed = pageChecks.filter((c) => c.status === "done" || c.status === "not_applicable").length;
           const pageProgress = pageChecks.length ? Math.round((completed / pageChecks.length) * 100) : 0;
 
           return (
             <section key={page.id} className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-              <div className="flex flex-wrap items-start gap-3">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-base-900 text-xs font-semibold text-neutral-400">{index + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-semibold text-neutral-100">{page.name}</h3>
-                    <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">{page.pageType}</span>
+              <div className="overflow-x-auto">
+                <div className="min-w-[820px]">
+                  <div className="grid grid-cols-[minmax(260px,1.6fr)_minmax(220px,1.35fr)_90px_90px_90px_36px] gap-3 border-b border-base-700/50 pb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                    <span>Page</span>
+                    <span>Keywords</span>
+                    <span>Volume</span>
+                    <span>Ranking</span>
+                    <span>Progress</span>
+                    <span />
                   </div>
-                  {page.url ? (
-                    <a href={page.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-neutral-500 hover:text-accent-300">
-                      {page.url}<ExternalLink size={11} />
-                    </a>
-                  ) : (
-                    <p className="mt-1 text-xs text-amber-400">URL not added yet</p>
-                  )}
+                  <div className="grid grid-cols-[minmax(260px,1.6fr)_minmax(220px,1.35fr)_90px_90px_90px_36px] gap-3 pt-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-base-900 text-xs font-semibold text-neutral-400">{index + 1}</span>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-sm font-semibold text-neutral-100">{page.name}</h3>
+                          <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">{page.pageType}</span>
+                        </div>
+                        {page.url ? (
+                          <a href={page.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-neutral-500 hover:text-accent-300">
+                            {page.url}<ExternalLink size={11} />
+                          </a>
+                        ) : (
+                          <p className="mt-1 text-xs text-amber-400">URL not added yet</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {mappedKeywords.length > 0 ? mappedKeywords.map((keyword) => (
+                        <div key={keyword.id} className="flex min-h-6 items-center gap-1.5">
+                          <span className="truncate text-xs text-neutral-200" title={keyword.keyword}>{keyword.keyword}</span>
+                          {keyword.keywordRole === "primary" && (
+                            <span className="shrink-0 rounded-full bg-accent-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-accent-300">Primary</span>
+                          )}
+                        </div>
+                      )) : (
+                        <p className="text-xs text-neutral-600">No mapped keywords</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {mappedKeywords.length > 0 ? mappedKeywords.map((keyword) => (
+                        <div key={keyword.id} className="flex min-h-6 items-center text-xs text-neutral-400">
+                          {keyword.searchVolume ?? "—"}
+                        </div>
+                      )) : <span className="text-xs text-neutral-700">—</span>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {mappedKeywords.length > 0 ? mappedKeywords.map((keyword) => (
+                        <div key={keyword.id} className="flex min-h-6 items-center">
+                          <span className={cn(
+                            "text-xs font-semibold",
+                            keyword.currentRank === null ? "text-neutral-600" : keyword.currentRank <= 10 ? "text-emerald-300" : keyword.currentRank <= 30 ? "text-amber-300" : "text-neutral-300",
+                          )}>
+                            {keyword.currentRank === null ? "Not ranking" : `#${keyword.currentRank}`}
+                          </span>
+                        </div>
+                      )) : <span className="text-xs text-neutral-700">—</span>}
+                    </div>
+
+                    <div className="pt-0.5">
+                      <p className="text-xs font-semibold text-neutral-200">{pageProgress}%</p>
+                      <p className="mt-0.5 text-[10px] text-neutral-600">{completed}/{pageChecks.length} checks</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm("Delete this page and its checklist history?")) return;
+                        startTransition(() => deleteProjectPageAction(page.id, projectId));
+                      }}
+                      className="h-8 rounded-md p-2 text-neutral-600 hover:bg-rose-500/10 hover:text-rose-400"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-neutral-200">{pageProgress}%</p>
-                  <p className="text-[10px] text-neutral-600">{completed}/{pageChecks.length} checks</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!window.confirm("Delete this page and its checklist history?")) return;
-                    startTransition(() => deleteProjectPageAction(page.id, projectId));
-                  }}
-                  className="rounded-md p-2 text-neutral-600 hover:bg-rose-500/10 hover:text-rose-400"
-                >
-                  <Trash2 size={14} />
-                </button>
               </div>
 
               <div className="mt-4 grid gap-2 md:grid-cols-2">
