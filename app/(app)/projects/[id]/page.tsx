@@ -129,11 +129,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     if (task.contentItemId) (tasksByContentItem[task.contentItemId] ??= []).push(task);
     if (task.outreachProspectId) (tasksByProspect[task.outreachProspectId] ??= []).push(task);
   }
-  const taskCountByKeyword: Record<string, number> = {};
-  for (const task of tasks) {
-    if (task.keywordId) taskCountByKeyword[task.keywordId] = (taskCountByKeyword[task.keywordId] ?? 0) + 1;
-  }
-
   const completed = tasks
     .filter((t) => t.status === "done")
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
