@@ -120,11 +120,12 @@ export function MobileNav({
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 flex items-stretch justify-around border-t border-base-700/60 bg-base-900/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         {PRIMARY_NAV.map(({ href, label, icon: Icon }) => {
-          const active = isActive(pathname, href);
+          const resolvedHref = isAdmin && href === "/" ? "/admin" : href;
+          const active = isActive(pathname, resolvedHref);
           return (
             <Link
               key={href}
-              href={href}
+              href={resolvedHref}
               className={cn(
                 "flex min-w-[64px] flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
                 active ? "text-accent-400" : "text-neutral-400",
