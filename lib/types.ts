@@ -286,6 +286,23 @@ export interface ProjectPage {
   updatedAt: string;
 }
 
+export type SeoWorkflowModule = "social_media" | "local_listing" | "blog_onsite" | "web_2_0" | "guest_blogging";
+
+export interface SeoWorkflowItem {
+  id: string;
+  projectId: string;
+  module: SeoWorkflowModule;
+  itemKey: string;
+  title: string;
+  url: string;
+  status: "pending" | "done";
+  sortOrder: number;
+  details: { steps?: string[] };
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type PageCheckInputType = "status" | "text";
 
 export interface PageCheckTemplate {

@@ -2,13 +2,6 @@ import { notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   getBusinessProfile,
-  hasVaultPassword,
-  listBacklinkCategories,
-  listBacklinkEntries,
-  listBacklinkTemplateItems,
-  listBacklinkTemplates,
-  listCompetitorBacklinks,
-  listOutreachProspects,
   listKeywordGroups,
   listKeywordPages,
   listKeywords,
@@ -17,6 +10,7 @@ import {
   listPageAuditChecks,
   listProjectAttachments,
   listSeoReports,
+  listSeoWorkflowItems,
   getReportPreferences,
   getProject,
   redactProjectClientData,
@@ -43,7 +37,7 @@ import { ShareLinkPanel } from "@/components/ShareLinkPanel";
 import { PaymentsCard } from "@/components/PaymentsCard";
 import { SeoReportingPanel } from "@/components/SeoReportingPanel";
 import { ProjectAttachments } from "@/components/ProjectAttachments";
-import { OffPagePanel } from "@/components/OffPagePanel";
+import { SeoWorkflowPanel } from "@/components/SeoWorkflowPanel";
 import { WebAppFeaturesPanel } from "@/components/WebAppFeaturesPanel";
 import { WebsitePagesPanel } from "@/components/WebsitePagesPanel";
 import { PROJECT_THEME } from "@/lib/projectTheme";
@@ -86,22 +80,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
   const projectAttachments = project.type === "seo" ? await listProjectAttachments(project.id) : [];
 
-  const backlinkCategories = project.type === "seo" ? await listBacklinkCategories(project.id) : [];
-  const backlinkEntriesByCategory =
-    backlinkCategories.length > 0 ? await listBacklinkEntries(backlinkCategories.map((c) => c.id)) : {};
-  const vaultPasswordSet = project.type === "seo" ? await hasVaultPassword(profile.id) : false;
-
-  const outreachProspects = project.type === "seo" ? await listOutreachProspects(project.id) : [];
-  const competitorBacklinks = project.type === "seo" ? await listCompetitorBacklinks(project.id) : [];
-  const backlinkTemplates = project.type === "seo" ? await listBacklinkTemplates() : [];
-  const backlinkTemplateItemsByTemplate: Record<string, Awaited<ReturnType<typeof listBacklinkTemplateItems>>> = {};
-  if (backlinkTemplates.length > 0) {
-    const itemLists = await Promise.all(backlinkTemplates.map((t) => listBacklinkTemplateItems(t.id)));
-    backlinkTemplates.forEach((t, i) => {
-      backlinkTemplateItemsByTemplate[t.id] = itemLists[i] ?? [];
-    });
-  }
-
   const webAppFeatures = project.type === "web_app" ? await listWebAppFeatures(project.id) : [];
   const webAppSubFeaturesByFeature =
     webAppFeatures.length > 0 ? await listWebAppSubFeatures(webAppFeatures.map((f) => f.id)) : {};
@@ -113,11 +91,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const projectPages = project.type === "seo" ? await listProjectPages(project.id) : [];
   const pageAuditChecks =
     project.type === "seo" ? await listPageAuditChecks(project.id, pageAuditMonth) : [];
+  const seoWorkflowItems = project.type === "seo" ? await listSeoWorkflowItems(project.id) : [];
 
-  const tasksByProspect: Record<string, typeof tasks> = {};
-  for (const task of tasks) {
-    if (task.outreachProspectId) (tasksByProspect[task.outreachProspectId] ??= []).push(task);
-  }
   const completed = tasks
     .filter((t) => t.status === "done")
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
@@ -259,21 +234,44 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               keywordPages={Object.values(keywordPagesByGroup).flat()}
             />
           }
-          offPage={
-            <OffPagePanel
+          social={
+            <SeoWorkflowPanel
               projectId={project.id}
-              categories={backlinkCategories}
-              entriesByCategory={backlinkEntriesByCategory}
-              hasVaultPassword={vaultPasswordSet}
-              keywords={keywords}
-              pages={Object.values(keywordPagesByGroup).flat()}
-              assignableMembers={assignableMembers}
-              prospects={outreachProspects}
-              tasksByProspect={tasksByProspect}
-              competitorBacklinks={competitorBacklinks}
-              templates={backlinkTemplates}
-              templateItemsByTemplate={backlinkTemplateItemsByTemplate}
-              isAdmin={isAdmin}
+              module="social_media"
+              title="Social Media"
+              items={seoWorkflowItems.filter((item) => item.module === "social_media")}
+            />
+          }
+          local={
+            <SeoWorkflowPanel
+              projectId={project.id}
+              module="local_listing"
+              title="Local Listing"
+              items={seoWorkflowItems.filter((item) => item.module === "local_listing")}
+            />
+          }
+          blog={
+            <SeoWorkflowPanel
+              projectId={project.id}
+              module="blog_onsite"
+              title="Blog Onsite"
+              items={seoWorkflowItems.filter((item) => item.module === "blog_onsite")}
+            />
+          }
+          web2={
+            <SeoWorkflowPanel
+              projectId={project.id}
+              module="web_2_0"
+              title="Web 2.0"
+              items={seoWorkflowItems.filter((item) => item.module === "web_2_0")}
+            />
+          }
+          guest={
+            <SeoWorkflowPanel
+              projectId={project.id}
+              module="guest_blogging"
+              title="Guest Blogging"
+              items={seoWorkflowItems.filter((item) => item.module === "guest_blogging")}
             />
           }
           reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} preferences={reportPreferences} />}

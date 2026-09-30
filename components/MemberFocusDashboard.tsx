@@ -34,8 +34,24 @@ function localDateKey(date = new Date()): string {
 
 const priorityRank = { high: 0, medium: 1, low: 2 } as const;
 
+function isActionableManualTask(task: Task, today = localDateKey()): boolean {
+  if (task.isFallback || task.status === "done") return false;
+  if (!task.scheduledFor && !task.dueDate) return true;
+  if (task.scheduledFor && task.scheduledFor <= today) return true;
+  if (task.dueDate && task.dueDate <= today) return true;
+  return false;
+}
+
 function sortQueue(a: Task, b: Task): number {
-  if (a.isFallback !== b.isFallback) return a.isFallback ? 1 : -1;
+  const today = localDateKey();
+  const aManualNow = isActionableManualTask(a, today);
+  const bManualNow = isActionableManualTask(b, today);
+  if (aManualNow !== bManualNow) return aManualNow ? -1 : 1;
+
+  // When no manual work is due today, the generated SEO workflow task comes
+  // before normal tasks scheduled for a future date.
+  if (a.isFallback !== b.isFallback) return a.isFallback ? -1 : 1;
+
   const ad = a.dueDate ?? a.scheduledFor ?? "9999-12-31";
   const bd = b.dueDate ?? b.scheduledFor ?? "9999-12-31";
   if (ad !== bd) return ad < bd ? -1 : 1;
@@ -113,7 +129,7 @@ export function MemberFocusDashboard({
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   const openTasks = useMemo(() => tasks.filter((task) => task.status !== "done"), [tasks]);
-  const hasNormalOpenTasks = openTasks.some((task) => !task.isFallback);
+  const hasNormalOpenTasks = openTasks.some((task) => isActionableManualTask(task, today));
   const completedToday = useMemo(
     () =>
       tasks

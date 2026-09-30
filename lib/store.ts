@@ -75,6 +75,8 @@ import type {
   SearchIntent,
   Service,
   SeoModule,
+  SeoWorkflowItem,
+  SeoWorkflowModule,
   SeoReport,
   SeoReportMetrics,
   Stage,
@@ -378,6 +380,68 @@ export async function deleteProjectPage(pageId: string, projectId: string): Prom
     .from("freelance_hq_project_pages")
     .delete()
     .eq("id", pageId)
+    .eq("project_id", projectId);
+  if (error) throw error;
+}
+
+interface SeoWorkflowItemRow {
+  id: string;
+  project_id: string;
+  module: SeoWorkflowModule;
+  item_key: string;
+  title: string;
+  url: string;
+  status: "pending" | "done";
+  sort_order: number;
+  details: { steps?: string[] } | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toSeoWorkflowItem(row: SeoWorkflowItemRow): SeoWorkflowItem {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    module: row.module,
+    itemKey: row.item_key,
+    title: row.title,
+    url: row.url ?? "",
+    status: row.status,
+    sortOrder: row.sort_order ?? 0,
+    details: row.details ?? {},
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listSeoWorkflowItems(projectId: string): Promise<SeoWorkflowItem[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_seo_workflow_items")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("module")
+      .order("sort_order");
+    if (error) throw error;
+    return ((data ?? []) as SeoWorkflowItemRow[]).map(toSeoWorkflowItem);
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function updateSeoWorkflowItemStatus(
+  id: string,
+  projectId: string,
+  status: "pending" | "done",
+): Promise<void> {
+  const now = nowIso();
+  const { error } = await getSupabase()
+    .from("freelance_hq_seo_workflow_items")
+    .update({ status, completed_at: status === "done" ? now : null, updated_at: now })
+    .eq("id", id)
     .eq("project_id", projectId);
   if (error) throw error;
 }
@@ -894,17 +958,30 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   if (profileError) throw profileError;
   if ((profileRow as { job_role?: JobRole } | null)?.job_role !== "seo_expert") return null;
 
+  const today = todayDateKey();
+
+  // Admin/manual tasks due now always take priority. Future scheduled work does not
+  // block the automatic SEO queue before its date arrives.
   const { data: normalRows, error: normalError } = await getSupabase()
     .from("freelance_hq_tasks")
-    .select("id")
+    .select("id, scheduled_for, due_date")
     .eq("assigned_to", userId)
     .neq("status", "done")
-    .eq("is_fallback", false)
-    .limit(1);
+    .eq("is_fallback", false);
   if (normalError) throw normalError;
 
-  if ((normalRows ?? []).length > 0) {
-    // Normal work supersedes fallback work. Pause any running fallback timer/focus.
+  const hasActionableNormalTask = ((normalRows ?? []) as Array<{
+    id: string;
+    scheduled_for: string | null;
+    due_date: string | null;
+  }>).some((row) => {
+    if (!row.scheduled_for && !row.due_date) return true;
+    if (row.scheduled_for && row.scheduled_for <= today) return true;
+    if (row.due_date && row.due_date <= today) return true;
+    return false;
+  });
+
+  if (hasActionableNormalTask) {
     const { data: fallbackRows, error: fallbackError } = await getSupabase()
       .from("freelance_hq_tasks")
       .select("id")
@@ -923,30 +1000,28 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         .eq("state", "active")
         .in("task_id", fallbackIds);
       if (focusError && !isMissingTableError(focusError)) throw focusError;
-      for (const fallbackId of fallbackIds) {
-        await closeOpenTimeEntriesForTask(fallbackId, now);
-      }
+      for (const fallbackId of fallbackIds) await closeOpenTimeEntriesForTask(fallbackId, now);
     }
     return null;
   }
 
-  const { data: existingFallbackRows, error: existingFallbackError } = await getSupabase()
+  // Resume the one already-issued automatic task before creating another.
+  const { data: existingFallback, error: existingFallbackError } = await getSupabase()
     .from("freelance_hq_tasks")
     .select("*")
     .eq("assigned_to", userId)
     .neq("status", "done")
     .eq("is_fallback", true)
     .order("created_at", { ascending: true })
-    .limit(1);
+    .limit(1)
+    .maybeSingle();
   if (existingFallbackError) throw existingFallbackError;
-  if ((existingFallbackRows ?? []).length > 0) {
-    return toTask((existingFallbackRows ?? [])[0] as TaskRow, await taskNameLookup());
-  }
+  if (existingFallback) return toTask(existingFallback as TaskRow, await taskNameLookup());
 
   const assignedProjectIds = await getAssignedProjectIds(userId);
   if (assignedProjectIds.length === 0) return null;
 
-  const { data: seoProjectRows, error: projectError } = await getSupabase()
+  const { data: projectRows, error: projectError } = await getSupabase()
     .from("freelance_hq_projects")
     .select("id, name")
     .in("id", assignedProjectIds)
@@ -954,109 +1029,105 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     .eq("archived", false)
     .order("name");
   if (projectError) throw projectError;
-  const seoProjects = (seoProjectRows ?? []) as Array<{ id: string; name: string }>;
-  if (seoProjects.length === 0) return null;
+  const projects = (projectRows ?? []) as Array<{ id: string; name: string }>;
+  if (projects.length === 0) return null;
 
-  const [{ data: templateRows, error: templateError }, { data: claimRows, error: claimError }] = await Promise.all([
-    getSupabase()
-      .from("freelance_hq_idle_task_templates")
-      .select("*")
-      .eq("is_active", true)
-      .order("order_index"),
-    getSupabase()
-      .from("freelance_hq_idle_task_claims")
-      .select("*")
-      .eq("period_month", new Date().toISOString().slice(0, 7))
-      .in("project_id", seoProjects.map((project) => project.id)),
-  ]);
-  if (templateError) throw templateError;
-  if (claimError) throw claimError;
+  const { data: todaysRows, error: todaysError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("project_id, fallback_template_key")
+    .eq("assigned_to", userId)
+    .eq("is_fallback", true)
+    .like("fallback_template_key", `workflow:%:${today}`);
+  if (todaysError) throw todaysError;
 
-  const templates = (templateRows ?? []) as IdleTaskTemplateRow[];
-  const claims = (claimRows ?? []) as IdleTaskClaimRow[];
-  const claimed = new Set(claims.map((row) => `${row.project_id}:${row.template_key}`));
-  const projectClaimCount = new Map<string, number>();
-  for (const claim of claims) projectClaimCount.set(claim.project_id, (projectClaimCount.get(claim.project_id) ?? 0) + 1);
-
-  const candidateProjects = [...seoProjects].sort((a, b) => {
-    const ac = projectClaimCount.get(a.id) ?? 0;
-    const bc = projectClaimCount.get(b.id) ?? 0;
-    if (ac !== bc) return ac - bc;
-    return a.name.localeCompare(b.name);
-  });
+  const claimedToday = new Set<string>();
+  for (const row of (todaysRows ?? []) as Array<{ project_id: string; fallback_template_key: string | null }>) {
+    const parts = (row.fallback_template_key ?? "").split(":");
+    if (parts[0] === "workflow" && parts[1]) claimedToday.add(`${row.project_id}:${parts[1]}`);
+  }
 
   const month = new Date().toISOString().slice(0, 7);
-  for (const project of candidateProjects) {
-    for (const template of templates) {
-      if (claimed.has(`${project.id}:${template.template_key}`)) continue;
+  const moduleOrder = [
+    "website_pages",
+    "social_media",
+    "local_listing",
+    "blog_onsite",
+    "web_2_0",
+    "guest_blogging",
+  ] as const;
 
-      const { data: claim, error: insertClaimError } = await getSupabase()
-        .from("freelance_hq_idle_task_claims")
-        .insert({
-          project_id: project.id,
-          assigned_to: userId,
-          template_key: template.template_key,
-          period_month: month,
-        })
-        .select("*")
-        .maybeSingle();
+  for (const workflowModule of moduleOrder) {
+    for (const project of projects) {
+      if (claimedToday.has(`${project.id}:${workflowModule}`)) continue;
 
-      if (insertClaimError) {
-        // Another idle member may have claimed the same audit at the same moment.
-        if ((insertClaimError as { code?: string }).code === "23505") continue;
-        throw insertClaimError;
-      }
-      if (!claim) continue;
+      if (workflowModule === "website_pages") {
+        const [pages, pageChecks] = await Promise.all([
+          listProjectPages(project.id),
+          listPageAuditChecks(project.id, month),
+        ]);
 
-      try {
-        const task = await createTask({
-          projectId: project.id,
-          stageId: null,
-          title: template.title,
-          notes: template.notes,
-          priority: template.priority,
-          scheduledFor: null,
-          assignedTo: userId,
-          seoModule: template.seo_module,
-          why: template.why,
-          expectedOutcome: template.expected_outcome,
-          isFallback: true,
-          fallbackTemplateKey: template.template_key,
-        });
-
-        const { error: updateClaimError } = await getSupabase()
-          .from("freelance_hq_idle_task_claims")
-          .update({ task_id: task.id })
-          .eq("id", (claim as IdleTaskClaimRow).id);
-        if (updateClaimError) throw updateClaimError;
-
-        return task;
-      } catch (error) {
-        await getSupabase()
-          .from("freelance_hq_idle_task_claims")
-          .delete()
-          .eq("id", (claim as IdleTaskClaimRow).id)
-          .is("task_id", null);
-
-        if ((error as { code?: string } | null)?.code === "23505") {
-          const { data: concurrentFallback, error: concurrentError } = await getSupabase()
-            .from("freelance_hq_tasks")
-            .select("*")
-            .eq("assigned_to", userId)
-            .eq("is_fallback", true)
-            .neq("status", "done")
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          if (concurrentError) throw concurrentError;
-          if (concurrentFallback) {
-            return toTask(concurrentFallback as TaskRow, await taskNameLookup());
-          }
-          continue;
+        const checksByPage = new Map<string, PageAuditCheck[]>();
+        for (const check of pageChecks) {
+          const list = checksByPage.get(check.pageId) ?? [];
+          list.push(check);
+          checksByPage.set(check.pageId, list);
         }
 
-        throw error;
+        const page = pages.find((candidate) => {
+          const checks = checksByPage.get(candidate.id) ?? [];
+          return checks.length === 0 || checks.some((check) => check.status !== "done");
+        });
+        if (!page) continue;
+
+        const pendingChecks = (checksByPage.get(page.id) ?? []).filter((check) => check.status !== "done");
+        return createTask({
+          projectId: project.id,
+          stageId: null,
+          title: `Complete SEO checklist — ${page.name}`,
+          notes: `Work through the page-level On-Page and Technical SEO checklist for ${page.name}.`,
+          priority: "medium",
+          assignedTo: userId,
+          seoModule: "on_page",
+          pageId: page.id,
+          checklist: pendingChecks.map((check) => ({ id: randomUUID(), text: check.label, done: false })),
+          why: "This is the next unfinished page in the project's rotating SEO workflow.",
+          expectedOutcome: "All page checklist items are completed and verified.",
+          isFallback: true,
+          fallbackTemplateKey: `workflow:website_pages:${page.id}:${today}`,
+        });
       }
+
+      const items = (await listSeoWorkflowItems(project.id))
+        .filter((item) => item.module === workflowModule && item.status !== "done")
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      const item = items[0];
+      if (!item) continue;
+
+      const moduleLabel: Record<SeoWorkflowModule, string> = {
+        social_media: "Social Media",
+        local_listing: "Local Listing",
+        blog_onsite: "Blog Onsite",
+        web_2_0: "Web 2.0",
+        guest_blogging: "Guest Blogging",
+      };
+      const seoModule: SeoModule =
+        workflowModule === "blog_onsite" ? "content" : "off_page";
+      const steps = item.details.steps ?? [`Complete ${item.title} for this project`];
+
+      return createTask({
+        projectId: project.id,
+        stageId: null,
+        title: `${moduleLabel[workflowModule]} — ${item.title}`,
+        notes: item.url ? `Platform/site: ${item.url}` : "",
+        priority: "medium",
+        assignedTo: userId,
+        seoModule,
+        checklist: steps.map((step) => ({ id: randomUUID(), text: step, done: false })),
+        why: `This is the next ${moduleLabel[workflowModule]} item in the daily project rotation.`,
+        expectedOutcome: `${item.title} is completed and recorded for this project.`,
+        isFallback: true,
+        fallbackTemplateKey: `workflow:${workflowModule}:${item.id}:${today}`,
+      });
     }
   }
 
@@ -1308,10 +1379,12 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
   projectId: string;
   checklist: ChecklistItem[];
   status: TaskStatus;
+  isFallback: boolean;
+  fallbackTemplateKey: string | null;
 }> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
-    .select("project_id, assigned_to, checklist, status")
+    .select("project_id, assigned_to, checklist, status, is_fallback, fallback_template_key")
     .eq("id", taskId)
     .maybeSingle();
   if (error) throw error;
@@ -1322,6 +1395,8 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     assigned_to: string | null;
     checklist: ChecklistItem[];
     status: TaskStatus;
+    is_fallback: boolean;
+    fallback_template_key: string | null;
   };
   if (row.assigned_to !== userId) throw new Error("This task is not assigned to you.");
 
@@ -1329,6 +1404,8 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     projectId: row.project_id,
     checklist: row.checklist ?? [],
     status: row.status,
+    isFallback: row.is_fallback ?? false,
+    fallbackTemplateKey: row.fallback_template_key ?? null,
   };
 }
 
@@ -1530,6 +1607,31 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
     if (focusError) throw focusError;
   } catch (focusError) {
     if (!isMissingTableError(focusError)) throw focusError;
+  }
+
+  if (task.isFallback && task.fallbackTemplateKey?.startsWith("workflow:")) {
+    const [, module, refId] = task.fallbackTemplateKey.split(":");
+    if (module === "website_pages" && refId) {
+      const periodMonth = new Date().toISOString().slice(0, 7);
+      const { error: pageSyncError } = await getSupabase()
+        .from("freelance_hq_page_audit_checks")
+        .update({
+          status: "done",
+          checked_at: now,
+          checked_by: userId,
+          updated_at: now,
+        })
+        .eq("page_id", refId)
+        .eq("period_month", periodMonth);
+      if (pageSyncError) throw pageSyncError;
+    } else if (refId) {
+      const { error: workflowSyncError } = await getSupabase()
+        .from("freelance_hq_seo_workflow_items")
+        .update({ status: "done", completed_at: now, updated_at: now })
+        .eq("id", refId)
+        .eq("project_id", task.projectId);
+      if (workflowSyncError && !isMissingTableError(workflowSyncError)) throw workflowSyncError;
+    }
   }
 
   await decrementPausedResumeCounters(userId);
