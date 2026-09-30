@@ -1,13 +1,15 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { UserPlus, Trash2, ChevronDown, ShieldCheck, KeyRound, BriefcaseBusiness } from "lucide-react";
+import { UserPlus, Trash2, ChevronDown, ShieldCheck, RefreshCcw, KeyRound, Wallet, BriefcaseBusiness } from "lucide-react";
 import type { JobRole, Profile, Project } from "@/lib/types";
 import {
   assignProjectsAction,
   inviteTeamMemberAction,
   removeMemberAction,
   setMemberBacklinkCredentialAccessAction,
+  setMemberFinanceAccessAction,
+  setMemberRenewalsAccessAction,
   updateMemberRoleAction,
   updateMemberJobRoleAction,
 } from "@/lib/actions";
@@ -229,6 +231,25 @@ function MemberRow({
               type="button"
               disabled={isPending}
               onClick={() =>
+                startTransition(() => setMemberRenewalsAccessAction(member.id, !member.canAccessRenewals))
+              }
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-50",
+                member.canAccessRenewals
+                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                  : "border-base-600 text-neutral-300 hover:border-accent-500/60 hover:text-accent-300",
+              )}
+              title={member.canAccessRenewals ? "Revoke Domains tab access" : "Grant Domains tab access"}
+            >
+              <RefreshCcw size={13} />
+              Domains {member.canAccessRenewals ? "on" : "off"}
+            </button>
+          )}
+          {member.role === "member" && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
                 startTransition(() =>
                   setMemberBacklinkCredentialAccessAction(member.id, !member.canAccessBacklinkCredentials),
                 )
@@ -243,6 +264,25 @@ function MemberRow({
             >
               <KeyRound size={13} />
               Backlink creds {member.canAccessBacklinkCredentials ? "on" : "off"}
+            </button>
+          )}
+          {member.role === "member" && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
+                startTransition(() => setMemberFinanceAccessAction(member.id, !member.canAccessFinance))
+              }
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs disabled:opacity-50",
+                member.canAccessFinance
+                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                  : "border-base-600 text-neutral-300 hover:border-accent-500/60 hover:text-accent-300",
+              )}
+              title={member.canAccessFinance ? "Revoke Finance access" : "Grant Finance access"}
+            >
+              <Wallet size={13} />
+              Finance {member.canAccessFinance ? "on" : "off"}
             </button>
           )}
           {!isSelf && (
