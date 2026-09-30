@@ -1056,11 +1056,11 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     "guest_blogging",
   ] as const;
 
-  for (const module of moduleOrder) {
+  for (const workflowModule of moduleOrder) {
     for (const project of projects) {
-      if (claimedToday.has(`${project.id}:${module}`)) continue;
+      if (claimedToday.has(`${project.id}:${workflowModule}`)) continue;
 
-      if (module === "website_pages") {
+      if (workflowModule === "website_pages") {
         const [pages, pageChecks] = await Promise.all([
           listProjectPages(project.id),
           listPageAuditChecks(project.id, month),
@@ -1098,7 +1098,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       }
 
       const items = (await listSeoWorkflowItems(project.id))
-        .filter((item) => item.module === module && item.status !== "done")
+        .filter((item) => item.module === workflowModule && item.status !== "done")
         .sort((a, b) => a.sortOrder - b.sortOrder);
       const item = items[0];
       if (!item) continue;
@@ -1111,22 +1111,22 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         guest_blogging: "Guest Blogging",
       };
       const seoModule: SeoModule =
-        module === "blog_onsite" ? "content" : "off_page";
+        workflowModule === "blog_onsite" ? "content" : "off_page";
       const steps = item.details.steps ?? [`Complete ${item.title} for this project`];
 
       return createTask({
         projectId: project.id,
         stageId: null,
-        title: `${moduleLabel[module]} — ${item.title}`,
+        title: `${moduleLabel[workflowModule]} — ${item.title}`,
         notes: item.url ? `Platform/site: ${item.url}` : "",
         priority: "medium",
         assignedTo: userId,
         seoModule,
         checklist: steps.map((step) => ({ id: randomUUID(), text: step, done: false })),
-        why: `This is the next ${moduleLabel[module]} item in the daily project rotation.`,
+        why: `This is the next ${moduleLabel[workflowModule]} item in the daily project rotation.`,
         expectedOutcome: `${item.title} is completed and recorded for this project.`,
         isFallback: true,
-        fallbackTemplateKey: `workflow:${module}:${item.id}:${today}`,
+        fallbackTemplateKey: `workflow:${workflowModule}:${item.id}:${today}`,
       });
     }
   }
