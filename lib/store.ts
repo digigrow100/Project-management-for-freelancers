@@ -395,6 +395,7 @@ export async function listPageCheckTemplates(): Promise<PageCheckTemplate[]> {
       label: row.label,
       order: row.order_index ?? 0,
       isActive: row.is_active,
+      inputType: (row.input_type ?? "status") as PageCheckTemplate["inputType"],
     }));
   } catch (error) {
     if (isMissingTableError(error)) return [];
@@ -436,8 +437,9 @@ export async function listPageAuditChecks(projectId: string, periodMonth: string
     if (error) throw error;
 
     return (data ?? [])
+      .filter((row: any) => templateByKey.has(row.check_key))
       .map((row: any) => {
-        const template = templateByKey.get(row.check_key);
+        const template = templateByKey.get(row.check_key)!;
         return {
           id: row.id,
           pageId: row.page_id,
@@ -445,10 +447,12 @@ export async function listPageAuditChecks(projectId: string, periodMonth: string
           checkKey: row.check_key,
           status: row.status as PageAuditStatus,
           notes: row.notes ?? "",
+          value: row.value_text ?? "",
           checkedAt: row.checked_at,
           checkedBy: row.checked_by,
-          label: template?.label ?? row.check_key,
-          order: template?.order ?? 999,
+          label: template.label,
+          order: template.order,
+          inputType: template.inputType,
         } satisfies PageAuditCheck;
       })
       .sort((a, b) => a.order - b.order);
@@ -464,16 +468,20 @@ export async function updatePageAuditCheck(
   checkKey: string,
   status: PageAuditStatus,
   checkedBy: string | null,
+  value?: string,
 ): Promise<void> {
   const now = nowIso();
+  const update: Record<string, unknown> = {
+    status,
+    checked_at: status === "pending" ? null : now,
+    checked_by: status === "pending" ? null : checkedBy,
+    updated_at: now,
+  };
+  if (value !== undefined) update.value_text = value;
+
   const { error } = await getSupabase()
     .from("freelance_hq_page_audit_checks")
-    .update({
-      status,
-      checked_at: status === "pending" ? null : now,
-      checked_by: status === "pending" ? null : checkedBy,
-      updated_at: now,
-    })
+    .update(update)
     .eq("page_id", pageId)
     .eq("period_month", periodMonth)
     .eq("check_key", checkKey);
