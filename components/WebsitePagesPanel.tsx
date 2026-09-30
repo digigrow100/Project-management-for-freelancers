@@ -3,19 +3,67 @@
 import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, Circle, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
 import type { Keyword, KeywordPage, PageAuditCheck, PageAuditStatus, ProjectPage, ProjectPageType } from "@/lib/types";
-import { createProjectPageAction, deleteProjectPageAction, updatePageAuditCheckAction } from "@/lib/actions";
+import {
+  createProjectPageAction,
+  deleteProjectPageAction,
+  updateKeywordRankAction,
+  updatePageAuditCheckAction,
+} from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 const PAGE_TYPES: Array<[ProjectPageType, string]> = [
-  ["home","Home"],["service","Service"],["location","Location"],["blog","Blog"],
-  ["landing","Landing"],["legal","Legal"],["contact","Contact"],["other","Other"],
+  ["home", "Home"],
+  ["service", "Service"],
+  ["location", "Location"],
+  ["blog", "Blog"],
+  ["landing", "Landing"],
+  ["legal", "Legal"],
+  ["contact", "Contact"],
+  ["other", "Other"],
 ];
+
+const ON_PAGE_KEYS = [
+  "page_link",
+  "meta_tags",
+  "image_optimization",
+  "internal_linking",
+  "heading_structure",
+  "unique_content",
+] as const;
+
+const TECHNICAL_KEYS = [
+  "pagespeed_90",
+  "canonical_url",
+  "google_indexing",
+  "schema_markup",
+  "mobile_friendly",
+  "technical_check",
+] as const;
+
+const SHORT_LABELS: Record<string, string> = {
+  page_link: "Page Link",
+  meta_tags: "Meta Tags",
+  image_optimization: "Images",
+  internal_linking: "Internal Links",
+  heading_structure: "H1 / H2 / H3",
+  unique_content: "Unique Content",
+  pagespeed_90: "PageSpeed 90+",
+  canonical_url: "Canonical URL",
+  google_indexing: "Google Indexed",
+  schema_markup: "Schema",
+  mobile_friendly: "Mobile Friendly",
+  technical_check: "Technical Health",
+};
 
 function normalizePageUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
   try {
-    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://example.com${trimmed.startsWith("/") ? "" : "/"}${trimmed}`);
+    const url = new URL(
+      trimmed.startsWith("http")
+        ? trimmed
+        : `https://example.com${trimmed.startsWith("/") ? "" : "/"}${trimmed}`,
+    );
     const path = url.pathname.replace(/\/+$/, "") || "/";
     return path.toLowerCase();
   } catch {
@@ -56,19 +104,29 @@ export function WebsitePagesPanel({
 }) {
   const [adding, setAdding] = useState(false);
   const [isPending, startTransition] = useTransition();
+
   const checksByPage = useMemo(() => {
     const map: Record<string, PageAuditCheck[]> = {};
     for (const check of checks) (map[check.pageId] ??= []).push(check);
     return map;
   }, [checks]);
 
-  const visibleChecks = checks.filter((check) => check.checkKey !== "main_keyword" && check.checkKey !== "main_keyword_rank");
-  const totalChecks = visibleChecks.length;
-  const doneChecks = visibleChecks.filter((c) => c.status === "done" || c.status === "not_applicable").length;
-  const keywordPageById = useMemo(() => new Map(keywordPages.map((page) => [page.id, page])), [keywordPages]);
-  const progress = totalChecks === 0 ? 0 : Math.round((doneChecks / totalChecks) * 100);
+  const keywordPageById = useMemo(
+    () => new Map(keywordPages.map((page) => [page.id, page])),
+    [keywordPages],
+  );
 
-  function changeStatus(check: PageAuditCheck, status: PageAuditStatus) {
+  const trackedChecks = checks.filter(
+    (check) =>
+      (ON_PAGE_KEYS as readonly string[]).includes(check.checkKey) ||
+      (TECHNICAL_KEYS as readonly string[]).includes(check.checkKey),
+  );
+  const totalChecks = trackedChecks.length;
+  const doneChecks = trackedChecks.filter((check) => check.status === "done").length;
+  const progress = totalChecks ? Math.round((doneChecks / totalChecks) * 100) : 0;
+
+  function toggleCheck(check: PageAuditCheck) {
+    const status: PageAuditStatus = check.status === "done" ? "pending" : "done";
     startTransition(() =>
       updatePageAuditCheckAction({
         projectId,
@@ -80,16 +138,16 @@ export function WebsitePagesPanel({
     );
   }
 
-  function saveTextValue(check: PageAuditCheck, value: string) {
-    const clean = value.trim();
+  function saveRank(keyword: Keyword, rawValue: string) {
+    const clean = rawValue.trim();
+    const parsed = clean === "" ? null : Number(clean);
+    if (clean !== "" && (!Number.isFinite(parsed) || parsed! < 1)) return;
+
     startTransition(() =>
-      updatePageAuditCheckAction({
+      updateKeywordRankAction({
         projectId,
-        pageId: check.pageId,
-        periodMonth,
-        checkKey: check.checkKey,
-        status: clean ? "done" : "pending",
-        value: clean,
+        keywordId: keyword.id,
+        currentRank: parsed === null ? null : Math.round(parsed),
       }),
     );
   }
@@ -101,12 +159,12 @@ export function WebsitePagesPanel({
           <div>
             <h2 className="text-base font-semibold text-neutral-100">Website Pages</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Pages, mapped keywords, search volume, current ranking and monthly SEO checks for {periodMonth}.
+              On-page SEO, technical SEO, mapped keywords, volume and manual ranking for {periodMonth}.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => setAdding((v) => !v)}
+            onClick={() => setAdding((value) => !value)}
             className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-accent-400"
           >
             <Plus size={14} /> Add Page
@@ -131,152 +189,162 @@ export function WebsitePagesPanel({
             }}
             className="mt-4 grid gap-2 rounded-lg border border-base-700 bg-base-900/60 p-3 md:grid-cols-[1fr_1.4fr_160px_auto]"
           >
-            <input name="name" required placeholder="Page name" className="rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
-            <input name="url" placeholder="https://..." className="rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
-            <select name="pageType" defaultValue="other" className="rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100">
-              {PAGE_TYPES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+            <input
+              name="name"
+              required
+              placeholder="Page name"
+              className="rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100"
+            />
+            <input
+              name="url"
+              placeholder="https://..."
+              className="rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100"
+            />
+            <select
+              name="pageType"
+              defaultValue="other"
+              className="rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100"
+            >
+              {PAGE_TYPES.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
-            <button className="rounded-md bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950">Save</button>
+            <button className="rounded-md bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950">
+              Save
+            </button>
           </form>
         )}
       </section>
 
       <div className="space-y-3">
         {pages.map((page, index) => {
-          const pageChecks = (checksByPage[page.id] ?? []).filter(
-            (check) => check.checkKey !== "main_keyword" && check.checkKey !== "main_keyword_rank",
-          );
+          const allPageChecks = checksByPage[page.id] ?? [];
+          const onPageChecks = ON_PAGE_KEYS
+            .map((key) => allPageChecks.find((check) => check.checkKey === key))
+            .filter(Boolean) as PageAuditCheck[];
+          const technicalChecks = TECHNICAL_KEYS
+            .map((key) => allPageChecks.find((check) => check.checkKey === key))
+            .filter(Boolean) as PageAuditCheck[];
+
+          const pageChecks = [...onPageChecks, ...technicalChecks];
+          const completed = pageChecks.filter((check) => check.status === "done").length;
+          const pageProgress = pageChecks.length ? Math.round((completed / pageChecks.length) * 100) : 0;
+
           const mappedKeywords = keywords
             .filter((keyword) => keywordBelongsToPage(keyword, page, keywordPageById))
             .sort((a, b) => {
               const roleOrder = { primary: 0, secondary: 1, supporting: 2, long_tail: 3 } as const;
               return roleOrder[a.keywordRole] - roleOrder[b.keywordRole] || a.keyword.localeCompare(b.keyword);
             });
-          const completed = pageChecks.filter((c) => c.status === "done" || c.status === "not_applicable").length;
-          const pageProgress = pageChecks.length ? Math.round((completed / pageChecks.length) * 100) : 0;
 
           return (
             <section key={page.id} className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-              <div className="overflow-x-auto">
-                <div className="min-w-[820px]">
-                  <div className="grid grid-cols-[minmax(260px,1.6fr)_minmax(220px,1.35fr)_90px_90px_90px_36px] gap-3 border-b border-base-700/50 pb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                    <span>Page</span>
-                    <span>Keywords</span>
-                    <span>Volume</span>
-                    <span>Ranking</span>
-                    <span>Progress</span>
-                    <span />
+              <div className="flex flex-wrap items-start gap-3 border-b border-base-700/50 pb-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-base-900 text-xs font-semibold text-neutral-400">
+                  {index + 1}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-neutral-100">{page.name}</h3>
+                    <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">
+                      {page.pageType}
+                    </span>
                   </div>
-                  <div className="grid grid-cols-[minmax(260px,1.6fr)_minmax(220px,1.35fr)_90px_90px_90px_36px] gap-3 pt-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-base-900 text-xs font-semibold text-neutral-400">{index + 1}</span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate text-sm font-semibold text-neutral-100">{page.name}</h3>
-                          <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">{page.pageType}</span>
-                        </div>
-                        {page.url ? (
-                          <a href={page.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-neutral-500 hover:text-accent-300">
-                            {page.url}<ExternalLink size={11} />
-                          </a>
-                        ) : (
-                          <p className="mt-1 text-xs text-amber-400">URL not added yet</p>
-                        )}
-                      </div>
-                    </div>
 
-                    <div className="space-y-1.5">
-                      {mappedKeywords.length > 0 ? mappedKeywords.map((keyword) => (
-                        <div key={keyword.id} className="flex min-h-6 items-center gap-1.5">
-                          <span className="truncate text-xs text-neutral-200" title={keyword.keyword}>{keyword.keyword}</span>
-                          {keyword.keywordRole === "primary" && (
-                            <span className="shrink-0 rounded-full bg-accent-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-accent-300">Primary</span>
-                          )}
-                        </div>
-                      )) : (
-                        <p className="text-xs text-neutral-600">No mapped keywords</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      {mappedKeywords.length > 0 ? mappedKeywords.map((keyword) => (
-                        <div key={keyword.id} className="flex min-h-6 items-center text-xs text-neutral-400">
-                          {keyword.searchVolume ?? "—"}
-                        </div>
-                      )) : <span className="text-xs text-neutral-700">—</span>}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      {mappedKeywords.length > 0 ? mappedKeywords.map((keyword) => (
-                        <div key={keyword.id} className="flex min-h-6 items-center">
-                          <span className={cn(
-                            "text-xs font-semibold",
-                            keyword.currentRank === null ? "text-neutral-600" : keyword.currentRank <= 10 ? "text-emerald-300" : keyword.currentRank <= 30 ? "text-amber-300" : "text-neutral-300",
-                          )}>
-                            {keyword.currentRank === null ? "Not ranking" : `#${keyword.currentRank}`}
-                          </span>
-                        </div>
-                      )) : <span className="text-xs text-neutral-700">—</span>}
-                    </div>
-
-                    <div className="pt-0.5">
-                      <p className="text-xs font-semibold text-neutral-200">{pageProgress}%</p>
-                      <p className="mt-0.5 text-[10px] text-neutral-600">{completed}/{pageChecks.length} checks</p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!window.confirm("Delete this page and its checklist history?")) return;
-                        startTransition(() => deleteProjectPageAction(page.id, projectId));
-                      }}
-                      className="h-8 rounded-md p-2 text-neutral-600 hover:bg-rose-500/10 hover:text-rose-400"
+                  {page.url ? (
+                    <a
+                      href={page.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-neutral-500 hover:text-accent-300"
                     >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                      {page.url}<ExternalLink size={11} />
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-xs text-amber-400">URL not added yet</p>
+                  )}
                 </div>
+
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-neutral-200">{pageProgress}%</p>
+                  <p className="text-[10px] text-neutral-600">{completed}/{pageChecks.length} checks</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm("Delete this page and its checklist history?")) return;
+                    startTransition(() => deleteProjectPageAction(page.id, projectId));
+                  }}
+                  className="rounded-md p-2 text-neutral-600 hover:bg-rose-500/10 hover:text-rose-400"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
 
-              <div className="mt-4 grid gap-2 md:grid-cols-2">
-                {pageChecks.map((check) =>
-                  check.inputType === "text" ? (
-                    <div key={check.id} className="rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2
-                          size={16}
-                          className={check.status === "done" ? "shrink-0 text-emerald-400" : "shrink-0 text-neutral-600"}
-                        />
-                        <p className="text-xs font-medium text-neutral-200">{check.label}</p>
+              <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                <ChecklistColumn title="On-Page SEO" checks={onPageChecks} onToggle={toggleCheck} />
+                <ChecklistColumn title="Technical SEO" checks={technicalChecks} onToggle={toggleCheck} />
+
+                <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Keywords</h4>
+                    <span className="text-[10px] text-neutral-600">{mappedKeywords.length} mapped</span>
+                  </div>
+
+                  {mappedKeywords.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-[minmax(0,1fr)_64px_72px] gap-2 px-1 text-[9px] font-semibold uppercase tracking-wide text-neutral-600">
+                        <span>Keyword</span>
+                        <span>Volume</span>
+                        <span>Rank</span>
                       </div>
-                      <input
-                        key={check.value}
-                        defaultValue={check.value}
-                        onBlur={(e) => saveTextValue(check, e.currentTarget.value)}
-                        placeholder={check.checkKey === "main_keyword_rank" ? "e.g. 8 or Not Ranking" : "Enter main keyword"}
-                        className="mt-2 w-full rounded-md border border-base-700 bg-base-950 px-2.5 py-2 text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none"
-                      />
-                      <p className="mt-1 text-[10px] text-neutral-600">
-                        {check.value ? "Saved for this month" : "Required for this monthly check"}
-                      </p>
+
+                      {mappedKeywords.map((keyword) => (
+                        <div
+                          key={keyword.id}
+                          className="grid grid-cols-[minmax(0,1fr)_64px_72px] items-center gap-2 rounded-lg border border-base-700/50 bg-base-950/55 px-2.5 py-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-[11px] text-neutral-200" title={keyword.keyword}>
+                                {keyword.keyword}
+                              </span>
+                              {keyword.keywordRole === "primary" && (
+                                <span className="shrink-0 rounded-full bg-accent-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-accent-300">
+                                  P
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <span className="text-[11px] text-neutral-500">
+                            {keyword.searchVolume ?? "—"}
+                          </span>
+
+                          <input
+                            type="number"
+                            min="1"
+                            defaultValue={keyword.currentRank ?? ""}
+                            onBlur={(event) => saveRank(keyword, event.currentTarget.value)}
+                            placeholder="—"
+                            aria-label={`Ranking for ${keyword.keyword}`}
+                            className="w-full rounded-md border border-base-700 bg-base-950 px-2 py-1.5 text-center text-[11px] font-semibold text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                          />
+                        </div>
+                      ))}
                     </div>
                   ) : (
-                    <button
-                      key={check.id}
-                      type="button"
-                      onClick={() => changeStatus(check, check.status === "done" ? "pending" : "done")}
-                      className="flex w-full items-center gap-3 rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5 text-left transition-colors hover:border-base-600 hover:bg-base-900"
-                    >
-                      <span className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : "text-neutral-600")}>
-                        {check.status === "done" ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-neutral-200">{check.label}</p>
-                        <p className="mt-0.5 text-[10px] text-neutral-600">{check.status === "done" ? "Done" : "Pending"}</p>
-                      </div>
-                    </button>
-                  ),
-                )}
+                    <p className="rounded-lg border border-dashed border-base-700 p-4 text-center text-xs text-neutral-600">
+                      No keywords mapped to this page.
+                    </p>
+                  )}
+
+                  <p className="mt-2 text-[9px] text-neutral-700">
+                    Ranking saves when you leave the field.
+                  </p>
+                </div>
               </div>
             </section>
           );
@@ -288,6 +356,39 @@ export function WebsitePagesPanel({
             <p className="mt-2 text-sm text-neutral-400">No website pages added yet.</p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistColumn({
+  title,
+  checks,
+  onToggle,
+}: {
+  title: string;
+  checks: PageAuditCheck[];
+  onToggle: (check: PageAuditCheck) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">{title}</h4>
+      <div className="grid gap-1.5">
+        {checks.map((check) => (
+          <button
+            key={check.id}
+            type="button"
+            onClick={() => onToggle(check)}
+            className="flex w-full items-center gap-2.5 rounded-lg border border-base-700/50 bg-base-950/55 px-2.5 py-2 text-left transition-colors hover:border-base-600"
+          >
+            <span className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : "text-neutral-600")}>
+              {check.status === "done" ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-200">
+              {SHORT_LABELS[check.checkKey] ?? check.label}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );
