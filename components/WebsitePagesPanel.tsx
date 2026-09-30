@@ -46,6 +46,20 @@ export function WebsitePagesPanel({
     );
   }
 
+  function saveTextValue(check: PageAuditCheck, value: string) {
+    const clean = value.trim();
+    startTransition(() =>
+      updatePageAuditCheckAction({
+        projectId,
+        pageId: check.pageId,
+        periodMonth,
+        checkKey: check.checkKey,
+        status: clean ? "done" : "pending",
+        value: clean,
+      }),
+    );
+  }
+
   return (
     <div className={cn("space-y-5", isPending && "opacity-80")}>
       <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
@@ -53,7 +67,7 @@ export function WebsitePagesPanel({
           <div>
             <h2 className="text-base font-semibold text-neutral-100">Website Pages</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Monthly page-level checks for {periodMonth}. Reusable checks can be expanded later.
+              Monthly SEO quality checks for {periodMonth}, including keyword, ranking, technical, content and image checks.
             </p>
           </div>
           <button
@@ -133,31 +147,53 @@ export function WebsitePagesPanel({
               </div>
 
               <div className="mt-4 grid gap-2 md:grid-cols-2">
-                {pageChecks.map((check) => (
-                  <div key={check.id} className="flex items-center gap-3 rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => changeStatus(check, check.status === "done" ? "pending" : "done")}
-                      className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : check.status === "needs_work" ? "text-amber-400" : "text-neutral-600")}
-                    >
-                      {check.status === "done" ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-neutral-200">{check.label}</p>
-                      <p className="mt-0.5 text-[10px] text-neutral-600">{check.status.replace("_", " ")}</p>
+                {pageChecks.map((check) =>
+                  check.inputType === "text" ? (
+                    <div key={check.id} className="rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2
+                          size={16}
+                          className={check.status === "done" ? "shrink-0 text-emerald-400" : "shrink-0 text-neutral-600"}
+                        />
+                        <p className="text-xs font-medium text-neutral-200">{check.label}</p>
+                      </div>
+                      <input
+                        key={check.value}
+                        defaultValue={check.value}
+                        onBlur={(e) => saveTextValue(check, e.currentTarget.value)}
+                        placeholder={check.checkKey === "main_keyword_rank" ? "e.g. 8 or Not Ranking" : "Enter main keyword"}
+                        className="mt-2 w-full rounded-md border border-base-700 bg-base-950 px-2.5 py-2 text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none"
+                      />
+                      <p className="mt-1 text-[10px] text-neutral-600">
+                        {check.value ? "Saved for this month" : "Required for this monthly check"}
+                      </p>
                     </div>
-                    <select
-                      value={check.status}
-                      onChange={(e) => changeStatus(check, e.target.value as PageAuditStatus)}
-                      className="rounded-md border border-base-700 bg-base-950 px-2 py-1 text-[10px] text-neutral-400"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="done">Done</option>
-                      <option value="needs_work">Needs work</option>
-                      <option value="not_applicable">N/A</option>
-                    </select>
-                  </div>
-                ))}
+                  ) : (
+                    <div key={check.id} className="flex items-center gap-3 rounded-lg border border-base-700/60 bg-base-900/50 px-3 py-2.5">
+                      <button
+                        type="button"
+                        onClick={() => changeStatus(check, check.status === "done" ? "pending" : "done")}
+                        className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : check.status === "needs_work" ? "text-amber-400" : "text-neutral-600")}
+                      >
+                        {check.status === "done" ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-neutral-200">{check.label}</p>
+                        <p className="mt-0.5 text-[10px] text-neutral-600">{check.status.replace("_", " ")}</p>
+                      </div>
+                      <select
+                        value={check.status}
+                        onChange={(e) => changeStatus(check, e.target.value as PageAuditStatus)}
+                        className="rounded-md border border-base-700 bg-base-950 px-2 py-1 text-[10px] text-neutral-400"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="done">Done</option>
+                        <option value="needs_work">Needs work</option>
+                        <option value="not_applicable">N/A</option>
+                      </select>
+                    </div>
+                  ),
+                )}
               </div>
             </section>
           );
