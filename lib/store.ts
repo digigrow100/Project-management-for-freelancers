@@ -77,6 +77,11 @@ import type {
   SeoModule,
   SeoWorkflowItem,
   SeoWorkflowModule,
+  SeoWorkflowLoginMethod,
+  SeoWorkflowVerificationStatus,
+  SeoWorkflowOutreachStatus,
+  SeoWorkflowPaymentStatus,
+  SeoWorkflowApprovalStatus,
   SeoReport,
   SeoReportMetrics,
   Stage,
@@ -394,6 +399,20 @@ interface SeoWorkflowItemRow {
   status: "pending" | "done";
   sort_order: number;
   details: { steps?: string[] } | null;
+  login_method: SeoWorkflowLoginMethod;
+  login_email: string;
+  username: string;
+  password_encrypted: string | null;
+  profile_url: string;
+  notes: string;
+  verification_status: SeoWorkflowVerificationStatus;
+  contact_name: string;
+  contact_email: string;
+  outreach_status: SeoWorkflowOutreachStatus;
+  price: number | null;
+  currency: string;
+  payment_status: SeoWorkflowPaymentStatus;
+  approval_status: SeoWorkflowApprovalStatus;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -410,6 +429,20 @@ function toSeoWorkflowItem(row: SeoWorkflowItemRow): SeoWorkflowItem {
     status: row.status,
     sortOrder: row.sort_order ?? 0,
     details: row.details ?? {},
+    loginMethod: row.login_method ?? "",
+    loginEmail: row.login_email ?? "",
+    username: row.username ?? "",
+    hasPassword: Boolean(row.password_encrypted),
+    profileUrl: row.profile_url ?? "",
+    notes: row.notes ?? "",
+    verificationStatus: row.verification_status ?? "",
+    contactName: row.contact_name ?? "",
+    contactEmail: row.contact_email ?? "",
+    outreachStatus: row.outreach_status ?? "",
+    price: row.price === null || row.price === undefined ? null : Number(row.price),
+    currency: row.currency ?? "GBP",
+    paymentStatus: row.payment_status ?? "",
+    approvalStatus: row.approval_status ?? "",
     completedAt: row.completed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -441,6 +474,56 @@ export async function updateSeoWorkflowItemStatus(
   const { error } = await getSupabase()
     .from("freelance_hq_seo_workflow_items")
     .update({ status, completed_at: status === "done" ? now : null, updated_at: now })
+    .eq("id", id)
+    .eq("project_id", projectId);
+  if (error) throw error;
+}
+
+export async function updateSeoWorkflowItemDetails(
+  id: string,
+  projectId: string,
+  patch: {
+    loginMethod?: SeoWorkflowLoginMethod;
+    loginEmail?: string;
+    username?: string;
+    password?: string;
+    clearPassword?: boolean;
+    profileUrl?: string;
+    notes?: string;
+    verificationStatus?: SeoWorkflowVerificationStatus;
+    contactName?: string;
+    contactEmail?: string;
+    outreachStatus?: SeoWorkflowOutreachStatus;
+    price?: number | null;
+    currency?: string;
+    paymentStatus?: SeoWorkflowPaymentStatus;
+    approvalStatus?: SeoWorkflowApprovalStatus;
+  },
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+
+  if (patch.loginMethod !== undefined) update.login_method = patch.loginMethod;
+  if (patch.loginEmail !== undefined) update.login_email = patch.loginEmail.trim();
+  if (patch.username !== undefined) update.username = patch.username.trim();
+  if (patch.profileUrl !== undefined) update.profile_url = patch.profileUrl.trim();
+  if (patch.notes !== undefined) update.notes = patch.notes.trim();
+  if (patch.verificationStatus !== undefined) update.verification_status = patch.verificationStatus;
+  if (patch.contactName !== undefined) update.contact_name = patch.contactName.trim();
+  if (patch.contactEmail !== undefined) update.contact_email = patch.contactEmail.trim();
+  if (patch.outreachStatus !== undefined) update.outreach_status = patch.outreachStatus;
+  if (patch.price !== undefined) update.price = patch.price;
+  if (patch.currency !== undefined) update.currency = patch.currency.trim() || "GBP";
+  if (patch.paymentStatus !== undefined) update.payment_status = patch.paymentStatus;
+  if (patch.approvalStatus !== undefined) update.approval_status = patch.approvalStatus;
+
+  if (patch.clearPassword) update.password_encrypted = null;
+  if (patch.password !== undefined && patch.password.trim()) {
+    update.password_encrypted = encryptSecret(patch.password);
+  }
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_seo_workflow_items")
+    .update(update)
     .eq("id", id)
     .eq("project_id", projectId);
   if (error) throw error;
