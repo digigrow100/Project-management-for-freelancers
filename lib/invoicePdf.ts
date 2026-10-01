@@ -152,10 +152,10 @@ function drawStandardItemsTable(
   },
 ) {
   let y = yStart;
-  const colDesc = MARGIN + 12;
-  const colQty = RIGHT - 202;
-  const colRate = RIGHT - 112;
-  const colAmount = RIGHT - 10;
+  const colDesc = MARGIN + 14;
+  const colQty = RIGHT - 212;
+  const colRate = RIGHT - 116;
+  const colAmount = RIGHT - 12;
 
   if (opts.softFill) {
     setFill(doc, opts.softFill);
@@ -219,31 +219,42 @@ function drawTotals(
 ) {
   const total = subtotal(input.items);
   const balance = Math.max(0, total - input.totalPaid);
-  const x = RIGHT - 230;
+  const panelW = 250;
+  const panelX = RIGHT - panelW;
+  const labelX = panelX + 16;
+  const valueX = RIGHT - 14;
   const amountText = money(balance, input.invoice.currency);
 
+  // Keep all totals on the same right-hand grid as RATE / AMOUNT.
+  setDraw(doc, [226, 232, 239]);
+  doc.setLineWidth(0.6);
+  doc.line(panelX, y - 8, RIGHT, y - 8);
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
+  doc.setFontSize(9.4);
   doc.setCharSpace(0);
   setText(doc, opts.muted);
-  doc.text("Subtotal", x, y);
-  doc.text(money(total, input.invoice.currency), RIGHT, y, { align: "right" });
-  y += 17;
-  doc.text("Paid", x, y);
-  doc.text(money(input.totalPaid, input.invoice.currency), RIGHT, y, { align: "right" });
-  y += 14;
+  doc.text("Subtotal", labelX, y + 8);
+  doc.text(money(total, input.invoice.currency), valueX, y + 8, { align: "right" });
 
+  doc.text("Paid", labelX, y + 28);
+  doc.text(money(input.totalPaid, input.invoice.currency), valueX, y + 28, { align: "right" });
+
+  const balanceY = y + 43;
   setFill(doc, opts.boxFill ?? opts.accent);
-  doc.roundedRect(x - 12, y, 242, 38, 5, 5, "F");
+  doc.roundedRect(panelX, balanceY, panelW, 44, 6, 6, "F");
+
   doc.setFont("helvetica", "bold");
   doc.setCharSpace(0);
-  doc.setFontSize(11);
+  doc.setFontSize(11.2);
   if (opts.boxFill) setText(doc, opts.text);
   else doc.setTextColor(255, 255, 255);
-  doc.text(opts.label ?? "Balance Due", x, y + 24);
+  doc.text(opts.label ?? "Balance Due", labelX, balanceY + 27);
+
   doc.setFontSize(amountText.length > 18 ? 11.5 : 13.5);
-  doc.text(amountText, RIGHT - 8, y + 24, { align: "right" });
-  return y + 54;
+  doc.text(amountText, valueX, balanceY + 27, { align: "right" });
+
+  return balanceY + 58;
 }
 
 function drawNotes(doc: PdfDoc, input: InvoicePdfInput, y: number, accent: readonly [number, number, number]) {
@@ -278,80 +289,91 @@ function drawFooter(doc: PdfDoc, company: string, accent: readonly [number, numb
 async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string | null) {
   const navy = [12, 39, 76] as const;
   const blue = [39, 128, 230] as const;
-  const pale = [244, 248, 253] as const;
-  const paleBlue = [231, 242, 253] as const;
+  const pale = [247, 250, 254] as const;
+  const paleBlue = [233, 243, 253] as const;
   const line = [220, 228, 238] as const;
   const muted = [91, 106, 126] as const;
   const company = input.businessProfile.companyName || "Your Business Name";
   doc.setCharSpace(0);
 
-  // Compact branded header.
-  drawLogoOrName(doc, logo, company, MARGIN, 28, 58, 38, navy);
+  // Header: both sides share the same top/bottom baselines.
+  drawLogoOrName(doc, logo, company, MARGIN, 27, 52, 36, navy);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(27);
   setText(doc, navy);
-  doc.text("INVOICE", RIGHT, 52, { align: "right" });
+  doc.text("INVOICE", RIGHT, 50, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.8);
+  doc.setFontSize(8);
   setText(doc, muted);
-  doc.text(input.invoice.invoiceNumber, RIGHT, 68, { align: "right" });
+  doc.text(input.invoice.invoiceNumber, RIGHT, 67, { align: "right" });
 
   setDraw(doc, line);
   doc.setLineWidth(0.8);
   doc.line(MARGIN, 88, RIGHT, 88);
 
-  // Three compact information cards.
-  const y = 106;
+  // Equal-width cards with identical internal padding and baselines.
+  const cardY = 108;
   const gap = 10;
   const cardW = (CONTENT - gap * 2) / 3;
-  const cardH = 108;
-  const cardXs = [MARGIN, MARGIN + cardW + gap, MARGIN + (cardW + gap) * 2];
+  const cardH = 102;
+  const x1 = MARGIN;
+  const x2 = MARGIN + cardW + gap;
+  const x3 = MARGIN + (cardW + gap) * 2;
+  const pad = 14;
 
-  for (const x of cardXs) {
+  for (const x of [x1, x2, x3]) {
     setFill(doc, pale);
     setDraw(doc, line);
-    doc.roundedRect(x, y, cardW, cardH, 6, 6, "FD");
+    doc.roundedRect(x, cardY, cardW, cardH, 6, 6, "FD");
   }
 
-  const cardTitle = (title: string, x: number) => {
+  const drawCardTitle = (title: string, x: number) => {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.6);
+    doc.setFontSize(7.5);
     setText(doc, blue);
-    doc.text(title, x + 13, y + 20);
+    doc.text(title, x + pad, cardY + 20);
   };
-  cardTitle("FROM", cardXs[0]!);
-  cardTitle("BILL TO", cardXs[1]!);
-  cardTitle("INVOICE DETAILS", cardXs[2]!);
+  drawCardTitle("FROM", x1);
+  drawCardTitle("BILL TO", x2);
+  drawCardTitle("INVOICE DETAILS", x3);
 
+  const bodyTop = cardY + 43;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10.5);
   setText(doc, navy);
-  doc.text(company, cardXs[0]! + 13, y + 42, { maxWidth: cardW - 26 });
+  doc.text(company, x1 + pad, bodyTop, { maxWidth: cardW - pad * 2 });
 
   const lines = clientLines(input.client);
-  doc.text(lines[0] || "Client", cardXs[1]! + 13, y + 42, { maxWidth: cardW - 26 });
+  doc.text(lines[0] || "Client", x2 + pad, bodyTop, { maxWidth: cardW - pad * 2 });
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.3);
+  doc.setFontSize(8.2);
   setText(doc, muted);
-  let billY = y + 58;
-  for (const lineText of lines.slice(1, 5)) {
-    const wrapped = doc.splitTextToSize(lineText, cardW - 26) as string[];
-    doc.text(wrapped, cardXs[1]! + 13, billY);
+  let billY = bodyTop + 16;
+  for (const lineText of lines.slice(1, 4)) {
+    const wrapped = doc.splitTextToSize(lineText, cardW - pad * 2) as string[];
+    doc.text(wrapped, x2 + pad, billY);
     billY += wrapped.length * 10.5;
   }
 
-  const detailsX = cardXs[2]! + 13;
+  const detailLabelX = x3 + pad;
+  const detailValueX = x3 + cardW - pad;
+  const row1 = cardY + 40;
+  const row2 = cardY + 56;
+  const row3 = cardY + 72;
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.3);
+  doc.setFontSize(8.2);
   setText(doc, muted);
-  doc.text("Invoice #", detailsX, y + 40);
-  doc.text("Issue date", detailsX, y + 56);
-  doc.text("Due date", detailsX, y + 72);
+  doc.text("Invoice #", detailLabelX, row1);
+  doc.text("Issue date", detailLabelX, row2);
+  doc.text("Due date", detailLabelX, row3);
+
   doc.setFont("helvetica", "bold");
   setText(doc, navy);
-  doc.text(input.invoice.invoiceNumber, cardXs[2]! + cardW - 13, y + 40, { align: "right" });
-  doc.text(input.invoice.issueDate, cardXs[2]! + cardW - 13, y + 56, { align: "right" });
-  doc.text(input.invoice.dueDate, cardXs[2]! + cardW - 13, y + 72, { align: "right" });
+  doc.text(input.invoice.invoiceNumber, detailValueX, row1, { align: "right" });
+  doc.text(input.invoice.issueDate, detailValueX, row2, { align: "right" });
+  doc.text(input.invoice.dueDate, detailValueX, row3, { align: "right" });
 
   const statusFill =
     input.invoice.status === "paid"
@@ -359,11 +381,11 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
       : input.invoice.status === "overdue"
         ? ([203, 68, 74] as const)
         : blue;
-  drawStatusPill(doc, input.invoice, cardXs[2]! + 13, y + 80, statusFill);
+  drawStatusPill(doc, input.invoice, x3 + pad, cardY + 77, statusFill);
 
-  let nextY = y + cardH + 26;
-
-  nextY = drawStandardItemsTable(doc, input, nextY, {
+  // Table starts on a fixed baseline after cards.
+  let y = cardY + cardH + 28;
+  y = drawStandardItemsTable(doc, input, y, {
     headerFill: paleBlue,
     headerText: navy,
     bodyText: navy,
@@ -371,27 +393,27 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
     headerRounded: true,
   });
 
-  nextY = drawTotals(doc, input, nextY + 12, {
+  y = drawTotals(doc, input, y + 14, {
     accent: blue,
     text: navy,
     muted,
     boxFill: paleBlue,
   });
 
-  nextY = drawNotes(doc, input, nextY + 6, blue);
+  y = drawNotes(doc, input, y + 8, blue);
 
-  // Clean payment / footer strip for a finished look.
-  if (nextY < PAGE_HEIGHT - 110) {
+  // Footer kept visually separate from financial content.
+  if (y < PAGE_HEIGHT - 118) {
     setDraw(doc, line);
-    doc.line(MARGIN, PAGE_HEIGHT - 92, RIGHT, PAGE_HEIGHT - 92);
+    doc.line(MARGIN, PAGE_HEIGHT - 94, RIGHT, PAGE_HEIGHT - 94);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     setText(doc, navy);
-    doc.text("PAYMENT", MARGIN, PAGE_HEIGHT - 72);
+    doc.text("PAYMENT", MARGIN, PAGE_HEIGHT - 73);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(8.3);
     setText(doc, muted);
-    doc.text("Please use the invoice number as your payment reference.", MARGIN, PAGE_HEIGHT - 57);
+    doc.text("Please use the invoice number as your payment reference.", MARGIN, PAGE_HEIGHT - 58);
   }
 
   drawFooter(doc, company, blue);
