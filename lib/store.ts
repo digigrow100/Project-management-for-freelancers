@@ -1236,7 +1236,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
 
         const page = pages.find((candidate) => {
           const checks = checksByPage.get(candidate.id) ?? [];
-          return checks.length === 0 || checks.some((check) => check.status !== "done");
+          return checks.length === 0 || checks.some((check) => check.status !== "done" && check.status !== "not_applicable");
         });
         if (!page) continue;
 
@@ -1848,7 +1848,8 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
           updated_at: now,
         })
         .eq("page_id", refId)
-        .eq("period_month", periodMonth);
+        .eq("period_month", periodMonth)
+        .neq("status", "not_applicable");
       if (pageSyncError) throw pageSyncError;
     } else if (refId) {
       const recurring = module === "recurring";
