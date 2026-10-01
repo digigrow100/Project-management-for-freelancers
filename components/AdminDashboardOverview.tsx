@@ -289,7 +289,15 @@ export function AdminDashboardOverview({
               <div className="divide-y divide-base-700/50">
                 {personalTasks.slice(0, 7).map((task) => (
                   <Link key={task.id} href="/admin/my-tasks" className="flex items-center gap-3 px-4 py-3 hover:bg-base-800/50">
-                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${task.source === "team_request" ? "bg-rose-400" : task.priority === "high" ? "bg-amber-400" : "bg-neutral-600"}`} />
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                      task.source === "team_request"
+                        ? "bg-rose-400"
+                        : task.source === "domain_expiry"
+                          ? "bg-amber-400"
+                          : task.priority === "high"
+                            ? "bg-amber-400"
+                            : "bg-neutral-600"
+                    }`} />
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <p className="truncate text-xs text-neutral-200">{task.title}</p>
@@ -298,11 +306,18 @@ export function AdminDashboardOverview({
                             Team
                           </span>
                         )}
+                        {task.source === "domain_expiry" && (
+                          <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-amber-300">
+                            Domain
+                          </span>
+                        )}
                       </div>
                       <p className="mt-0.5 truncate text-[10px] text-neutral-600">
                         {task.source === "team_request"
                           ? `High Priority · ${task.sentByName ?? "Team member"}`
-                          : task.dueDate || "No due date"}
+                          : task.source === "domain_expiry"
+                            ? `High Priority · Expires ${task.dueDate ?? "soon"}`
+                            : task.dueDate || "No due date"}
                       </p>
                     </div>
                   </Link>
