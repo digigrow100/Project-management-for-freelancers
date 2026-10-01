@@ -128,14 +128,21 @@ function drawLogoOrName(
   doc.text(company, labelX, y + 18);
 }
 
-function drawStatusPill(doc: PdfDoc, invoice: Invoice, x: number, y: number, fill: readonly [number, number, number]) {
+function drawStatusPill(
+  doc: PdfDoc,
+  invoice: Invoice,
+  x: number,
+  y: number,
+  fill: readonly [number, number, number],
+  width = 92,
+) {
   setFill(doc, fill);
-  doc.roundedRect(x, y, 92, 22, 5, 5, "F");
+  doc.roundedRect(x, y, width, 24, 5, 5, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
   doc.setCharSpace(0);
   doc.setTextColor(255, 255, 255);
-  doc.text(STATUS_LABEL[invoice.status], x + 46, y + 14, { align: "center" });
+  doc.text(STATUS_LABEL[invoice.status], x + width / 2, y + 15.5, { align: "center" });
 }
 
 function drawStandardItemsTable(
@@ -151,58 +158,72 @@ function drawStandardItemsTable(
     headerRounded?: boolean;
   },
 ) {
+  const tableLeft = MARGIN;
+  const tableRight = RIGHT;
+  const padX = 14;
+  const descX = tableLeft + padX;
+  const qtyX = tableRight - 212;
+  const rateX = tableRight - 116;
+  const amountX = tableRight - padX;
+  const descMaxW = qtyX - descX - 28;
+  const headerH = 28;
+
   let y = yStart;
-  const colDesc = MARGIN + 14;
-  const colQty = RIGHT - 212;
-  const colRate = RIGHT - 116;
-  const colAmount = RIGHT - 12;
 
-  if (opts.softFill) {
-    setFill(doc, opts.softFill);
-    doc.rect(MARGIN, y, CONTENT, 24, "F");
-  }
   setFill(doc, opts.headerFill);
-  if (opts.headerRounded) doc.roundedRect(MARGIN, y, CONTENT, 24, 4, 4, "F");
-  else doc.rect(MARGIN, y, CONTENT, 24, "F");
+  if (opts.headerRounded) doc.roundedRect(tableLeft, y, CONTENT, headerH, 4, 4, "F");
+  else doc.rect(tableLeft, y, CONTENT, headerH, "F");
 
+  const headerBaseline = y + 18;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
+  doc.setCharSpace(0);
   setText(doc, opts.headerText);
-  doc.text("DESCRIPTION", colDesc, y + 15);
-  doc.text("QTY", colQty, y + 15, { align: "right" });
-  doc.text("RATE", colRate, y + 15, { align: "right" });
-  doc.text("AMOUNT", colAmount, y + 15, { align: "right" });
-  y += 34;
+  doc.text("DESCRIPTION", descX, headerBaseline);
+  doc.text("QTY", qtyX, headerBaseline, { align: "right" });
+  doc.text("RATE", rateX, headerBaseline, { align: "right" });
+  doc.text("AMOUNT", amountX, headerBaseline, { align: "right" });
+
+  y += headerH;
 
   for (const item of input.items) {
     const amount = item.quantity * item.unitPrice;
+    const desc = doc.splitTextToSize(item.description, descMaxW) as string[];
+    const rowH = Math.max(30, desc.length * 11 + 14);
+    const baseline = y + 19;
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.5);
+    doc.setCharSpace(0);
     setText(doc, opts.bodyText);
-    const desc = doc.splitTextToSize(item.description, colQty - colDesc - 22) as string[];
-    doc.text(desc, colDesc, y);
+    doc.text(desc, descX, baseline, { lineHeightFactor: 1.12 });
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.2);
     doc.setCharSpace(0);
-    doc.text(String(item.quantity), colQty, y, { align: "right" });
-    doc.text(money(item.unitPrice, input.invoice.currency), colRate, y, { align: "right" });
-    doc.text(money(amount, input.invoice.currency), colAmount, y, { align: "right" });
+    doc.text(String(item.quantity), qtyX, baseline, { align: "right" });
+    doc.text(money(item.unitPrice, input.invoice.currency), rateX, baseline, { align: "right" });
+    doc.text(money(amount, input.invoice.currency), amountX, baseline, { align: "right" });
 
-    y += Math.max(19, desc.length * 12 + 8);
     setDraw(doc, opts.border);
-    doc.line(MARGIN, y - 5, RIGHT, y - 5);
+    doc.setLineWidth(0.55);
+    doc.line(tableLeft, y + rowH, tableRight, y + rowH);
+    y += rowH;
   }
 
   if (input.items.length === 0) {
+    const rowH = 34;
     doc.setFont("helvetica", "italic");
     doc.setFontSize(9);
+    doc.setCharSpace(0);
     setText(doc, [120, 120, 120]);
-    doc.text("No line items.", colDesc, y);
-    y += 20;
+    doc.text("No line items.", descX, y + 20);
+    setDraw(doc, opts.border);
+    doc.line(tableLeft, y + rowH, tableRight, y + rowH);
+    y += rowH;
   }
 
-  return y + 4;
+  return y;
 }
 
 function drawTotals(
@@ -315,7 +336,7 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
   const cardY = 108;
   const gap = 10;
   const cardW = (CONTENT - gap * 2) / 3;
-  const cardH = 102;
+  const cardH = 108;
   const x1 = MARGIN;
   const x2 = MARGIN + cardW + gap;
   const x3 = MARGIN + (cardW + gap) * 2;
@@ -358,9 +379,9 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
 
   const detailLabelX = x3 + pad;
   const detailValueX = x3 + cardW - pad;
-  const row1 = cardY + 40;
-  const row2 = cardY + 56;
-  const row3 = cardY + 72;
+  const row1 = cardY + 39;
+  const row2 = cardY + 55;
+  const row3 = cardY + 71;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
@@ -381,7 +402,7 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
       : input.invoice.status === "overdue"
         ? ([203, 68, 74] as const)
         : blue;
-  drawStatusPill(doc, input.invoice, x3 + pad, cardY + 77, statusFill);
+  drawStatusPill(doc, input.invoice, x3 + pad, cardY + 74, statusFill, cardW - pad * 2);
 
   // Table starts on a fixed baseline after cards.
   let y = cardY + cardH + 28;
