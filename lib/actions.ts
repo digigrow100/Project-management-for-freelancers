@@ -381,6 +381,18 @@ export async function pauseFocusTaskAction(taskId: string) {
   revalidatePath("/admin/time-tracking");
 }
 
+export async function skipFocusTaskAction(
+  taskId: string,
+  reason: import("./types").TaskSkipReason,
+) {
+  const profile = await requireProfile();
+  await store.skipTaskFocus(taskId, profile.id, reason);
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+  revalidatePath("/today");
+  revalidatePath("/admin/time-tracking");
+}
+
 export async function completeFocusTaskAction(taskId: string) {
   const profile = await requireProfile();
   await store.completeTaskFromFocus(taskId, profile.id);
