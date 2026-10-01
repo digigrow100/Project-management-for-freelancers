@@ -2454,7 +2454,8 @@ export async function ensureMonthlyInvoiceAdminWorkItems(
   const today = todayDateKey();
   const monthKey = today.slice(0, 7);
   const monthStart = `${monthKey}-01`;
-  const [year, month] = monthKey.split("-").map(Number);
+  const year = Number(monthKey.slice(0, 4));
+  const month = Number(monthKey.slice(5, 7));
   const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 
   const invoicesByClient = new Map<string, Invoice[]>();
