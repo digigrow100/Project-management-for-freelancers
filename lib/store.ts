@@ -647,6 +647,28 @@ export async function updatePageAuditCheck(
     .eq("period_month", periodMonth)
     .eq("check_key", checkKey);
   if (error) throw error;
+
+  const { data: linkedTasks, error: linkedError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("id, checklist")
+    .neq("status", "done")
+    .eq("is_fallback", true)
+    .like("fallback_template_key", `workflow:website_pages:${pageId}:%`);
+  if (linkedError) throw linkedError;
+
+  const linkedItemId = `pageaudit:${pageId}:${periodMonth}:${checkKey}`;
+  for (const linked of (linkedTasks ?? []) as Array<{ id: string; checklist: ChecklistItem[] }>) {
+    const next = (linked.checklist ?? []).map((item) =>
+      item.id === linkedItemId
+        ? { ...item, done: status === "done" || status === "not_applicable" }
+        : item,
+    );
+    const { error: taskSyncError } = await getSupabase()
+      .from("freelance_hq_tasks")
+      .update({ checklist: next, updated_at: now })
+      .eq("id", linked.id);
+    if (taskSyncError) throw taskSyncError;
+  }
 }
 
 export async function getProjects(): Promise<Project[]> {
@@ -1102,18 +1124,52 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     return null;
   }
 
-  // Resume the one already-issued automatic task before creating another.
-  const { data: existingFallback, error: existingFallbackError } = await getSupabase()
+  // Resume an already-issued automatic task unless the member explicitly skipped it.
+  // Skipped tasks wait for one other completion, then surface again.
+  const { data: existingFallbackRows, error: existingFallbackError } = await getSupabase()
     .from("freelance_hq_tasks")
     .select("*")
     .eq("assigned_to", userId)
     .neq("status", "done")
     .eq("is_fallback", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
   if (existingFallbackError) throw existingFallbackError;
-  if (existingFallback) return toTask(existingFallback as TaskRow, await taskNameLookup());
+
+  for (const existingFallback of (existingFallbackRows ?? []) as TaskRow[]) {
+    const { data: focusRow, error: focusError } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .select("state,resume_after_completions")
+      .eq("task_id", existingFallback.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (focusError && !isMissingTableError(focusError)) throw focusError;
+
+    const waitingForAnotherCompletion =
+      focusRow?.state === "paused" && (focusRow.resume_after_completions ?? 0) > 0;
+    if (waitingForAnotherCompletion) continue;
+
+    if (existingFallback.fallback_template_key?.startsWith("workflow:website_pages:")) {
+      const [, , pageId] = existingFallback.fallback_template_key.split(":");
+      if (pageId) {
+        const periodMonth = new Date().toISOString().slice(0, 7);
+        const checks = (await listPageAuditChecks(existingFallback.project_id, periodMonth))
+          .filter((check) => check.pageId === pageId);
+        const syncedChecklist = checks.map((check) => ({
+          id: `pageaudit:${pageId}:${periodMonth}:${check.checkKey}`,
+          text: check.label,
+          done: check.status === "done" || check.status === "not_applicable",
+        }));
+        const { error: syncError } = await getSupabase()
+          .from("freelance_hq_tasks")
+          .update({ checklist: syncedChecklist, updated_at: nowIso() })
+          .eq("id", existingFallback.id);
+        if (syncError) throw syncError;
+        existingFallback.checklist = syncedChecklist;
+      }
+    }
+
+    return toTask(existingFallback, await taskNameLookup());
+  }
 
   const assignedProjectIds = await getAssignedProjectIds(userId);
   if (assignedProjectIds.length === 0) return null;
@@ -1146,11 +1202,13 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   const month = new Date().toISOString().slice(0, 7);
   const moduleOrder = [
     "website_pages",
+    "full_website",
     "social_media",
     "local_listing",
     "blog_onsite",
     "web_2_0",
     "guest_blogging",
+    "recurring",
   ] as const;
 
   for (const workflowModule of moduleOrder) {
@@ -1176,7 +1234,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         });
         if (!page) continue;
 
-        const pendingChecks = (checksByPage.get(page.id) ?? []).filter((check) => check.status !== "done");
+        const pageChecklist = checksByPage.get(page.id) ?? [];
         return createTask({
           projectId: project.id,
           stageId: null,
@@ -1185,7 +1243,11 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
           priority: "medium",
           assignedTo: userId,
           seoModule: "on_page",
-          checklist: pendingChecks.map((check) => ({ id: randomUUID(), text: check.label, done: false })),
+          checklist: pageChecklist.map((check) => ({
+            id: `pageaudit:${page.id}:${month}:${check.checkKey}`,
+            text: check.label,
+            done: check.status === "done" || check.status === "not_applicable",
+          })),
           why: "This is the next unfinished page in the project's rotating SEO workflow.",
           expectedOutcome: "All page checklist items are completed and verified.",
           isFallback: true,
@@ -1194,17 +1256,30 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       }
 
       const items = (await listSeoWorkflowItems(project.id))
-        .filter((item) => item.module === workflowModule && item.status !== "done")
+        .filter((item) => {
+          if (item.module !== workflowModule) return false;
+          if (workflowModule !== "recurring") return item.status !== "done";
+          if (!item.completedAt) return true;
+          const last = new Date(item.completedAt);
+          const now = new Date();
+          const cadence = item.details.cadence ?? "monthly";
+          if (cadence === "weekly") {
+            return now.getTime() - last.getTime() >= 7 * 24 * 60 * 60 * 1000;
+          }
+          return now.getUTCFullYear() !== last.getUTCFullYear() || now.getUTCMonth() !== last.getUTCMonth();
+        })
         .sort((a, b) => a.sortOrder - b.sortOrder);
       const item = items[0];
       if (!item) continue;
 
       const moduleLabel: Record<SeoWorkflowModule, string> = {
+        full_website: "Full Website",
         social_media: "Social Media",
         local_listing: "Local Listing",
         blog_onsite: "Blog Onsite",
         web_2_0: "Web 2.0",
         guest_blogging: "Guest Blogging",
+        recurring: "Recurring SEO",
       };
       const seoModule: SeoModule =
         workflowModule === "blog_onsite" ? "content" : "off_page";
@@ -1237,6 +1312,7 @@ interface TaskFocusRow {
   started_at: string | null;
   paused_at: string | null;
   resume_after_completions: number;
+  skip_reason: import("./types").TaskSkipReason | null;
   updated_at: string;
 }
 
@@ -1248,6 +1324,7 @@ function toTaskFocusState(row: TaskFocusRow): TaskFocusState {
     startedAt: row.started_at,
     pausedAt: row.paused_at,
     resumeAfterCompletions: row.resume_after_completions ?? 0,
+    skipReason: row.skip_reason ?? null,
     updatedAt: row.updated_at,
   };
 }
@@ -1554,6 +1631,7 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
           state: "paused",
           paused_at: now,
           resume_after_completions: 1,
+          skip_reason: null,
           updated_at: now,
         })
         .eq("user_id", userId)
@@ -1572,6 +1650,7 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
             started_at: now,
             paused_at: null,
             resume_after_completions: 0,
+            skip_reason: null,
             updated_at: now,
           },
           { onConflict: "task_id" },
@@ -1644,6 +1723,42 @@ export async function pauseTaskFocus(taskId: string, userId: string): Promise<vo
   await touchProject(task.projectId);
 }
 
+export async function skipTaskFocus(
+  taskId: string,
+  userId: string,
+  reason: import("./types").TaskSkipReason,
+): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (task.status === "done") return;
+
+  const now = nowIso();
+  const { error } = await getSupabase()
+    .from("freelance_hq_task_focus")
+    .upsert(
+      {
+        task_id: taskId,
+        user_id: userId,
+        state: "paused",
+        started_at: now,
+        paused_at: now,
+        resume_after_completions: 1,
+        skip_reason: reason,
+        updated_at: now,
+      },
+      { onConflict: "task_id" },
+    );
+  if (error && !isMissingTableError(error)) throw error;
+
+  await closeOpenTimeEntries(userId, now);
+  const { error: taskError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({ status: "in_progress", updated_at: now })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (taskError) throw taskError;
+  await touchProject(task.projectId);
+}
+
 export async function updateAssignedTaskBasics(
   taskId: string,
   userId: string,
@@ -1677,13 +1792,15 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
   if (task.status === "done") return;
 
   const now = nowIso();
-  const completedChecklist = task.checklist.map((item) => ({ ...item, done: true }));
+  if (!isChecklistComplete(task.checklist)) {
+    throw new Error("Complete all required checklist items before marking this task done.");
+  }
 
   const { error } = await getSupabase()
     .from("freelance_hq_tasks")
     .update({
       status: "done",
-      checklist: completedChecklist,
+      checklist: task.checklist,
       completed_at: now,
       scheduled_for: null,
       updated_at: now,
@@ -1721,9 +1838,10 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
         .eq("period_month", periodMonth);
       if (pageSyncError) throw pageSyncError;
     } else if (refId) {
+      const recurring = module === "recurring";
       const { error: workflowSyncError } = await getSupabase()
         .from("freelance_hq_seo_workflow_items")
-        .update({ status: "done", completed_at: now, updated_at: now })
+        .update({ status: recurring ? "pending" : "done", completed_at: now, updated_at: now })
         .eq("id", refId)
         .eq("project_id", task.projectId);
       if (workflowSyncError && !isMissingTableError(workflowSyncError)) throw workflowSyncError;
@@ -1954,13 +2072,13 @@ export async function toggleToday(taskId: string, today: string): Promise<void> 
 export async function toggleChecklistItem(taskId: string, itemId: string): Promise<void> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
-    .select("checklist, project_id, status")
+    .select("checklist, project_id, status, assigned_to")
     .eq("id", taskId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return;
 
-  const row = data as { checklist: ChecklistItem[]; project_id: string; status: TaskStatus };
+  const row = data as { checklist: ChecklistItem[]; project_id: string; status: TaskStatus; assigned_to: string | null };
   const nextChecklist = row.checklist.map((item) =>
     item.id === itemId ? { ...item, done: !item.done } : item,
   );
@@ -1973,6 +2091,26 @@ export async function toggleChecklistItem(taskId: string, itemId: string): Promi
 
   const { error: updateError } = await getSupabase().from("freelance_hq_tasks").update(update).eq("id", taskId);
   if (updateError) throw updateError;
+
+  const toggled = nextChecklist.find((item) => item.id === itemId);
+  if (toggled && itemId.startsWith("pageaudit:")) {
+    const [, pageId, periodMonth, checkKey] = itemId.split(":");
+    if (pageId && periodMonth && checkKey) {
+      const now = nowIso();
+      const { error: pageSyncError } = await getSupabase()
+        .from("freelance_hq_page_audit_checks")
+        .update({
+          status: toggled.done ? "done" : "pending",
+          checked_at: toggled.done ? now : null,
+          checked_by: toggled.done ? row.assigned_to ?? null : null,
+          updated_at: now,
+        })
+        .eq("page_id", pageId)
+        .eq("period_month", periodMonth)
+        .eq("check_key", checkKey);
+      if (pageSyncError) throw pageSyncError;
+    }
+  }
 
   await touchProject(row.project_id);
 }
