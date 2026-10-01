@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  RefreshCw,
   Save,
 } from "lucide-react";
 import type { SeoWorkflowItem, SeoWorkflowModule } from "@/lib/types";
@@ -21,11 +22,13 @@ import {
 import { cn } from "@/lib/utils";
 
 const DESCRIPTIONS: Record<SeoWorkflowModule, string> = {
+  full_website: "One-time sitewide SEO, analytics, tracking, schema, crawlability and technical setup.",
   social_media: "Complete one social platform at a time for this project and keep its login details here.",
   local_listing: "Build, verify and store access details for each local business listing.",
   blog_onsite: "Prepare the next onsite blog through the writing workflow.",
   web_2_0: "Build Web 2.0 properties one platform at a time and save their access details.",
   guest_blogging: "Research, qualify, negotiate and track guest blogging opportunities.",
+  recurring: "Weekly and monthly SEO checks that automatically return when their next cycle is due.",
 };
 
 const LOGIN_METHODS = [
@@ -57,6 +60,7 @@ export function SeoWorkflowPanel({
   const [saveMessage, setSaveMessage] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const done = items.filter((item) => item.status === "done").length;
+  const recurringCompleted = module === "recurring" ? items.filter((item) => Boolean(item.completedAt)).length : 0;
 
   useEffect(() => {
     if (Object.keys(revealed).length === 0) return;
@@ -107,7 +111,7 @@ export function SeoWorkflowPanel({
           <p className="mt-1 text-xs text-neutral-500">{DESCRIPTIONS[module]}</p>
         </div>
         <span className="rounded-full bg-base-900 px-3 py-1 text-xs text-neutral-400">
-          {done}/{items.length} done
+          {module === "recurring" ? `${recurringCompleted}/${items.length} run before` : `${done}/${items.length} done`}
         </span>
       </div>
 
@@ -122,22 +126,28 @@ export function SeoWorkflowPanel({
           return (
             <div key={item.id} className="rounded-xl border border-base-700/60 bg-base-900/45 p-3">
               <div className="flex items-start gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    startTransition(() =>
-                      updateSeoWorkflowItemStatusAction({
-                        projectId,
-                        itemId: item.id,
-                        status: isDone ? "pending" : "done",
-                      }),
-                    )
-                  }
-                  className={cn("mt-0.5 shrink-0", isDone ? "text-emerald-400" : "text-neutral-600")}
-                  aria-label={isDone ? "Mark pending" : "Mark done"}
-                >
-                  {isDone ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                </button>
+                {module === "recurring" ? (
+                  <span className="mt-0.5 shrink-0 text-sky-400" title="Repeats automatically">
+                    <RefreshCw size={18} />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      startTransition(() =>
+                        updateSeoWorkflowItemStatusAction({
+                          projectId,
+                          itemId: item.id,
+                          status: isDone ? "pending" : "done",
+                        }),
+                      )
+                    }
+                    className={cn("mt-0.5 shrink-0", isDone ? "text-emerald-400" : "text-neutral-600")}
+                    aria-label={isDone ? "Mark pending" : "Mark done"}
+                  >
+                    {isDone ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                  </button>
+                )}
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -157,6 +167,13 @@ export function SeoWorkflowPanel({
                       </span>
                     )}
                   </div>
+
+                  {module === "recurring" && (
+                    <p className="mt-1 text-xs text-neutral-500">
+                      {(item.details.cadence ?? "monthly") === "weekly" ? "Weekly" : "Monthly"}
+                      {item.completedAt ? ` · Last completed ${new Date(item.completedAt).toLocaleDateString()}` : " · Not completed yet"}
+                    </p>
+                  )}
 
                   {item.url && (
                     <a

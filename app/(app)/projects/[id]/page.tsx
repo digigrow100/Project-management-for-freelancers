@@ -234,6 +234,14 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               keywordPages={Object.values(keywordPagesByGroup).flat()}
             />
           }
+          website={
+            <SeoWorkflowPanel
+              projectId={project.id}
+              module="full_website"
+              title="Full Website"
+              items={seoWorkflowItems.filter((item) => item.module === "full_website")}
+            />
+          }
           social={
             <SeoWorkflowPanel
               projectId={project.id}
@@ -272,6 +280,14 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               module="guest_blogging"
               title="Guest Blogging"
               items={seoWorkflowItems.filter((item) => item.module === "guest_blogging")}
+            />
+          }
+          recurring={
+            <SeoWorkflowPanel
+              projectId={project.id}
+              module="recurring"
+              title="Recurring SEO"
+              items={seoWorkflowItems.filter((item) => item.module === "recurring")}
             />
           }
           reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} preferences={reportPreferences} />}

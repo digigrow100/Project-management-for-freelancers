@@ -61,6 +61,8 @@ export interface Task {
   fallbackTemplateKey: string | null;
 }
 
+export type TaskSkipReason = "waiting_for_client" | "login_required" | "content_required" | "admin_action" | "other";
+
 export interface TaskFocusState {
   taskId: string;
   userId: string;
@@ -69,6 +71,8 @@ export interface TaskFocusState {
   pausedAt: string | null;
   /** A paused task becomes eligible to resurface after this many other task completions. */
   resumeAfterCompletions: number;
+  /** Why a member temporarily moved past this task. Cleared when they resume it. */
+  skipReason: TaskSkipReason | null;
   updatedAt: string;
 }
 
@@ -286,7 +290,14 @@ export interface ProjectPage {
   updatedAt: string;
 }
 
-export type SeoWorkflowModule = "social_media" | "local_listing" | "blog_onsite" | "web_2_0" | "guest_blogging";
+export type SeoWorkflowModule =
+  | "full_website"
+  | "social_media"
+  | "local_listing"
+  | "blog_onsite"
+  | "web_2_0"
+  | "guest_blogging"
+  | "recurring";
 
 export type SeoWorkflowLoginMethod = "" | "email_password" | "google" | "facebook" | "apple" | "other";
 export type SeoWorkflowVerificationStatus = "" | "not_started" | "pending" | "verified" | "rejected";
@@ -303,7 +314,7 @@ export interface SeoWorkflowItem {
   url: string;
   status: "pending" | "done";
   sortOrder: number;
-  details: { steps?: string[] };
+  details: { steps?: string[]; cadence?: "weekly" | "monthly" };
   loginMethod: SeoWorkflowLoginMethod;
   loginEmail: string;
   username: string;
