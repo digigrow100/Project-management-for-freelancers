@@ -57,7 +57,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen md:h-screen md:overflow-hidden">
       <Sidebar
-        projects={projects}
         profile={profile}
         unseenProjects={unseenProjects}
         unseenNotes={unseenNotes}
