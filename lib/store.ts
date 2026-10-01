@@ -2199,7 +2199,7 @@ export async function getProjectProgressMap(): Promise<
 interface AdminWorkItemRow {
   id: string;
   owner_id: string;
-  source: "personal" | "team_request" | "domain_expiry";
+  source: "personal" | "team_request" | "domain_expiry" | "invoice_reminder";
   title: string;
   details: string;
   priority: TaskPriority;
@@ -2259,7 +2259,7 @@ export async function listAdminWorkItems(ownerId: string, includeDone = false): 
     .map((row) => toAdminWorkItem(row, names))
     .sort((a, b) => {
       if (a.source !== b.source) {
-        const sourceRank = { team_request: 0, domain_expiry: 1, personal: 2 } as const;
+        const sourceRank = { team_request: 0, invoice_reminder: 1, domain_expiry: 2, personal: 3 } as const;
         return sourceRank[a.source] - sourceRank[b.source];
       }
       const p = { high: 0, medium: 1, low: 2 } as const;
@@ -2442,6 +2442,194 @@ export async function ensureDomainExpiryAdminWorkItems(
       .update({ status: "done", completed_at: nowIso(), updated_at: nowIso() })
       .eq("id", row.id);
     if (staleError) throw staleError;
+  }
+}
+
+
+export async function ensureMonthlyInvoiceAdminWorkItems(
+  ownerId: string,
+  clients: Client[],
+): Promise<void> {
+  const invoices = await listInvoices();
+  const today = todayDateKey();
+  const monthKey = today.slice(0, 7);
+  const monthStart = `${monthKey}-01`;
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+
+  const invoicesByClient = new Map<string, Invoice[]>();
+  for (const invoice of invoices) {
+    const list = invoicesByClient.get(invoice.clientId) ?? [];
+    list.push(invoice);
+    invoicesByClient.set(invoice.clientId, list);
+  }
+
+  const activeKeys = new Set<string>();
+
+  // One monthly "create/send invoice" task for every client.
+  for (const client of clients) {
+    const clientName = client.company || client.name || "Client";
+    const monthlyKey = `invoice_monthly:${client.id}:${monthKey}`;
+    activeKeys.add(monthlyKey);
+
+    const currentMonthInvoices = (invoicesByClient.get(client.id) ?? []).filter(
+      (invoice) =>
+        invoice.status !== "cancelled" &&
+        invoice.issueDate >= monthStart &&
+        invoice.issueDate <= monthEnd,
+    );
+
+    const invoiceExists = currentMonthInvoices.length > 0;
+    const monthlyDetails = invoiceExists
+      ? [
+          `Client: ${clientName}`,
+          `Month: ${monthKey}`,
+          `Invoice created: ${currentMonthInvoices.map((invoice) => invoice.invoiceNumber).join(", ")}`,
+          "Monthly invoice creation reminder completed automatically.",
+        ].join("\n")
+      : [
+          `Client: ${clientName}`,
+          `Month: ${monthKey}`,
+          "Action: Create and send this month's invoice.",
+          "This reminder stays open until an invoice exists for this client this month.",
+        ].join("\n");
+
+    const monthlyPayload = {
+      owner_id: ownerId,
+      source: "invoice_reminder",
+      title: invoiceExists
+        ? `Monthly invoice created — ${clientName}`
+        : `Create monthly invoice — ${clientName}`,
+      details: monthlyDetails,
+      priority: "high",
+      status: invoiceExists ? "done" : "pending",
+      due_date: monthStart,
+      project_id: null,
+      team_task_id: null,
+      sent_by: null,
+      sent_reason: "Monthly invoice",
+      sent_note: `Client: ${clientName} · Month: ${monthKey}`,
+      snoozed_until: null,
+      resume_mode: null,
+      external_key: monthlyKey,
+      completed_at: invoiceExists ? nowIso() : null,
+      updated_at: nowIso(),
+    };
+
+    const { data: existingMonthly, error: monthlyReadError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .select("id")
+      .eq("owner_id", ownerId)
+      .eq("external_key", monthlyKey)
+      .maybeSingle();
+    if (monthlyReadError) throw monthlyReadError;
+
+    if (existingMonthly) {
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .update(monthlyPayload)
+        .eq("id", (existingMonthly as { id: string }).id);
+      if (updateError) throw updateError;
+    } else {
+      const { error: insertError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .insert({ ...monthlyPayload, created_at: nowIso() });
+      if (insertError) throw insertError;
+    }
+  }
+
+  // Every unpaid invoice gets a payment reminder that remains until status becomes paid.
+  for (const invoice of invoices) {
+    if (invoice.status === "cancelled" || invoice.status === "paid") continue;
+
+    const client = clients.find((candidate) => candidate.id === invoice.clientId);
+    const clientName = client?.company || client?.name || invoice.clientName || "Client";
+    const paymentKey = `invoice_payment:${invoice.id}`;
+    activeKeys.add(paymentKey);
+
+    const stateLabel =
+      invoice.status === "draft"
+        ? "Draft — review and send invoice"
+        : invoice.status === "partially_paid"
+          ? "Partially paid — payment still pending"
+          : invoice.status === "overdue"
+            ? "Overdue — payment follow-up required"
+            : "Sent — waiting for payment";
+
+    const payload = {
+      owner_id: ownerId,
+      source: "invoice_reminder",
+      title:
+        invoice.status === "draft"
+          ? `Review & send invoice — ${clientName}`
+          : `Payment pending — ${clientName} · ${invoice.invoiceNumber}`,
+      details: [
+        `Client: ${clientName}`,
+        `Invoice: ${invoice.invoiceNumber}`,
+        `Status: ${stateLabel}`,
+        `Issue date: ${invoice.issueDate}`,
+        `Due date: ${invoice.dueDate}`,
+        `Currency: ${invoice.currency}`,
+        invoice.status === "draft"
+          ? "Reminder continues until the invoice is sent and then paid."
+          : "Reminder continues until the invoice is marked paid.",
+      ].join("\n"),
+      priority: invoice.status === "overdue" ? "high" : "medium",
+      status: "pending",
+      due_date: invoice.dueDate,
+      project_id: invoice.projectId,
+      team_task_id: null,
+      sent_by: null,
+      sent_reason: "Invoice payment",
+      sent_note: `Client: ${clientName} · Invoice: ${invoice.invoiceNumber}`,
+      external_key: paymentKey,
+      updated_at: nowIso(),
+    };
+
+    const { data: existingPayment, error: paymentReadError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .select("id")
+      .eq("owner_id", ownerId)
+      .eq("external_key", paymentKey)
+      .maybeSingle();
+    if (paymentReadError) throw paymentReadError;
+
+    if (existingPayment) {
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .update(payload)
+        .eq("id", (existingPayment as { id: string }).id);
+      if (updateError) throw updateError;
+    } else {
+      const { error: insertError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .insert({ ...payload, created_at: nowIso() });
+      if (insertError) throw insertError;
+    }
+  }
+
+  // Close stale payment reminders as soon as their invoice is paid/cancelled/deleted,
+  // and close old monthly reminders from previous months.
+  const { data: existingRows, error: existingRowsError } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .select("id,external_key,status")
+    .eq("owner_id", ownerId)
+    .eq("source", "invoice_reminder");
+  if (existingRowsError) throw existingRowsError;
+
+  for (const row of (existingRows ?? []) as Array<{ id: string; external_key: string | null; status: string }>) {
+    if (!row.external_key || activeKeys.has(row.external_key)) continue;
+    const { error: closeError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .update({
+        status: "done",
+        completed_at: nowIso(),
+        snoozed_until: null,
+        resume_mode: null,
+        updated_at: nowIso(),
+      })
+      .eq("id", row.id);
+    if (closeError) throw closeError;
   }
 }
 
@@ -2638,6 +2826,9 @@ export async function completeAdminWorkItem(id: string, ownerId: string): Promis
   if (!data) throw new Error("Admin task not found.");
   const item = data as AdminWorkItemRow;
   if (item.status === "done") return;
+  if (item.source === "invoice_reminder") {
+    throw new Error("Invoice reminders close automatically when the invoice/payment requirement is satisfied.");
+  }
 
   const now = nowIso();
   const { error: doneError } = await getSupabase()
