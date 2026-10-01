@@ -14,7 +14,7 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import type { Domain, DomainClient, Invoice, InvoiceItem, Payment, Profile, Project, Renewal, Task, TaskTimeSummary } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, Profile, Project, Renewal, Task, TaskTimeSummary } from "@/lib/types";
 
 type ProgressMap = Record<string, { done: number; total: number; openCount: number }>;
 
@@ -86,7 +86,7 @@ export function AdminDashboardOverview({
   domains: Domain[];
   domainClients: DomainClient[];
   renewals: Renewal[];
-  personalTasks: Task[];
+  personalTasks: AdminWorkItem[];
 }) {
   const activeProjects = projects.filter((project) => !project.archived);
   const invoiceByProject = new Map<string, Invoice>();
@@ -285,18 +285,29 @@ export function AdminDashboardOverview({
             </section>
 
             <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead icon={CheckCircle2} title="My Personal Tasks" subtitle="Your own small admin jobs" href="/" action="Open tasks" />
+              <SectionHead icon={CheckCircle2} title="My Tasks" subtitle="Personal work + High Priority team requests" href="/admin/my-tasks" action="Open My Tasks" />
               <div className="divide-y divide-base-700/50">
                 {personalTasks.slice(0, 7).map((task) => (
-                  <Link key={task.id} href={`/projects/${task.projectId}`} className="flex items-center gap-3 px-4 py-3 hover:bg-base-800/50">
-                    <span className="h-4 w-4 rounded-full border border-base-500" />
+                  <Link key={task.id} href="/admin/my-tasks" className="flex items-center gap-3 px-4 py-3 hover:bg-base-800/50">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${task.source === "team_request" ? "bg-rose-400" : task.priority === "high" ? "bg-amber-400" : "bg-neutral-600"}`} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs text-neutral-200">{task.title}</p>
-                      <p className="mt-0.5 text-[10px] text-neutral-600">{task.dueDate || "No due date"}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-xs text-neutral-200">{task.title}</p>
+                        {task.source === "team_request" && (
+                          <span className="shrink-0 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-rose-300">
+                            Team
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 truncate text-[10px] text-neutral-600">
+                        {task.source === "team_request"
+                          ? `High Priority · ${task.sentByName ?? "Team member"}`
+                          : task.dueDate || "No due date"}
+                      </p>
                     </div>
                   </Link>
                 ))}
-                {personalTasks.length === 0 && <Empty text="No personal tasks assigned to you." />}
+                {personalTasks.length === 0 && <Empty text="No admin tasks waiting." />}
               </div>
             </section>
           </div>
