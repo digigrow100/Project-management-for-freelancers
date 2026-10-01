@@ -16,11 +16,13 @@ import {
   Play,
   Target,
 } from "lucide-react";
-import type { Project, Task, TaskFocusState } from "@/lib/types";
+import type { Project, Task, TaskFocusState, TaskSkipReason } from "@/lib/types";
 import {
   completeFocusTaskAction,
   pauseFocusTaskAction,
+  skipFocusTaskAction,
   startFocusTaskAction,
+  toggleChecklistItemAction,
 } from "@/lib/actions";
 import { MemberTaskDetailModal } from "./MemberTaskDetailModal";
 import { cn, formatDateKey } from "@/lib/utils";
@@ -116,6 +118,7 @@ export function MemberFocusDashboard({
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [browseOffset, setBrowseOffset] = useState(0);
+  const [skipReason, setSkipReason] = useState<TaskSkipReason>("waiting_for_client");
   const [clockNow, setClockNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -217,6 +220,19 @@ export function MemberFocusDashboard({
     startTransition(async () => {
       await pauseFocusTaskAction(task.id);
       setBrowseOffset(0);
+    });
+  }
+
+  function skipTask(task: Task) {
+    startTransition(async () => {
+      await skipFocusTaskAction(task.id, skipReason);
+      setBrowseOffset(0);
+    });
+  }
+
+  function toggleChecklist(task: Task, itemId: string) {
+    startTransition(async () => {
+      await toggleChecklistItemAction(task.id, task.projectId, itemId);
     });
   }
 
@@ -404,7 +420,36 @@ export function MemberFocusDashboard({
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              {currentTask.checklist.length > 0 && (
+                <div className="mt-5 rounded-xl border border-base-700/70 bg-base-900/45 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Checklist</h3>
+                    <span className="text-[11px] text-neutral-500">
+                      {progress?.done ?? 0}/{progress?.total ?? 0} complete
+                    </span>
+                  </div>
+                  <div className="grid gap-1.5">
+                    {currentTask.checklist.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => toggleChecklist(currentTask, item.id)}
+                        className="flex w-full items-center gap-2.5 rounded-lg border border-base-700/50 bg-base-950/55 px-3 py-2.5 text-left hover:border-base-600 disabled:opacity-60"
+                      >
+                        <span className={item.done ? "text-emerald-400" : "text-neutral-600"}>
+                          {item.done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
+                        </span>
+                        <span className={cn("text-sm", item.done ? "text-neutral-500 line-through" : "text-neutral-200")}>
+                          {item.text}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 {!currentIsActive ? (
                   <button
                     type="button"
@@ -432,10 +477,34 @@ export function MemberFocusDashboard({
                   <FileText size={16} />
                   Full details
                 </button>
+                <div className="flex min-w-0 gap-1.5">
+                  <select
+                    value={skipReason}
+                    onChange={(event) => setSkipReason(event.target.value as TaskSkipReason)}
+                    className="min-w-0 flex-1 rounded-lg border border-base-600 bg-base-900 px-2 py-2 text-xs text-neutral-300"
+                    aria-label="Reason for moving to next task"
+                  >
+                    <option value="waiting_for_client">Waiting for client</option>
+                    <option value="login_required">Login required</option>
+                    <option value="content_required">Content required</option>
+                    <option value="admin_action">Admin action</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => skipTask(currentTask)}
+                    className="flex shrink-0 items-center justify-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs font-semibold text-amber-300 hover:bg-amber-500/15"
+                  >
+                    Next task
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
                 <button
                   type="button"
+                  disabled={Boolean(progress?.total && progress.done < progress.total)}
                   onClick={() => completeTask(currentTask)}
-                  className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-base-950 shadow-sm hover:bg-emerald-400"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-base-950 shadow-sm hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-base-700 disabled:text-neutral-500"
+                  title={progress?.total && progress.done < progress.total ? "Complete the checklist first" : "Mark task done"}
                 >
                   <Check size={17} />
                   Mark done
