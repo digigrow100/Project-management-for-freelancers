@@ -891,7 +891,6 @@ export async function updateClient(
   if (patch.address !== undefined) update.address = patch.address;
   if (patch.website !== undefined) update.website = patch.website;
   if (patch.notes !== undefined) update.notes = patch.notes;
-  if (patch.templateKey !== undefined) update.template_key = patch.templateKey;
   if (patch.logoUrl !== undefined) update.logo_url = patch.logoUrl;
 
   const { error } = await getSupabase().from("freelance_hq_clients").update(update).eq("id", id);
@@ -3671,6 +3670,7 @@ export async function updateInvoice(
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate;
   if (patch.status !== undefined) update.status = patch.status;
   if (patch.notes !== undefined) update.notes = patch.notes;
+  if (patch.templateKey !== undefined) update.template_key = patch.templateKey;
 
   const { error } = await getSupabase().from("freelance_hq_invoices").update(update).eq("id", id);
   if (error) throw error;
