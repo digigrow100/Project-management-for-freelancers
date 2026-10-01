@@ -1282,7 +1282,11 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         recurring: "Recurring SEO",
       };
       const seoModule: SeoModule =
-        workflowModule === "blog_onsite" ? "content" : "off_page";
+        workflowModule === "full_website" || workflowModule === "recurring"
+          ? "technical"
+          : workflowModule === "blog_onsite"
+            ? "content"
+            : "off_page";
       const steps = item.details.steps ?? [`Complete ${item.title} for this project`];
 
       return createTask({
