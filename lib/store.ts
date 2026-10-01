@@ -2369,26 +2369,44 @@ export async function sendTaskToAdmin(
     .single();
   if (readError) throw readError;
 
-  const { error: requestError } = await getSupabase()
+  const requestPayload = {
+    owner_id: ownerId,
+    source: "team_request",
+    title: (taskRow as { title: string }).title,
+    details: "Team member needs admin action before this task can continue.",
+    priority: "high",
+    project_id: (taskRow as { project_id: string }).project_id,
+    team_task_id: taskId,
+    sent_by: userId,
+    sent_reason: "Admin action required",
+    sent_note: note.trim(),
+    status: "pending",
+    snoozed_until: null,
+    resume_mode: null,
+    completed_at: null,
+    updated_at: now,
+  };
+  const { data: existingRequest, error: existingRequestError } = await getSupabase()
     .from("freelance_hq_admin_work_items")
-    .upsert({
-      owner_id: ownerId,
-      source: "team_request",
-      title: (taskRow as { title: string }).title,
-      details: "Team member needs admin action before this task can continue.",
-      priority: "high",
-      project_id: (taskRow as { project_id: string }).project_id,
-      team_task_id: taskId,
-      sent_by: userId,
-      sent_reason: "Admin action required",
-      sent_note: note.trim(),
-      status: "pending",
-      snoozed_until: null,
-      resume_mode: null,
-      completed_at: null,
-      updated_at: now,
-    }, { onConflict: "team_task_id", ignoreDuplicates: false });
-  if (requestError) throw requestError;
+    .select("id")
+    .eq("team_task_id", taskId)
+    .eq("source", "team_request")
+    .eq("status", "pending")
+    .maybeSingle();
+  if (existingRequestError) throw existingRequestError;
+
+  if (existingRequest) {
+    const { error: requestError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .update(requestPayload)
+      .eq("id", (existingRequest as { id: string }).id);
+    if (requestError) throw requestError;
+  } else {
+    const { error: requestError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .insert({ ...requestPayload, created_at: now });
+    if (requestError) throw requestError;
+  }
 }
 
 export async function snoozeAdminWorkItem(
