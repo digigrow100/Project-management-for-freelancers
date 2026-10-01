@@ -4,9 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Plus, Sparkles, X, Zap } from "lucide-react";
-import type { Client, ClientService, Invoice, InvoiceStatus, SeoReport } from "@/lib/types";
+import type { Client, ClientService, Invoice, InvoiceStatus, InvoiceTemplateKey, SeoReport } from "@/lib/types";
 import { createInvoiceAction, generateDueInvoiceDraftsAction } from "@/lib/actions";
 import { cn, formatMoney } from "@/lib/utils";
+import { InvoiceTemplateSelector } from "@/components/InvoiceTemplateSelector";
 
 export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: "Draft",
@@ -189,6 +190,7 @@ function NewInvoiceForm({
   const [items, setItems] = useState<DraftItem[]>([{ description: "", quantity: 1, unitPrice: 0 }]);
   const [clientId, setClientId] = useState("");
   const [currency, setCurrency] = useState("PKR");
+  const [templateKey, setTemplateKey] = useState<InvoiceTemplateKey>("modern_blue");
   const [seoReportId, setSeoReportId] = useState("");
   const [autofilled, setAutofilled] = useState(false);
 
@@ -258,11 +260,9 @@ function NewInvoiceForm({
           onChange={(e) => setCurrency(e.target.value)}
           className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
         >
-          {["PKR", "USD", "GBP"].map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
+          <option value="GBP">GBP (£)</option>
+          <option value="USD">USD ($)</option>
+          <option value="PKR">PKR (₨)</option>
         </select>
         <select
           name="status"
@@ -290,6 +290,11 @@ function NewInvoiceForm({
             className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
           />
         </div>
+      </div>
+
+      <div>
+        <label className="mb-2 block text-xs font-medium text-neutral-400">Invoice template</label>
+        <InvoiceTemplateSelector value={templateKey} onChange={setTemplateKey} />
       </div>
 
       {autofilled && activeServices.length > 0 && (
