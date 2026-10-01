@@ -10,6 +10,8 @@ import type {
   AiPendingAction,
   AiPendingActionStatus,
   AiToolCallRecord,
+  AdminWorkItem,
+  AdminWorkflowSettings,
   BacklinkCategory,
   BacklinkCategoryType,
   BacklinkEntry,
@@ -164,6 +166,7 @@ interface TaskRow {
   outreach_prospect_id: string | null;
   is_fallback: boolean;
   fallback_template_key: string | null;
+  waiting_for_admin: boolean;
 }
 
 /** Normalizes legacy plain-string image URLs (from before file attachments were
@@ -208,6 +211,7 @@ function toTask(row: TaskRow, nameById?: Map<string, string>): Task {
     outreachProspectId: row.outreach_prospect_id,
     isFallback: row.is_fallback ?? false,
     fallbackTemplateKey: row.fallback_template_key ?? null,
+    waitingForAdmin: row.waiting_for_admin ?? false,
   };
 }
 
@@ -1086,7 +1090,8 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     .select("id, scheduled_for, due_date")
     .eq("assigned_to", userId)
     .neq("status", "done")
-    .eq("is_fallback", false);
+    .eq("is_fallback", false)
+    .eq("waiting_for_admin", false);
   if (normalError) throw normalError;
 
   const hasActionableNormalTask = ((normalRows ?? []) as Array<{
@@ -1132,6 +1137,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     .eq("assigned_to", userId)
     .neq("status", "done")
     .eq("is_fallback", true)
+    .eq("waiting_for_admin", false)
     .order("created_at", { ascending: true });
   if (existingFallbackError) throw existingFallbackError;
 
@@ -1558,10 +1564,11 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
   status: TaskStatus;
   isFallback: boolean;
   fallbackTemplateKey: string | null;
+  waitingForAdmin: boolean;
 }> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
-    .select("project_id, assigned_to, checklist, status, is_fallback, fallback_template_key")
+    .select("project_id, assigned_to, checklist, status, is_fallback, fallback_template_key, waiting_for_admin")
     .eq("id", taskId)
     .maybeSingle();
   if (error) throw error;
@@ -1574,6 +1581,7 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     status: TaskStatus;
     is_fallback: boolean;
     fallback_template_key: string | null;
+    waiting_for_admin: boolean;
   };
   if (row.assigned_to !== userId) throw new Error("This task is not assigned to you.");
 
@@ -1583,6 +1591,7 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     status: row.status,
     isFallback: row.is_fallback ?? false,
     fallbackTemplateKey: row.fallback_template_key ?? null,
+    waitingForAdmin: row.waiting_for_admin ?? false,
   };
 }
 
@@ -2183,6 +2192,312 @@ export async function getProjectProgressMap(): Promise<
     map[row.project_id] = entry;
   }
   return map;
+}
+
+
+interface AdminWorkItemRow {
+  id: string;
+  owner_id: string;
+  source: "personal" | "team_request";
+  title: string;
+  details: string;
+  priority: TaskPriority;
+  status: "pending" | "done";
+  due_date: string | null;
+  project_id: string | null;
+  team_task_id: string | null;
+  sent_by: string | null;
+  sent_reason: string;
+  sent_note: string;
+  snoozed_until: string | null;
+  resume_mode: "after_next_task" | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+function toAdminWorkItem(row: AdminWorkItemRow, nameById?: Map<string, string>): AdminWorkItem {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    source: row.source,
+    title: row.title,
+    details: row.details ?? "",
+    priority: row.priority,
+    status: row.status,
+    dueDate: row.due_date,
+    projectId: row.project_id,
+    teamTaskId: row.team_task_id,
+    sentBy: row.sent_by,
+    sentByName: row.sent_by ? (nameById?.get(row.sent_by) ?? "Team member") : null,
+    sentReason: row.sent_reason ?? "",
+    sentNote: row.sent_note ?? "",
+    snoozedUntil: row.snoozed_until,
+    resumeMode: row.resume_mode,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+  };
+}
+
+export async function listAdminWorkItems(ownerId: string, includeDone = false): Promise<AdminWorkItem[]> {
+  let query = getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .select("*")
+    .eq("owner_id", ownerId);
+  if (!includeDone) query = query.eq("status", "pending");
+  const { data, error } = await query.order("created_at", { ascending: true });
+  if (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+  const names = await taskNameLookup();
+  return ((data ?? []) as AdminWorkItemRow[])
+    .map((row) => toAdminWorkItem(row, names))
+    .sort((a, b) => {
+      if (a.source !== b.source) return a.source === "team_request" ? -1 : 1;
+      const p = { high: 0, medium: 1, low: 2 } as const;
+      if (p[a.priority] !== p[b.priority]) return p[a.priority] - p[b.priority];
+      const ad = a.dueDate ?? "9999-12-31";
+      const bd = b.dueDate ?? "9999-12-31";
+      if (ad !== bd) return ad.localeCompare(bd);
+      return a.createdAt.localeCompare(b.createdAt);
+    });
+}
+
+export async function getAdminWorkflowSettings(ownerId: string): Promise<AdminWorkflowSettings> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_admin_workflow_settings")
+    .select("*")
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+  if (error && !isMissingTableError(error)) throw error;
+  return {
+    ownerId,
+    snoozedUntil: (data as { snoozed_until?: string | null } | null)?.snoozed_until ?? null,
+    updatedAt: (data as { updated_at?: string | null } | null)?.updated_at ?? nowIso(),
+  };
+}
+
+export async function createAdminPersonalWorkItem(input: {
+  ownerId: string;
+  title: string;
+  details?: string;
+  priority?: TaskPriority;
+  dueDate?: string | null;
+}): Promise<AdminWorkItem> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .insert({
+      owner_id: input.ownerId,
+      source: "personal",
+      title: input.title.trim(),
+      details: input.details?.trim() ?? "",
+      priority: input.priority ?? "medium",
+      due_date: input.dueDate ?? null,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return toAdminWorkItem(data as AdminWorkItemRow);
+}
+
+export async function updateAdminPersonalWorkItem(
+  id: string,
+  ownerId: string,
+  patch: { title?: string; details?: string; priority?: TaskPriority; dueDate?: string | null },
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.title !== undefined) update.title = patch.title.trim();
+  if (patch.details !== undefined) update.details = patch.details.trim();
+  if (patch.priority !== undefined) update.priority = patch.priority;
+  if (patch.dueDate !== undefined) update.due_date = patch.dueDate;
+  const { error } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .update(update)
+    .eq("id", id)
+    .eq("owner_id", ownerId)
+    .eq("source", "personal");
+  if (error) throw error;
+}
+
+export async function sendTaskToAdmin(
+  taskId: string,
+  userId: string,
+  note: string,
+): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (task.status === "done") return;
+
+  const { data: admins, error: adminError } = await getSupabase()
+    .from("freelance_hq_profiles")
+    .select("id")
+    .eq("role", "admin")
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (adminError) throw adminError;
+  const ownerId = (admins?.[0] as { id?: string } | undefined)?.id;
+  if (!ownerId) throw new Error("No admin account is available.");
+
+  const now = nowIso();
+  const { error: taskError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({ waiting_for_admin: true, status: "in_progress", updated_at: now })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (taskError) throw taskError;
+
+  const { error: focusError } = await getSupabase()
+    .from("freelance_hq_task_focus")
+    .upsert({
+      task_id: taskId,
+      user_id: userId,
+      state: "paused",
+      started_at: now,
+      paused_at: now,
+      resume_after_completions: 0,
+      skip_reason: "admin_action",
+      updated_at: now,
+    }, { onConflict: "task_id" });
+  if (focusError && !isMissingTableError(focusError)) throw focusError;
+  await closeOpenTimeEntries(userId, now);
+
+  const { data: taskRow, error: readError } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .select("title, project_id")
+    .eq("id", taskId)
+    .single();
+  if (readError) throw readError;
+
+  const { error: requestError } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .upsert({
+      owner_id: ownerId,
+      source: "team_request",
+      title: (taskRow as { title: string }).title,
+      details: "Team member needs admin action before this task can continue.",
+      priority: "high",
+      project_id: (taskRow as { project_id: string }).project_id,
+      team_task_id: taskId,
+      sent_by: userId,
+      sent_reason: "Admin action required",
+      sent_note: note.trim(),
+      status: "pending",
+      snoozed_until: null,
+      resume_mode: null,
+      completed_at: null,
+      updated_at: now,
+    }, { onConflict: "team_task_id", ignoreDuplicates: false });
+  if (requestError) throw requestError;
+}
+
+export async function snoozeAdminWorkItem(
+  id: string,
+  ownerId: string,
+  mode: "30m" | "1h" | "after_next_task",
+): Promise<void> {
+  const now = new Date();
+  const update: Record<string, unknown> = { updated_at: now.toISOString() };
+  if (mode === "after_next_task") {
+    update.resume_mode = "after_next_task";
+    update.snoozed_until = null;
+  } else {
+    update.resume_mode = null;
+    update.snoozed_until = new Date(now.getTime() + (mode === "30m" ? 30 : 60) * 60000).toISOString();
+  }
+  const { error } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .update(update)
+    .eq("id", id)
+    .eq("owner_id", ownerId)
+    .eq("status", "pending");
+  if (error) throw error;
+}
+
+export async function snoozeAllAdminWork(ownerId: string, minutes: 30 | 60 | 120): Promise<void> {
+  const until = new Date(Date.now() + minutes * 60000).toISOString();
+  const { error } = await getSupabase()
+    .from("freelance_hq_admin_workflow_settings")
+    .upsert({ owner_id: ownerId, snoozed_until: until, updated_at: nowIso() }, { onConflict: "owner_id" });
+  if (error) throw error;
+}
+
+export async function clearAdminWorkflowSnooze(ownerId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from("freelance_hq_admin_workflow_settings")
+    .upsert({ owner_id: ownerId, snoozed_until: null, updated_at: nowIso() }, { onConflict: "owner_id" });
+  if (error) throw error;
+}
+
+export async function completeAdminWorkItem(id: string, ownerId: string): Promise<void> {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .select("*")
+    .eq("id", id)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Admin task not found.");
+  const item = data as AdminWorkItemRow;
+  if (item.status === "done") return;
+
+  const now = nowIso();
+  const { error: doneError } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .update({ status: "done", completed_at: now, snoozed_until: null, resume_mode: null, updated_at: now })
+    .eq("id", id)
+    .eq("owner_id", ownerId);
+  if (doneError) throw doneError;
+
+  if (item.source === "team_request" && item.team_task_id) {
+    const { error: returnError } = await getSupabase()
+      .from("freelance_hq_tasks")
+      .update({ waiting_for_admin: false, updated_at: now })
+      .eq("id", item.team_task_id);
+    if (returnError) throw returnError;
+
+    const { error: focusError } = await getSupabase()
+      .from("freelance_hq_task_focus")
+      .update({
+        state: "paused",
+        paused_at: now,
+        resume_after_completions: 0,
+        skip_reason: null,
+        updated_at: now,
+      })
+      .eq("task_id", item.team_task_id);
+    if (focusError && !isMissingTableError(focusError)) throw focusError;
+  }
+
+  const { error: releaseError } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .update({ resume_mode: null, snoozed_until: null, updated_at: now })
+    .eq("owner_id", ownerId)
+    .eq("status", "pending")
+    .eq("resume_mode", "after_next_task");
+  if (releaseError) throw releaseError;
+}
+
+export async function setPageChecklistStatusFromAssignedTask(
+  taskId: string,
+  userId: string,
+  itemId: string,
+  status: "pending" | "done" | "not_applicable",
+): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (!itemId.startsWith("pageaudit:")) throw new Error("This checklist item does not support this status.");
+  const [, pageId, periodMonth, checkKey] = itemId.split(":");
+  if (!pageId || !periodMonth || !checkKey) throw new Error("Invalid page checklist item.");
+
+  await updatePageAuditCheck(pageId, periodMonth, checkKey, status, userId);
+  const done = status === "done" || status === "not_applicable";
+  const nextChecklist = task.checklist.map((item) => item.id === itemId ? { ...item, done } : item);
+  const { error } = await getSupabase()
+    .from("freelance_hq_tasks")
+    .update({ checklist: nextChecklist, updated_at: nowIso() })
+    .eq("id", taskId)
+    .eq("assigned_to", userId);
+  if (error) throw error;
 }
 
 export async function getBusinessProfile(): Promise<BusinessProfile> {
