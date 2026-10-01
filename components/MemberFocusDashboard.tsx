@@ -176,6 +176,7 @@ export function MemberFocusDashboard({
       (item): item is { state: TaskFocusState; task: Task } =>
         !!item.task &&
         item.task.status !== "done" &&
+        !item.task.waitingForAdmin &&
         (!hasNormalOpenTasks || !item.task.isFallback),
     )
     .sort((a, b) => sortQueue(a.task, b.task));
@@ -188,7 +189,7 @@ export function MemberFocusDashboard({
   const fallbackPaused = focusStates
     .filter((state) => state.state === "paused")
     .map((state) => taskById.get(state.taskId))
-    .filter((task): task is Task => !!task && task.status !== "done")
+    .filter((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin)
     .sort(sortQueue);
 
   const naturalCurrent = activeTask ?? readyPaused[0]?.task ?? queuedTasks[0] ?? fallbackPaused[0] ?? null;
@@ -220,7 +221,7 @@ export function MemberFocusDashboard({
   const pausedTasks = focusStates
     .filter((state) => state.state === "paused")
     .map((state) => taskById.get(state.taskId))
-    .filter((task): task is Task => !!task && task.status !== "done")
+    .filter((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin)
     .sort(sortQueue);
 
   const upcomingTasks = openTasks
@@ -257,6 +258,7 @@ export function MemberFocusDashboard({
   function sendToAdmin(task: Task) {
     startTransition(async () => {
       await sendTaskToAdminAction(task.id, adminNote);
+      router.refresh();
       setAdminNote("");
       setAdminRequestOpen(false);
       setBrowseOffset(0);
