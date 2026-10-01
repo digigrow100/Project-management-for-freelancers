@@ -2276,6 +2276,7 @@ export async function ensureDomainExpiryAdminWorkItems(
   ownerId: string,
   domains: Domain[],
   domainClients: DomainClient[],
+  renewals: Renewal[] = [],
 ): Promise<void> {
   const clientNameById = new Map(domainClients.map((client) => [client.id, client.name]));
   const now = new Date();
@@ -2322,6 +2323,82 @@ export async function ensureDomainExpiryAdminWorkItems(
       sent_by: null,
       sent_reason: "Domain expiry",
       sent_note: `Owner: ${ownerName} · Domain: ${domain.name}`,
+      snoozed_until: null,
+      resume_mode: null,
+      external_key: externalKey,
+      updated_at: nowIso(),
+    };
+
+    const { data: existing, error: existingError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .select("id,status")
+      .eq("owner_id", ownerId)
+      .eq("external_key", externalKey)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    if (!existing) {
+      const { error: insertError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .insert({ ...payload, created_at: nowIso() });
+      if (insertError) throw insertError;
+    } else if ((existing as { status: string }).status !== "done") {
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .update(payload)
+        .eq("id", (existing as { id: string }).id);
+      if (updateError) throw updateError;
+    }
+  }
+
+
+  const domainById = new Map(domains.map((domain) => [domain.id, domain]));
+
+  for (const renewal of renewals) {
+    if (renewal.status !== "pending" || !renewal.dueDate) continue;
+    const [year, month, day] = renewal.dueDate.split("-").map(Number);
+    if (!year || !month || !day) continue;
+    const dueUtc = Date.UTC(year, month - 1, day);
+    if (dueUtc < windowStart || dueUtc > windowEnd) continue;
+
+    const daysLeft = Math.round((dueUtc - todayUtc) / 86400000);
+    const linkedDomain = renewal.domainId ? domainById.get(renewal.domainId) : null;
+    const ownerName =
+      renewal.clientName ||
+      (linkedDomain?.domainClientId && clientNameById.get(linkedDomain.domainClientId)) ||
+      "No owner assigned";
+    const domainName = linkedDomain?.name || renewal.itemName || "Domain / Hosting";
+    const services = renewal.serviceTypes.length > 0
+      ? renewal.serviceTypes.map((service) => service.replaceAll("_", " ")).join(", ")
+      : "renewal";
+    const externalKey = `renewal_expiry:${renewal.id}:${renewal.dueDate}`;
+    activeKeys.add(externalKey);
+
+    const details = [
+      `Owner: ${ownerName}`,
+      `Domain: ${domainName}`,
+      `Service: ${services}`,
+      `Expiry / due date: ${renewal.dueDate}`,
+      daysLeft < 0
+        ? `Status: Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}`
+        : daysLeft === 0
+          ? "Status: Due today"
+          : `Status: Due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+    ].join("\n");
+
+    const payload = {
+      owner_id: ownerId,
+      source: "domain_expiry",
+      title: `Domain / hosting renewal — ${domainName}`,
+      details,
+      priority: "high",
+      status: "pending",
+      due_date: renewal.dueDate,
+      project_id: null,
+      team_task_id: null,
+      sent_by: null,
+      sent_reason: "Domain / hosting expiry",
+      sent_note: `Owner: ${ownerName} · Domain: ${domainName}`,
       snoozed_until: null,
       resume_mode: null,
       external_key: externalKey,
