@@ -169,7 +169,7 @@ export function AdminWorkflowLauncher({
       <button
         type="button"
         onClick={startWorkflow}
-        className="fixed bottom-24 right-4 z-40 flex items-center gap-3 rounded-2xl border border-accent-500/25 bg-base-900/95 px-4 py-3 text-left shadow-2xl backdrop-blur md:bottom-5 md:right-5"
+        className="fixed bottom-24 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-accent-500/25 bg-base-900/95 px-4 py-3 text-left shadow-2xl backdrop-blur md:bottom-5"
       >
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent-500/12 text-accent-300">
           <ListTodo size={19} />
