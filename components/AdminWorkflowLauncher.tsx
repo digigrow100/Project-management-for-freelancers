@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   AlarmClock,
@@ -53,6 +54,7 @@ export function AdminWorkflowLauncher({
   initialSettings: AdminWorkflowSettings;
   projects: Project[];
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState(initialItems);
   const [settings, setSettings] = useState(initialSettings);
@@ -116,6 +118,12 @@ export function AdminWorkflowLauncher({
       await refreshQueue();
       setOpen(true);
     });
+  }
+
+  function openInvoices() {
+    setOpen(false);
+    window.localStorage.setItem("admin-workflow-dismissed-at", String(Date.now()));
+    router.push("/invoices");
   }
 
   function completeCurrent() {
@@ -338,13 +346,14 @@ export function AdminWorkflowLauncher({
                 <div className="border-t border-base-700/70 px-5 py-4 sm:px-6">
                   <div className="flex flex-col gap-2 sm:flex-row">
                     {current.source === "invoice_reminder" ? (
-                      <Link
-                        href="/invoices"
+                      <button
+                        type="button"
+                        onClick={openInvoices}
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-base-950 hover:bg-sky-400"
                       >
                         <Banknote size={17} />
                         Open Invoices
-                      </Link>
+                      </button>
                     ) : (
                       <button
                         type="button"
