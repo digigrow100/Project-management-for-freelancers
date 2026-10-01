@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { CalendarDays, Check, ClipboardList, FileText, Flag, Play, Sparkles, X } from "lucide-react";
+import { CalendarDays, Check, CheckCircle2, Circle, ClipboardList, FileText, Flag, Play, Sparkles, X } from "lucide-react";
 import type { Task, TaskPriority } from "@/lib/types";
-import { startFocusTaskAction, updateMemberTaskBasicsAction } from "@/lib/actions";
+import { startFocusTaskAction, toggleChecklistItemAction, updateMemberTaskBasicsAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 export function MemberTaskDetailModal({
@@ -21,6 +21,11 @@ export function MemberTaskDetailModal({
   const [notes, setNotes] = useState(task.notes ?? "");
   const [requirements, setRequirements] = useState(task.why ?? "");
   const [promptSteps, setPromptSteps] = useState(task.expectedOutcome ?? "");
+  const [localChecklist, setLocalChecklist] = useState(task.checklist);
+
+  useEffect(() => {
+    setLocalChecklist(task.checklist);
+  }, [task.id, task.checklist]);
 
   useEffect(() => {
     if (task.status === "done") return;
@@ -92,6 +97,45 @@ export function MemberTaskDetailModal({
                   className="w-full resize-y rounded-xl border border-base-700 bg-base-900/70 px-4 py-3 text-sm leading-6 text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-accent-500/70"
                 />
               </section>
+
+              {localChecklist.length > 0 && (
+                <section className="rounded-xl border border-base-700/70 bg-base-900/45 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ClipboardList size={15} className="text-accent-400" />
+                      <h3 className="text-sm font-semibold text-neutral-200">Checklist</h3>
+                    </div>
+                    <span className="text-xs text-neutral-500">
+                      {localChecklist.filter((item) => item.done).length}/{localChecklist.length} complete
+                    </span>
+                  </div>
+                  <div className="grid gap-2">
+                    {localChecklist.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={isPending || task.status === "done"}
+                        onClick={() => {
+                          setLocalChecklist((current) =>
+                            current.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry),
+                          );
+                          startTransition(async () => {
+                            await toggleChecklistItemAction(task.id, task.projectId, item.id);
+                          });
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg border border-base-700/60 bg-base-950/55 px-3 py-2.5 text-left hover:border-base-600 disabled:opacity-70"
+                      >
+                        <span className={item.done ? "text-emerald-400" : "text-neutral-600"}>
+                          {item.done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
+                        </span>
+                        <span className={cn("text-sm", item.done ? "text-neutral-500 line-through" : "text-neutral-200")}>
+                          {item.text}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {(requirements.trim() || promptSteps.trim()) && (
                 <div className="grid gap-4 md:grid-cols-2">
