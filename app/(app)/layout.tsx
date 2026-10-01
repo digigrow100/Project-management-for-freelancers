@@ -3,6 +3,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
 import { DomainExpiryTicker } from "@/components/DomainExpiryTicker";
 import { AiAssistant } from "@/components/AiAssistant";
+import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
@@ -13,6 +14,8 @@ import {
   listDomainClients,
   listDomains,
   listRenewals,
+  listAdminWorkItems,
+  getAdminWorkflowSettings,
 } from "@/lib/store";
 import { buildExpiryTickerItems } from "@/lib/utils";
 
@@ -22,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
   const canSeeClients = isAdmin || !!profile?.canAccessFinance;
-  const [projects, unseenProjects, unseenNotes, unseenTasks, domains, domainClients, renewals, clients] = await Promise.all([
+  const [projects, unseenProjects, unseenNotes, unseenTasks, domains, domainClients, renewals, clients, adminWorkItems, adminWorkflowSettings] = await Promise.all([
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     profile ? countUnseenProjects(profile.id, isAdmin) : Promise.resolve(0),
     profile ? countUnseenNotes(profile.id) : Promise.resolve(0),
@@ -31,6 +34,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     isAdmin ? listDomainClients() : Promise.resolve([]),
     isAdmin ? listRenewals() : Promise.resolve([]),
     canSeeClients ? listClients() : Promise.resolve([]),
+    isAdmin && profile ? listAdminWorkItems(profile.id) : Promise.resolve([]),
+    isAdmin && profile ? getAdminWorkflowSettings(profile.id) : Promise.resolve(null),
   ]);
 
   const tickerItems = isAdmin ? buildExpiryTickerItems(domains, domainClients, renewals) : [];
@@ -52,6 +57,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
       <DomainExpiryTicker items={tickerItems} />
+      {isAdmin && profile && adminWorkflowSettings && (
+        <AdminWorkflowLauncher
+          initialItems={adminWorkItems}
+          initialSettings={adminWorkflowSettings}
+          projects={projects}
+        />
+      )}
       {profile && <AiAssistant projects={projects} clients={clients} hasTicker={tickerItems.length > 0} />}
     </div>
   );
