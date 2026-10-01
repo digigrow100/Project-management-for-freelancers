@@ -122,7 +122,7 @@ export function WebsitePagesPanel({
       (TECHNICAL_KEYS as readonly string[]).includes(check.checkKey),
   );
   const totalChecks = trackedChecks.length;
-  const doneChecks = trackedChecks.filter((check) => check.status === "done").length;
+  const doneChecks = trackedChecks.filter((check) => check.status === "done" || check.status === "not_applicable").length;
   const progress = totalChecks ? Math.round((doneChecks / totalChecks) * 100) : 0;
 
   function setCheckStatus(check: PageAuditCheck, status: PageAuditStatus) {
@@ -231,7 +231,7 @@ export function WebsitePagesPanel({
             .filter(Boolean) as PageAuditCheck[];
 
           const pageChecks = [...onPageChecks, ...technicalChecks];
-          const completed = pageChecks.filter((check) => check.status === "done").length;
+          const completed = pageChecks.filter((check) => check.status === "done" || check.status === "not_applicable").length;
           const pageProgress = pageChecks.length ? Math.round((completed / pageChecks.length) * 100) : 0;
 
           const mappedKeywords = keywords
