@@ -503,6 +503,7 @@ export interface OutreachProspect {
   response: string;
   status: OutreachStatus;
   notes: string;
+  templateKey: InvoiceTemplateKey;
   createdAt: string;
   updatedAt: string;
 }
@@ -883,6 +884,7 @@ export interface ClientService {
 }
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "partially_paid" | "overdue" | "cancelled";
+export type InvoiceTemplateKey = "modern_blue" | "corporate_navy" | "minimal_clean" | "premium_teal";
 
 export interface InvoiceItem {
   id: string;
