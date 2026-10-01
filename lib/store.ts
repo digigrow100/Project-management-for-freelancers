@@ -2199,7 +2199,7 @@ export async function getProjectProgressMap(): Promise<
 interface AdminWorkItemRow {
   id: string;
   owner_id: string;
-  source: "personal" | "team_request";
+  source: "personal" | "team_request" | "domain_expiry";
   title: string;
   details: string;
   priority: TaskPriority;
@@ -2215,6 +2215,7 @@ interface AdminWorkItemRow {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  external_key: string | null;
 }
 
 function toAdminWorkItem(row: AdminWorkItemRow, nameById?: Map<string, string>): AdminWorkItem {
@@ -2238,6 +2239,7 @@ function toAdminWorkItem(row: AdminWorkItemRow, nameById?: Map<string, string>):
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
+    externalKey: row.external_key ?? null,
   };
 }
 
@@ -2256,7 +2258,10 @@ export async function listAdminWorkItems(ownerId: string, includeDone = false): 
   return ((data ?? []) as AdminWorkItemRow[])
     .map((row) => toAdminWorkItem(row, names))
     .sort((a, b) => {
-      if (a.source !== b.source) return a.source === "team_request" ? -1 : 1;
+      if (a.source !== b.source) {
+        const sourceRank = { team_request: 0, domain_expiry: 1, personal: 2 } as const;
+        return sourceRank[a.source] - sourceRank[b.source];
+      }
       const p = { high: 0, medium: 1, low: 2 } as const;
       if (p[a.priority] !== p[b.priority]) return p[a.priority] - p[b.priority];
       const ad = a.dueDate ?? "9999-12-31";
@@ -2264,6 +2269,180 @@ export async function listAdminWorkItems(ownerId: string, includeDone = false): 
       if (ad !== bd) return ad.localeCompare(bd);
       return a.createdAt.localeCompare(b.createdAt);
     });
+}
+
+
+export async function ensureDomainExpiryAdminWorkItems(
+  ownerId: string,
+  domains: Domain[],
+  domainClients: DomainClient[],
+  renewals: Renewal[] = [],
+): Promise<void> {
+  const clientNameById = new Map(domainClients.map((client) => [client.id, client.name]));
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const windowStart = todayUtc - 7 * 86400000;
+  const windowEnd = todayUtc + 30 * 86400000;
+  const activeKeys = new Set<string>();
+
+  for (const domain of domains) {
+    if (!domain.expiryDate) continue;
+    const [year, month, day] = domain.expiryDate.split("-").map(Number);
+    if (!year || !month || !day) continue;
+    const expiryUtc = Date.UTC(year, month - 1, day);
+    if (expiryUtc < windowStart || expiryUtc > windowEnd) continue;
+
+    const daysLeft = Math.round((expiryUtc - todayUtc) / 86400000);
+    const ownerName =
+      (domain.domainClientId && clientNameById.get(domain.domainClientId)) ||
+      "No owner assigned";
+    const externalKey = `domain_expiry:${domain.id}:${domain.expiryDate}`;
+    activeKeys.add(externalKey);
+
+    const details = [
+      `Owner: ${ownerName}`,
+      `Domain: ${domain.name}`,
+      `Expiry date: ${domain.expiryDate}`,
+      daysLeft < 0
+        ? `Status: Expired ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} ago`
+        : daysLeft === 0
+          ? "Status: Expires today"
+          : `Status: Expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+    ].join("\n");
+
+    const payload = {
+      owner_id: ownerId,
+      source: "domain_expiry",
+      title: `Domain renewal — ${domain.name}`,
+      details,
+      priority: "high",
+      status: "pending",
+      due_date: domain.expiryDate,
+      project_id: null,
+      team_task_id: null,
+      sent_by: null,
+      sent_reason: "Domain expiry",
+      sent_note: `Owner: ${ownerName} · Domain: ${domain.name}`,
+      snoozed_until: null,
+      resume_mode: null,
+      external_key: externalKey,
+      updated_at: nowIso(),
+    };
+
+    const { data: existing, error: existingError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .select("id,status")
+      .eq("owner_id", ownerId)
+      .eq("external_key", externalKey)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    if (!existing) {
+      const { error: insertError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .insert({ ...payload, created_at: nowIso() });
+      if (insertError) throw insertError;
+    } else if ((existing as { status: string }).status !== "done") {
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .update(payload)
+        .eq("id", (existing as { id: string }).id);
+      if (updateError) throw updateError;
+    }
+  }
+
+
+  const domainById = new Map(domains.map((domain) => [domain.id, domain]));
+
+  for (const renewal of renewals) {
+    if (renewal.status !== "pending" || !renewal.dueDate) continue;
+    const [year, month, day] = renewal.dueDate.split("-").map(Number);
+    if (!year || !month || !day) continue;
+    const dueUtc = Date.UTC(year, month - 1, day);
+    if (dueUtc < windowStart || dueUtc > windowEnd) continue;
+
+    const daysLeft = Math.round((dueUtc - todayUtc) / 86400000);
+    const linkedDomain = renewal.domainId ? domainById.get(renewal.domainId) : null;
+    const ownerName =
+      renewal.clientName ||
+      (linkedDomain?.domainClientId && clientNameById.get(linkedDomain.domainClientId)) ||
+      "No owner assigned";
+    const domainName = linkedDomain?.name || renewal.itemName || "Domain / Hosting";
+    const services = renewal.serviceTypes.length > 0
+      ? renewal.serviceTypes.map((service) => service.replaceAll("_", " ")).join(", ")
+      : "renewal";
+    const externalKey = `renewal_expiry:${renewal.id}:${renewal.dueDate}`;
+    activeKeys.add(externalKey);
+
+    const details = [
+      `Owner: ${ownerName}`,
+      `Domain: ${domainName}`,
+      `Service: ${services}`,
+      `Expiry / due date: ${renewal.dueDate}`,
+      daysLeft < 0
+        ? `Status: Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}`
+        : daysLeft === 0
+          ? "Status: Due today"
+          : `Status: Due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+    ].join("\n");
+
+    const payload = {
+      owner_id: ownerId,
+      source: "domain_expiry",
+      title: `Domain / hosting renewal — ${domainName}`,
+      details,
+      priority: "high",
+      status: "pending",
+      due_date: renewal.dueDate,
+      project_id: null,
+      team_task_id: null,
+      sent_by: null,
+      sent_reason: "Domain / hosting expiry",
+      sent_note: `Owner: ${ownerName} · Domain: ${domainName}`,
+      snoozed_until: null,
+      resume_mode: null,
+      external_key: externalKey,
+      updated_at: nowIso(),
+    };
+
+    const { data: existing, error: existingError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .select("id,status")
+      .eq("owner_id", ownerId)
+      .eq("external_key", externalKey)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    if (!existing) {
+      const { error: insertError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .insert({ ...payload, created_at: nowIso() });
+      if (insertError) throw insertError;
+    } else if ((existing as { status: string }).status !== "done") {
+      const { error: updateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .update(payload)
+        .eq("id", (existing as { id: string }).id);
+      if (updateError) throw updateError;
+    }
+  }
+
+  const { data: openDomainRows, error: openError } = await getSupabase()
+    .from("freelance_hq_admin_work_items")
+    .select("id,external_key")
+    .eq("owner_id", ownerId)
+    .eq("source", "domain_expiry")
+    .eq("status", "pending");
+  if (openError) throw openError;
+
+  for (const row of (openDomainRows ?? []) as Array<{ id: string; external_key: string | null }>) {
+    if (row.external_key && activeKeys.has(row.external_key)) continue;
+    const { error: staleError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .update({ status: "done", completed_at: nowIso(), updated_at: nowIso() })
+      .eq("id", row.id);
+    if (staleError) throw staleError;
+  }
 }
 
 export async function getAdminWorkflowSettings(ownerId: string): Promise<AdminWorkflowSettings> {

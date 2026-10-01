@@ -79,7 +79,7 @@ export interface TaskFocusState {
 }
 
 
-export type AdminWorkItemSource = "personal" | "team_request";
+export type AdminWorkItemSource = "personal" | "team_request" | "domain_expiry";
 export type AdminWorkItemStatus = "pending" | "done";
 export type AdminWorkResumeMode = "after_next_task" | null;
 
@@ -103,6 +103,7 @@ export interface AdminWorkItem {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  externalKey: string | null;
 }
 
 export interface AdminWorkflowSettings {

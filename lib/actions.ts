@@ -443,6 +443,12 @@ export async function deleteTaskAction(taskId: string, projectId: string) {
 
 export async function getAdminWorkQueueAction() {
   const profile = await requireAdmin();
+  const [domains, domainClients, renewals] = await Promise.all([
+    store.listDomains(),
+    store.listDomainClients(),
+    store.listRenewals(),
+  ]);
+  await store.ensureDomainExpiryAdminWorkItems(profile.id, domains, domainClients, renewals);
   const [items, settings] = await Promise.all([
     store.listAdminWorkItems(profile.id),
     store.getAdminWorkflowSettings(profile.id),

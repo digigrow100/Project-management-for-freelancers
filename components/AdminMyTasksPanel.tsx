@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Globe2,
   ListTodo,
   Plus,
   ShieldAlert,
@@ -116,9 +117,15 @@ export function AdminMyTasksPanel({
                     "grid h-7 w-7 place-items-center rounded-lg",
                     item.source === "team_request"
                       ? "bg-rose-500/10 text-rose-300"
-                      : "bg-accent-500/10 text-accent-300",
+                      : item.source === "domain_expiry"
+                        ? "bg-amber-500/10 text-amber-300"
+                        : "bg-accent-500/10 text-accent-300",
                   )}>
-                    {item.source === "team_request" ? <ShieldAlert size={14} /> : <UserRound size={14} />}
+                    {item.source === "team_request"
+                      ? <ShieldAlert size={14} />
+                      : item.source === "domain_expiry"
+                        ? <Globe2 size={14} />
+                        : <UserRound size={14} />}
                   </span>
                   <p className="min-w-0 truncate text-sm font-semibold text-neutral-100">{item.title}</p>
                   <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase", priorityClass[item.priority])}>
@@ -127,6 +134,11 @@ export function AdminMyTasksPanel({
                   {item.source === "team_request" && (
                     <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-rose-300">
                       Team Request
+                    </span>
+                  )}
+                  {item.source === "domain_expiry" && (
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-amber-300">
+                      Domain Expiry
                     </span>
                   )}
                 </div>
@@ -199,7 +211,11 @@ export function AdminMyTasksPanel({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-neutral-300">{item.title}</p>
                 <p className="mt-0.5 text-[10px] text-neutral-600">
-                  {item.source === "team_request" ? "Team request resolved" : "Personal task"} · {item.completedAt ? new Date(item.completedAt).toLocaleString() : "Done"}
+                  {item.source === "team_request"
+                    ? "Team request resolved"
+                    : item.source === "domain_expiry"
+                      ? "Domain reminder completed"
+                      : "Personal task"} · {item.completedAt ? new Date(item.completedAt).toLocaleString() : "Done"}
                 </p>
               </div>
             </div>
