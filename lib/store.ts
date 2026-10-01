@@ -891,6 +891,7 @@ export async function updateClient(
   if (patch.address !== undefined) update.address = patch.address;
   if (patch.website !== undefined) update.website = patch.website;
   if (patch.notes !== undefined) update.notes = patch.notes;
+  if (patch.templateKey !== undefined) update.template_key = patch.templateKey;
   if (patch.logoUrl !== undefined) update.logo_url = patch.logoUrl;
 
   const { error } = await getSupabase().from("freelance_hq_clients").update(update).eq("id", id);
@@ -3467,6 +3468,7 @@ interface InvoiceRow {
   due_date: string;
   status: InvoiceStatus;
   notes: string;
+  template_key: import("./types").InvoiceTemplateKey;
   created_at: string;
   updated_at: string;
   freelance_hq_clients?: { name: string; company: string } | null;
@@ -3489,6 +3491,7 @@ function toInvoice(row: InvoiceRow): Invoice {
     dueDate: row.due_date,
     status: row.status,
     notes: row.notes,
+    templateKey: row.template_key ?? "modern_blue",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -3603,6 +3606,7 @@ export async function createInvoice(input: {
   dueDate: string;
   status: InvoiceStatus;
   notes: string;
+  templateKey: import("./types").InvoiceTemplateKey;
   items: InvoiceItemInput[];
 }): Promise<Invoice> {
   const year = Number(input.issueDate.slice(0, 4)) || new Date().getFullYear();
@@ -3621,6 +3625,7 @@ export async function createInvoice(input: {
       due_date: input.dueDate,
       status: input.status,
       notes: input.notes,
+      template_key: input.templateKey,
     })
     .select(INVOICE_SELECT)
     .single();
@@ -3655,6 +3660,7 @@ export async function updateInvoice(
     dueDate: string;
     status: InvoiceStatus;
     notes: string;
+    templateKey: import("./types").InvoiceTemplateKey;
   }>,
 ): Promise<void> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
@@ -3741,6 +3747,7 @@ export async function generateDueInvoiceDrafts(): Promise<Invoice[]> {
       dueDate: today,
       status: "draft",
       notes: "",
+      templateKey: "modern_blue",
       items: [{ description: cs.serviceName || "Service", quantity: 1, unitPrice: price }],
     });
     created.push(invoice);
