@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Download, Eye, FileText, Plus, Trash2, X } from "lucide-react";
-import type { BusinessProfile, Client, Invoice, InvoiceItem, InvoiceStatus, Payment, Project, SeoReport } from "@/lib/types";
+import type { BusinessProfile, Client, Invoice, InvoiceItem, InvoiceStatus, InvoiceTemplateKey, Payment, Project, SeoReport } from "@/lib/types";
 import {
   addInvoicePaymentAction,
   deleteInvoiceAction,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions";
 import { downloadInvoicePdf, previewInvoicePdf } from "@/lib/invoicePdf";
 import { cn, formatMoney } from "@/lib/utils";
+import { InvoiceTemplateSelector } from "@/components/InvoiceTemplateSelector";
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: "Draft",
@@ -66,6 +67,7 @@ export function InvoiceDetailPanel({
     items.length > 0 ? items.map((i) => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice })) : [{ description: "", quantity: 1, unitPrice: 0 }],
   );
   const [pdfBusy, setPdfBusy] = useState<"preview" | "download" | null>(null);
+  const [templateKey, setTemplateKey] = useState<InvoiceTemplateKey>(invoice.templateKey ?? "modern_blue");
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const subtotal = draftItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -201,11 +203,9 @@ export function InvoiceDetailPanel({
             defaultValue={invoice.currency}
             className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
           >
-            {["PKR", "USD", "GBP"].map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
+            <option value="GBP">GBP (£)</option>
+            <option value="USD">USD ($)</option>
+            <option value="PKR">PKR (₨)</option>
           </select>
           <div />
           <div>
@@ -226,6 +226,11 @@ export function InvoiceDetailPanel({
               className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-xs font-medium text-neutral-400">Invoice template</label>
+          <InvoiceTemplateSelector value={templateKey} onChange={setTemplateKey} />
         </div>
 
         <div className="flex flex-col gap-2">
