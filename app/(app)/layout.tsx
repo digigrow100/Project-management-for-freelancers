@@ -15,6 +15,7 @@ import {
   listClients,
   listDomainClients,
   listDomains,
+  listRenewals,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     unseenTasks,
     domains,
     domainClients,
+    renewals,
     clients,
     adminWorkflowSettings,
   ] = await Promise.all([
@@ -40,12 +42,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     profile ? countUnseenTasks(profile.id) : Promise.resolve(0),
     isAdmin ? listDomains() : Promise.resolve([]),
     isAdmin ? listDomainClients() : Promise.resolve([]),
+    isAdmin ? listRenewals() : Promise.resolve([]),
     canSeeClients ? listClients() : Promise.resolve([]),
     isAdmin && profile ? getAdminWorkflowSettings(profile.id) : Promise.resolve(null),
   ]);
 
   if (isAdmin && profile) {
-    await ensureDomainExpiryAdminWorkItems(profile.id, domains, domainClients);
+    await ensureDomainExpiryAdminWorkItems(profile.id, domains, domainClients, renewals);
   }
 
   const adminWorkItems =
