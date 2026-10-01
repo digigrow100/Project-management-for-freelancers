@@ -362,7 +362,6 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
   drawStatusPill(doc, input.invoice, cardXs[2]! + 13, y + 80, statusFill);
 
   let nextY = y + cardH + 26;
-  y;
 
   nextY = drawStandardItemsTable(doc, input, nextY, {
     headerFill: paleBlue,
