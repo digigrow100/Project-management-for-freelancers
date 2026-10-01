@@ -4,7 +4,6 @@ import { getCurrentProfile } from "@/lib/auth";
 import {
   getAdminTaskTimeSummaries,
   getAssignedProjectIds,
-  getMyTasks,
   getOpenTasks,
   getProjectProgressMap,
   getProjects,
@@ -16,6 +15,7 @@ import {
   listInvoices,
   listRenewals,
   listTeamMembers,
+  listAdminWorkItems,
 } from "@/lib/store";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
 import { AdminTeamPanel } from "@/components/AdminTeamPanel";
@@ -38,7 +38,7 @@ export default async function AdminPage() {
     domains,
     domainClients,
     renewals,
-    personalTasks,
+    adminWorkItems,
   ] = await Promise.all([
     listTeamMembers(),
     getProjects(),
@@ -51,7 +51,7 @@ export default async function AdminPage() {
     listDomains(),
     listDomainClients(),
     listRenewals(),
-    getMyTasks(currentProfile.id),
+    listAdminWorkItems(currentProfile.id),
   ]);
 
   const invoiceItems = await listInvoiceItemsForInvoices(invoices.map((invoice) => invoice.id));
@@ -84,7 +84,7 @@ export default async function AdminPage() {
         domains={domains}
         domainClients={domainClients}
         renewals={renewals}
-        personalTasks={personalTasks.filter((task) => task.status !== "done")}
+        personalTasks={adminWorkItems.filter((task) => task.status !== "done")}
       />
 
       <section id="team-access" className="scroll-mt-6">

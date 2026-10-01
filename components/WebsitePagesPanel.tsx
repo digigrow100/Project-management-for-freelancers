@@ -122,11 +122,10 @@ export function WebsitePagesPanel({
       (TECHNICAL_KEYS as readonly string[]).includes(check.checkKey),
   );
   const totalChecks = trackedChecks.length;
-  const doneChecks = trackedChecks.filter((check) => check.status === "done").length;
+  const doneChecks = trackedChecks.filter((check) => check.status === "done" || check.status === "not_applicable").length;
   const progress = totalChecks ? Math.round((doneChecks / totalChecks) * 100) : 0;
 
-  function toggleCheck(check: PageAuditCheck) {
-    const status: PageAuditStatus = check.status === "done" ? "pending" : "done";
+  function setCheckStatus(check: PageAuditCheck, status: PageAuditStatus) {
     startTransition(() =>
       updatePageAuditCheckAction({
         projectId,
@@ -136,6 +135,11 @@ export function WebsitePagesPanel({
         status,
       }),
     );
+  }
+
+  function toggleCheck(check: PageAuditCheck) {
+    const status: PageAuditStatus = check.status === "done" ? "pending" : "done";
+    setCheckStatus(check, status);
   }
 
   function saveRank(keyword: Keyword, rawValue: string) {
@@ -227,7 +231,7 @@ export function WebsitePagesPanel({
             .filter(Boolean) as PageAuditCheck[];
 
           const pageChecks = [...onPageChecks, ...technicalChecks];
-          const completed = pageChecks.filter((check) => check.status === "done").length;
+          const completed = pageChecks.filter((check) => check.status === "done" || check.status === "not_applicable").length;
           const pageProgress = pageChecks.length ? Math.round((completed / pageChecks.length) * 100) : 0;
 
           const mappedKeywords = keywords
@@ -284,8 +288,8 @@ export function WebsitePagesPanel({
               </div>
 
               <div className="mt-4 grid gap-3 xl:grid-cols-3">
-                <ChecklistColumn title="On-Page SEO" checks={onPageChecks} onToggle={toggleCheck} />
-                <ChecklistColumn title="Technical SEO" checks={technicalChecks} onToggle={toggleCheck} />
+                <ChecklistColumn title="On-Page SEO" checks={onPageChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />
+                <ChecklistColumn title="Technical SEO" checks={technicalChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />
 
                 <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -365,29 +369,67 @@ function ChecklistColumn({
   title,
   checks,
   onToggle,
+  onStatus,
 }: {
   title: string;
   checks: PageAuditCheck[];
   onToggle: (check: PageAuditCheck) => void;
+  onStatus: (check: PageAuditCheck, status: PageAuditStatus) => void;
 }) {
   return (
     <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">{title}</h4>
       <div className="grid gap-1.5">
         {checks.map((check) => (
-          <button
+          <div
             key={check.id}
-            type="button"
-            onClick={() => onToggle(check)}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-base-700/50 bg-base-950/55 px-2.5 py-2 text-left transition-colors hover:border-base-600"
+            className="flex items-center gap-2 rounded-lg border border-base-700/50 bg-base-950/55 px-2.5 py-2"
           >
-            <span className={cn("shrink-0", check.status === "done" ? "text-emerald-400" : "text-neutral-600")}>
-              {check.status === "done" ? <CheckCircle2 size={16} /> : <Circle size={16} />}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-200">
-              {SHORT_LABELS[check.checkKey] ?? check.label}
-            </span>
-          </button>
+            <button
+              type="button"
+              onClick={() => onToggle(check)}
+              className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+            >
+              <span
+                className={cn(
+                  "shrink-0",
+                  check.status === "done"
+                    ? "text-emerald-400"
+                    : check.status === "not_applicable"
+                      ? "text-amber-400"
+                      : "text-neutral-600",
+                )}
+              >
+                {check.status === "done" || check.status === "not_applicable"
+                  ? <CheckCircle2 size={16} />
+                  : <Circle size={16} />}
+              </span>
+              <span className={cn(
+                "min-w-0 flex-1 truncate text-[11px] font-medium",
+                check.status === "not_applicable" ? "text-amber-300" : "text-neutral-200",
+              )}>
+                {SHORT_LABELS[check.checkKey] ?? check.label}
+              </span>
+            </button>
+            {check.status === "not_applicable" ? (
+              <button
+                type="button"
+                onClick={() => onStatus(check, "pending")}
+                className="shrink-0 rounded-md bg-amber-500/10 px-2 py-1 text-[9px] font-semibold text-amber-300"
+                title="Mark this check as required again"
+              >
+                Not Required
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onStatus(check, "not_applicable")}
+                className="shrink-0 rounded-md border border-base-700 px-2 py-1 text-[9px] text-neutral-500 hover:border-amber-500/30 hover:text-amber-300"
+              >
+                Not Required for This Page
+              </button>
+            )}
+          </div>
         ))}
       </div>
     </div>

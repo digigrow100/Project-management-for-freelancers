@@ -393,6 +393,29 @@ export async function skipFocusTaskAction(
   revalidatePath("/admin/time-tracking");
 }
 
+
+export async function sendTaskToAdminAction(taskId: string, note: string) {
+  const profile = await requireProfile();
+  await store.sendTaskToAdmin(taskId, profile.id, note);
+  revalidatePath("/");
+  revalidatePath("/my-tasks");
+  revalidatePath("/today");
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
+}
+
+export async function setAssignedPageChecklistStatusAction(
+  taskId: string,
+  itemId: string,
+  status: "pending" | "done" | "not_applicable",
+) {
+  const profile = await requireProfile();
+  await store.setPageChecklistStatusFromAssignedTask(taskId, profile.id, itemId, status);
+  revalidatePath("/");
+  revalidatePath("/my-tasks");
+  revalidatePath("/today");
+}
+
 export async function completeFocusTaskAction(taskId: string) {
   const profile = await requireProfile();
   await store.completeTaskFromFocus(taskId, profile.id);
@@ -415,6 +438,78 @@ export async function deleteTaskAction(taskId: string, projectId: string) {
   await requireProjectAccess(projectId);
   await store.deleteTask(taskId);
   refresh(projectId);
+}
+
+
+export async function getAdminWorkQueueAction() {
+  const profile = await requireAdmin();
+  const [items, settings] = await Promise.all([
+    store.listAdminWorkItems(profile.id),
+    store.getAdminWorkflowSettings(profile.id),
+  ]);
+  return { items, settings };
+}
+
+export async function createAdminPersonalTaskAction(formData: FormData) {
+  const profile = await requireAdmin();
+  const title = str(formData, "title");
+  if (!title) return;
+  await store.createAdminPersonalWorkItem({
+    ownerId: profile.id,
+    title,
+    details: str(formData, "details"),
+    priority: (str(formData, "priority") || "medium") as TaskPriority,
+    dueDate: str(formData, "dueDate") || null,
+  });
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
+}
+
+export async function updateAdminPersonalTaskAction(formData: FormData) {
+  const profile = await requireAdmin();
+  const id = str(formData, "id");
+  if (!id) return;
+  await store.updateAdminPersonalWorkItem(id, profile.id, {
+    title: str(formData, "title"),
+    details: str(formData, "details"),
+    priority: (str(formData, "priority") || "medium") as TaskPriority,
+    dueDate: str(formData, "dueDate") || null,
+  });
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
+}
+
+export async function completeAdminWorkItemAction(id: string) {
+  const profile = await requireAdmin();
+  await store.completeAdminWorkItem(id, profile.id);
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
+  revalidatePath("/");
+  revalidatePath("/my-tasks");
+}
+
+export async function snoozeAdminWorkItemAction(
+  id: string,
+  mode: "30m" | "1h" | "after_next_task",
+) {
+  const profile = await requireAdmin();
+  await store.snoozeAdminWorkItem(id, profile.id, mode);
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
+}
+
+export async function snoozeAllAdminWorkAction(minutes: 30 | 60 | 120) {
+  const profile = await requireAdmin();
+  await store.snoozeAllAdminWork(profile.id, minutes);
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
+}
+
+export async function clearAdminWorkflowSnoozeAction() {
+  const profile = await requireAdmin();
+  await store.clearAdminWorkflowSnooze(profile.id);
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
 }
 
 export async function addStageAction(formData: FormData) {

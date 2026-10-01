@@ -59,6 +59,8 @@ export interface Task {
   /** Automatic SEO audit work surfaced only when the member has no normal open task. */
   isFallback: boolean;
   fallbackTemplateKey: string | null;
+  /** Hidden from the member queue while an admin request is unresolved. */
+  waitingForAdmin: boolean;
 }
 
 export type TaskSkipReason = "waiting_for_client" | "login_required" | "content_required" | "admin_action" | "other";
@@ -73,6 +75,39 @@ export interface TaskFocusState {
   resumeAfterCompletions: number;
   /** Why a member temporarily moved past this task. Cleared when they resume it. */
   skipReason: TaskSkipReason | null;
+  updatedAt: string;
+}
+
+
+export type AdminWorkItemSource = "personal" | "team_request";
+export type AdminWorkItemStatus = "pending" | "done";
+export type AdminWorkResumeMode = "after_next_task" | null;
+
+export interface AdminWorkItem {
+  id: string;
+  ownerId: string;
+  source: AdminWorkItemSource;
+  title: string;
+  details: string;
+  priority: TaskPriority;
+  status: AdminWorkItemStatus;
+  dueDate: string | null;
+  projectId: string | null;
+  teamTaskId: string | null;
+  sentBy: string | null;
+  sentByName: string | null;
+  sentReason: string;
+  sentNote: string;
+  snoozedUntil: string | null;
+  resumeMode: AdminWorkResumeMode;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface AdminWorkflowSettings {
+  ownerId: string;
+  snoozedUntil: string | null;
   updatedAt: string;
 }
 

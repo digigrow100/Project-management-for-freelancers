@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CalendarDays,
@@ -14,12 +15,15 @@ import {
   ListChecks,
   Pause,
   Play,
+  ShieldAlert,
   Target,
 } from "lucide-react";
 import type { Project, Task, TaskFocusState, TaskSkipReason } from "@/lib/types";
 import {
   completeFocusTaskAction,
   pauseFocusTaskAction,
+  sendTaskToAdminAction,
+  setAssignedPageChecklistStatusAction,
   skipFocusTaskAction,
   startFocusTaskAction,
   toggleChecklistItemAction,
@@ -115,23 +119,33 @@ export function MemberFocusDashboard({
   focusStates: TaskFocusState[];
   timeTotals: Record<string, number>;
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [browseOffset, setBrowseOffset] = useState(0);
   const [skipReason, setSkipReason] = useState<TaskSkipReason>("waiting_for_client");
+  const [adminRequestOpen, setAdminRequestOpen] = useState(false);
+  const [adminNote, setAdminNote] = useState("");
   const [clockNow, setClockNow] = useState(() => Date.now());
 
   useEffect(() => {
     const id = window.setInterval(() => setClockNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
+    const refreshId = window.setInterval(() => router.refresh(), 45000);
+    return () => {
+      window.clearInterval(id);
+      window.clearInterval(refreshId);
+    };
+  }, [router]);
 
   const today = localDateKey();
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const focusByTask = useMemo(() => new Map(focusStates.map((state) => [state.taskId, state])), [focusStates]);
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
-  const openTasks = useMemo(() => tasks.filter((task) => task.status !== "done"), [tasks]);
+  const openTasks = useMemo(
+    () => tasks.filter((task) => task.status !== "done" && !task.waitingForAdmin),
+    [tasks],
+  );
   const hasNormalOpenTasks = openTasks.some((task) => isActionableManualTask(task, today));
   const completedToday = useMemo(
     () =>
@@ -153,7 +167,7 @@ export function MemberFocusDashboard({
     .filter((state) => state.state === "active")
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
     .map((state) => taskById.get(state.taskId))
-    .find((task): task is Task => !!task && task.status !== "done");
+    .find((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin);
 
   const readyPaused = focusStates
     .filter((state) => state.state === "paused" && state.resumeAfterCompletions === 0)
@@ -162,6 +176,7 @@ export function MemberFocusDashboard({
       (item): item is { state: TaskFocusState; task: Task } =>
         !!item.task &&
         item.task.status !== "done" &&
+        !item.task.waitingForAdmin &&
         (!hasNormalOpenTasks || !item.task.isFallback),
     )
     .sort((a, b) => sortQueue(a.task, b.task));
@@ -174,7 +189,7 @@ export function MemberFocusDashboard({
   const fallbackPaused = focusStates
     .filter((state) => state.state === "paused")
     .map((state) => taskById.get(state.taskId))
-    .filter((task): task is Task => !!task && task.status !== "done")
+    .filter((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin)
     .sort(sortQueue);
 
   const naturalCurrent = activeTask ?? readyPaused[0]?.task ?? queuedTasks[0] ?? fallbackPaused[0] ?? null;
@@ -192,8 +207,12 @@ export function MemberFocusDashboard({
   const currentTask = browsePool[safeOffset] ?? null;
   const currentFocus = currentTask ? focusByTask.get(currentTask.id) : undefined;
 
-  const dailyCandidates = tasks.filter((task) => isPlannedForToday(task, today, focusByTask));
-  const dailyTasks = dailyCandidates.length > 0 ? dailyCandidates : tasks.filter((task) => task.status !== "done" || isCompletedToday(task, today));
+  const dailyCandidates = tasks.filter(
+    (task) => !task.waitingForAdmin && isPlannedForToday(task, today, focusByTask),
+  );
+  const dailyTasks = dailyCandidates.length > 0
+    ? dailyCandidates
+    : tasks.filter((task) => !task.waitingForAdmin && (task.status !== "done" || isCompletedToday(task, today)));
   const todayCompletedCount = dailyTasks.filter((task) => task.status === "done" && isCompletedToday(task, today)).length;
   const todayOpenCount = dailyTasks.filter((task) => task.status !== "done").length;
   const todayTotal = todayCompletedCount + todayOpenCount;
@@ -202,7 +221,7 @@ export function MemberFocusDashboard({
   const pausedTasks = focusStates
     .filter((state) => state.state === "paused")
     .map((state) => taskById.get(state.taskId))
-    .filter((task): task is Task => !!task && task.status !== "done")
+    .filter((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin)
     .sort(sortQueue);
 
   const upcomingTasks = openTasks
@@ -233,6 +252,22 @@ export function MemberFocusDashboard({
   function toggleChecklist(task: Task, itemId: string) {
     startTransition(async () => {
       await toggleChecklistItemAction(task.id, task.projectId, itemId);
+    });
+  }
+
+  function sendToAdmin(task: Task) {
+    startTransition(async () => {
+      await sendTaskToAdminAction(task.id, adminNote);
+      router.refresh();
+      setAdminNote("");
+      setAdminRequestOpen(false);
+      setBrowseOffset(0);
+    });
+  }
+
+  function markNotRequired(task: Task, itemId: string) {
+    startTransition(async () => {
+      await setAssignedPageChecklistStatusAction(task.id, itemId, "not_applicable");
     });
   }
 
@@ -440,9 +475,29 @@ export function MemberFocusDashboard({
                         <span className={item.done ? "text-emerald-400" : "text-neutral-600"}>
                           {item.done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
                         </span>
-                        <span className={cn("text-sm", item.done ? "text-neutral-500 line-through" : "text-neutral-200")}>
+                        <span className={cn("min-w-0 flex-1 text-sm", item.done ? "text-neutral-500 line-through" : "text-neutral-200")}>
                           {item.text}
                         </span>
+                        {item.id.startsWith("pageaudit:") && !item.done && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              markNotRequired(currentTask, item.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                markNotRequired(currentTask, item.id);
+                              }
+                            }}
+                            className="shrink-0 rounded-md border border-base-600 px-2 py-1 text-[10px] font-medium text-neutral-400 hover:border-amber-500/40 hover:text-amber-300"
+                          >
+                            Not Required for This Page
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -487,7 +542,6 @@ export function MemberFocusDashboard({
                     <option value="waiting_for_client">Waiting for client</option>
                     <option value="login_required">Login required</option>
                     <option value="content_required">Content required</option>
-                    <option value="admin_action">Admin action</option>
                     <option value="other">Other</option>
                   </select>
                   <button
@@ -509,6 +563,58 @@ export function MemberFocusDashboard({
                   <Check size={17} />
                   Mark done
                 </button>
+              </div>
+
+              <div className="mt-3">
+                {!adminRequestOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setAdminRequestOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/15"
+                  >
+                    <ShieldAlert size={15} />
+                    Send to Admin
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-rose-500/25 bg-rose-500/5 p-3">
+                    <div className="flex items-start gap-3">
+                      <ShieldAlert size={18} className="mt-0.5 shrink-0 text-rose-300" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-neutral-100">Admin action required</p>
+                        <p className="mt-1 text-xs text-neutral-500">
+                          This task will leave your queue until the admin resolves it and returns it to you.
+                        </p>
+                        <textarea
+                          value={adminNote}
+                          onChange={(event) => setAdminNote(event.target.value)}
+                          rows={3}
+                          placeholder="Tell admin exactly what you need..."
+                          className="mt-3 w-full resize-none rounded-lg border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-rose-500/50"
+                        />
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => sendToAdmin(currentTask)}
+                            className="rounded-lg bg-rose-500 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-400 disabled:opacity-60"
+                          >
+                            Send to Admin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAdminRequestOpen(false);
+                              setAdminNote("");
+                            }}
+                            className="rounded-lg border border-base-600 px-3 py-2 text-xs text-neutral-400 hover:text-neutral-200"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </section>
