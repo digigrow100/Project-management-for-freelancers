@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CalendarDays,
@@ -118,6 +119,7 @@ export function MemberFocusDashboard({
   focusStates: TaskFocusState[];
   timeTotals: Record<string, number>;
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [browseOffset, setBrowseOffset] = useState(0);
@@ -128,8 +130,12 @@ export function MemberFocusDashboard({
 
   useEffect(() => {
     const id = window.setInterval(() => setClockNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
+    const refreshId = window.setInterval(() => router.refresh(), 45000);
+    return () => {
+      window.clearInterval(id);
+      window.clearInterval(refreshId);
+    };
+  }, [router]);
 
   const today = localDateKey();
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
