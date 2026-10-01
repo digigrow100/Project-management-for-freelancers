@@ -79,7 +79,7 @@ export interface TaskFocusState {
 }
 
 
-export type AdminWorkItemSource = "personal" | "team_request" | "domain_expiry";
+export type AdminWorkItemSource = "personal" | "team_request" | "domain_expiry" | "invoice_reminder";
 export type AdminWorkItemStatus = "pending" | "done";
 export type AdminWorkResumeMode = "after_next_task" | null;
 

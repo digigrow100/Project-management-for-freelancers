@@ -9,6 +9,7 @@ import {
   countUnseenProjects,
   countUnseenTasks,
   ensureDomainExpiryAdminWorkItems,
+  ensureMonthlyInvoiceAdminWorkItems,
   getAdminWorkflowSettings,
   getProjectsForProfile,
   listAdminWorkItems,
@@ -48,7 +49,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
 
   if (isAdmin && profile) {
-    await ensureDomainExpiryAdminWorkItems(profile.id, domains, domainClients, renewals);
+    await Promise.all([
+      ensureDomainExpiryAdminWorkItems(profile.id, domains, domainClients, renewals),
+      ensureMonthlyInvoiceAdminWorkItems(profile.id, clients),
+    ]);
   }
 
   const adminWorkItems =
