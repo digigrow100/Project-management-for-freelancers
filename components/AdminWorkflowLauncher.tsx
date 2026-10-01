@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  Globe2,
   ListTodo,
   ShieldAlert,
   Sparkles,
@@ -65,6 +66,7 @@ export function AdminWorkflowLauncher({
   const current = eligible[0] ?? null;
   const pendingCount = items.filter((item) => item.status === "pending").length;
   const teamCount = items.filter((item) => item.status === "pending" && item.source === "team_request").length;
+  const domainCount = items.filter((item) => item.status === "pending" && item.source === "domain_expiry").length;
   const workflowSnoozed =
     Boolean(settings.snoozedUntil) && new Date(settings.snoozedUntil as string).getTime() > clockNow;
 
@@ -173,7 +175,9 @@ export function AdminWorkflowLauncher({
         <span>
           <span className="block text-sm font-semibold text-neutral-100">Start My Work</span>
           <span className="mt-0.5 block text-[11px] text-neutral-500">
-            {pendingCount} tasks{teamCount > 0 ? ` · ${teamCount} team requests` : ""}
+            {pendingCount} tasks
+            {teamCount > 0 ? ` · ${teamCount} team requests` : ""}
+            {domainCount > 0 ? ` · ${domainCount} domains` : ""}
           </span>
         </span>
         <ArrowRight size={16} className="text-neutral-500" />
@@ -183,13 +187,19 @@ export function AdminWorkflowLauncher({
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md sm:p-6">
           <div className={cn(
             "w-full max-w-2xl overflow-hidden rounded-3xl border bg-base-900 shadow-[0_30px_100px_rgba(0,0,0,.55)]",
-            current?.source === "team_request" ? "border-rose-500/30" : "border-base-600",
+            current?.source === "team_request"
+              ? "border-rose-500/30"
+              : current?.source === "domain_expiry"
+                ? "border-amber-500/30"
+                : "border-base-600",
           )}>
             <div className={cn(
               "border-b px-5 py-4 sm:px-6",
               current?.source === "team_request"
                 ? "border-rose-500/20 bg-gradient-to-r from-rose-500/10 via-base-900 to-base-900"
-                : "border-base-700 bg-gradient-to-r from-accent-500/8 via-base-900 to-base-900",
+                : current?.source === "domain_expiry"
+                  ? "border-amber-500/20 bg-gradient-to-r from-amber-500/10 via-base-900 to-base-900"
+                  : "border-base-700 bg-gradient-to-r from-accent-500/8 via-base-900 to-base-900",
             )}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-3">
@@ -197,16 +207,30 @@ export function AdminWorkflowLauncher({
                     "grid h-11 w-11 shrink-0 place-items-center rounded-2xl",
                     current?.source === "team_request"
                       ? "bg-rose-500/15 text-rose-300"
-                      : "bg-accent-500/12 text-accent-300",
+                      : current?.source === "domain_expiry"
+                        ? "bg-amber-500/15 text-amber-300"
+                        : "bg-accent-500/12 text-accent-300",
                   )}>
-                    {current?.source === "team_request" ? <ShieldAlert size={20} /> : <Sparkles size={20} />}
+                    {current?.source === "team_request"
+                      ? <ShieldAlert size={20} />
+                      : current?.source === "domain_expiry"
+                        ? <Globe2 size={20} />
+                        : <Sparkles size={20} />}
                   </span>
                   <div className="min-w-0">
                     <p className={cn(
                       "text-[11px] font-semibold uppercase tracking-[0.16em]",
-                      current?.source === "team_request" ? "text-rose-300" : "text-accent-300",
+                      current?.source === "team_request"
+                        ? "text-rose-300"
+                        : current?.source === "domain_expiry"
+                          ? "text-amber-300"
+                          : "text-accent-300",
                     )}>
-                      {current?.source === "team_request" ? "High Priority · Team Request" : "My Task"}
+                      {current?.source === "team_request"
+                        ? "High Priority · Team Request"
+                        : current?.source === "domain_expiry"
+                          ? "High Priority · Domain Expiry"
+                          : "My Task"}
                     </p>
                     <h2 className="mt-1 text-xl font-semibold leading-snug text-neutral-50 sm:text-2xl">
                       {current?.title ?? "No task ready right now"}
@@ -231,10 +255,27 @@ export function AdminWorkflowLauncher({
                     <Info label="Priority" value={current.priority.toUpperCase()} tone={current.priority === "high" ? "rose" : "neutral"} />
                     <Info
                       label="Project"
-                      value={current.projectId ? projectById.get(current.projectId)?.name ?? "Project" : "Personal"}
+                      value={
+                        current.source === "domain_expiry"
+                          ? "Domain Renewal"
+                          : current.projectId
+                            ? projectById.get(current.projectId)?.name ?? "Project"
+                            : "Personal"
+                      }
                     />
                     <Info label="Due" value={current.dueDate ?? "No due date"} />
                   </div>
+
+                  {current.source === "domain_expiry" && (
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                        Domain Renewal Reminder
+                      </p>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-neutral-200">
+                        {current.details}
+                      </p>
+                    </div>
+                  )}
 
                   {current.source === "team_request" && (
                     <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4">
@@ -248,7 +289,7 @@ export function AdminWorkflowLauncher({
                     </div>
                   )}
 
-                  {current.details && (
+                  {current.details && current.source !== "domain_expiry" && (
                     <div className="rounded-2xl border border-base-700 bg-base-950/45 p-4">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">Details</p>
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-300">{current.details}</p>
