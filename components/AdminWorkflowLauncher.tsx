@@ -95,7 +95,7 @@ export function AdminWorkflowLauncher({
       const id = window.setTimeout(() => setOpen(true), 500);
       return () => window.clearTimeout(id);
     }
-  }, [eligible.length, workflowSnoozed, open]);
+  }, [eligible.length, workflowSnoozed, open, clockNow]);
 
   function closeForNow() {
     window.localStorage.setItem("admin-workflow-dismissed-at", String(Date.now()));
