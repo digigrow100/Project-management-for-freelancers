@@ -135,14 +135,16 @@ function drawStatusPill(
   y: number,
   fill: readonly [number, number, number],
   width = 92,
+  textColor: readonly [number, number, number] = [255, 255, 255],
+  height = 24,
 ) {
   setFill(doc, fill);
-  doc.roundedRect(x, y, width, 24, 5, 5, "F");
+  doc.roundedRect(x, y, width, height, 5, 5, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(height <= 18 ? 7.6 : 8.5);
   doc.setCharSpace(0);
-  doc.setTextColor(255, 255, 255);
-  doc.text(STATUS_LABEL[invoice.status], x + width / 2, y + 15.5, { align: "center" });
+  setText(doc, textColor);
+  doc.text(STATUS_LABEL[invoice.status], x + width / 2, y + height / 2 + 3, { align: "center" });
 }
 
 function drawStandardItemsTable(
@@ -246,11 +248,6 @@ function drawTotals(
   const valueX = RIGHT - 14;
   const amountText = money(balance, input.invoice.currency);
 
-  // Keep all totals on the same right-hand grid as RATE / AMOUNT.
-  setDraw(doc, [226, 232, 239]);
-  doc.setLineWidth(0.6);
-  doc.line(panelX, y - 8, RIGHT, y - 8);
-
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.4);
   doc.setCharSpace(0);
@@ -261,7 +258,13 @@ function drawTotals(
   doc.text("Paid", labelX, y + 28);
   doc.text(money(input.totalPaid, input.invoice.currency), valueX, y + 28, { align: "right" });
 
-  const balanceY = y + 43;
+  // Divider belongs below Subtotal/Paid, not above the totals block.
+  const dividerY = y + 40;
+  setDraw(doc, [226, 232, 239]);
+  doc.setLineWidth(0.6);
+  doc.line(panelX, dividerY, RIGHT, dividerY);
+
+  const balanceY = dividerY + 10;
   setFill(doc, opts.boxFill ?? opts.accent);
   doc.roundedRect(panelX, balanceY, panelW, 44, 6, 6, "F");
 
@@ -328,12 +331,36 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
   setText(doc, muted);
   doc.text(input.invoice.invoiceNumber, RIGHT, 67, { align: "right" });
 
+  const headerStatusFill =
+    input.invoice.status === "paid"
+      ? ([220, 247, 230] as const)
+      : input.invoice.status === "overdue"
+        ? ([254, 226, 226] as const)
+        : ([254, 240, 138] as const);
+  const headerStatusText =
+    input.invoice.status === "paid"
+      ? ([22, 101, 52] as const)
+      : input.invoice.status === "overdue"
+        ? ([153, 27, 27] as const)
+        : ([133, 77, 14] as const);
+  const headerStatusWidth = input.invoice.status === "partially_paid" ? 82 : 58;
+  drawStatusPill(
+    doc,
+    input.invoice,
+    RIGHT - headerStatusWidth,
+    74,
+    headerStatusFill,
+    headerStatusWidth,
+    headerStatusText,
+    18,
+  );
+
   setDraw(doc, line);
   doc.setLineWidth(0.8);
-  doc.line(MARGIN, 88, RIGHT, 88);
+  doc.line(MARGIN, 101, RIGHT, 101);
 
   // Equal-width cards with identical internal padding and baselines.
-  const cardY = 108;
+  const cardY = 119;
   const gap = 10;
   const cardW = (CONTENT - gap * 2) / 3;
   const cardH = 108;
@@ -396,13 +423,7 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
   doc.text(input.invoice.issueDate, detailValueX, row2, { align: "right" });
   doc.text(input.invoice.dueDate, detailValueX, row3, { align: "right" });
 
-  const statusFill =
-    input.invoice.status === "paid"
-      ? ([26, 145, 94] as const)
-      : input.invoice.status === "overdue"
-        ? ([203, 68, 74] as const)
-        : blue;
-  drawStatusPill(doc, input.invoice, x3 + pad, cardY + 74, statusFill, cardW - pad * 2);
+  // Status is shown as a compact badge in the invoice header.
 
   // Table starts on a fixed baseline after cards.
   let y = cardY + cardH + 28;
