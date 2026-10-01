@@ -503,7 +503,6 @@ export interface OutreachProspect {
   response: string;
   status: OutreachStatus;
   notes: string;
-  templateKey: InvoiceTemplateKey;
   createdAt: string;
   updatedAt: string;
 }
@@ -910,6 +909,7 @@ export interface Invoice {
   dueDate: string;
   status: InvoiceStatus;
   notes: string;
+  templateKey: InvoiceTemplateKey;
   createdAt: string;
   updatedAt: string;
 }
