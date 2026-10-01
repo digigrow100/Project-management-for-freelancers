@@ -91,14 +91,16 @@ export function MobileNav({
               </button>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {sheetItems.map(({ href, label, icon: Icon }) => (
+              {sheetItems.map(({ href, label, icon: Icon }) => {
+                const resolvedHref = isAdmin && href === "/my-tasks" ? "/admin/my-tasks" : href;
+                return (
                 <Link
                   key={href}
-                  href={href}
+                  href={resolvedHref}
                   onClick={() => setMoreOpen(false)}
                   className={cn(
                     "relative flex flex-col items-center gap-2 rounded-xl border border-base-700/60 bg-base-850 px-2 py-4 text-xs",
-                    isActive(pathname, href) ? "text-accent-300" : "text-neutral-300",
+                    isActive(pathname, resolvedHref) ? "text-accent-300" : "text-neutral-300",
                   )}
                 >
                   <span className="relative">
@@ -111,7 +113,8 @@ export function MobileNav({
                   </span>
                   {label}
                 </Link>
-              ))}
+                );
+              })}
               <InstallAppButton variant="sheet" />
             </div>
           </div>
