@@ -32,10 +32,17 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 };
 
 function money(amount: number, currency: string) {
-  return `${currencySymbol(currency)}${amount.toLocaleString(undefined, {
+  const formatted = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}`;
+    useGrouping: true,
+  }).format(Number.isFinite(amount) ? amount : 0);
+
+  if (currency === "PKR") return `PKR ${formatted}`;
+  if (currency === "GBP") return `£${formatted}`;
+  if (currency === "USD") return `${formatted}`;
+  const symbol = currencySymbol(currency);
+  return symbol ? `${symbol}${formatted}` : `${currency} ${formatted}`;
 }
 
 async function loadImageAsDataUrl(url: string): Promise<string | null> {
@@ -105,18 +112,20 @@ function drawLogoOrName(
   maxH: number,
   textColor: readonly [number, number, number],
 ) {
+  let labelX = x;
   if (logo) {
     try {
       const props = doc.getImageProperties(logo);
       const size = fitBox(props.width, props.height, maxW, maxH);
       doc.addImage(logo, dataUrlFormat(logo), x, y, size.w, size.h);
-      return;
+      labelX = x + size.w + 12;
     } catch {}
   }
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
+  doc.setFontSize(13.5);
+  doc.setCharSpace(0);
   setText(doc, textColor);
-  doc.text(company, x, y + 18);
+  doc.text(company, labelX, y + 18);
 }
 
 function drawStatusPill(doc: PdfDoc, invoice: Invoice, x: number, y: number, fill: readonly [number, number, number]) {
@@ -124,6 +133,7 @@ function drawStatusPill(doc: PdfDoc, invoice: Invoice, x: number, y: number, fil
   doc.roundedRect(x, y, 92, 22, 5, 5, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.5);
+  doc.setCharSpace(0);
   doc.setTextColor(255, 255, 255);
   doc.text(STATUS_LABEL[invoice.status], x + 46, y + 14, { align: "center" });
 }
@@ -142,10 +152,10 @@ function drawStandardItemsTable(
   },
 ) {
   let y = yStart;
-  const colDesc = MARGIN + 10;
-  const colQty = RIGHT - 188;
-  const colRate = RIGHT - 104;
-  const colAmount = RIGHT - 8;
+  const colDesc = MARGIN + 12;
+  const colQty = RIGHT - 202;
+  const colRate = RIGHT - 112;
+  const colAmount = RIGHT - 10;
 
   if (opts.softFill) {
     setFill(doc, opts.softFill);
@@ -174,6 +184,7 @@ function drawStandardItemsTable(
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.2);
+    doc.setCharSpace(0);
     doc.text(String(item.quantity), colQty, y, { align: "right" });
     doc.text(money(item.unitPrice, input.invoice.currency), colRate, y, { align: "right" });
     doc.text(money(amount, input.invoice.currency), colAmount, y, { align: "right" });
@@ -208,28 +219,31 @@ function drawTotals(
 ) {
   const total = subtotal(input.items);
   const balance = Math.max(0, total - input.totalPaid);
-  const x = RIGHT - 206;
+  const x = RIGHT - 230;
+  const amountText = money(balance, input.invoice.currency);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
+  doc.setCharSpace(0);
   setText(doc, opts.muted);
   doc.text("Subtotal", x, y);
   doc.text(money(total, input.invoice.currency), RIGHT, y, { align: "right" });
-  y += 16;
+  y += 17;
   doc.text("Paid", x, y);
   doc.text(money(input.totalPaid, input.invoice.currency), RIGHT, y, { align: "right" });
-  y += 13;
+  y += 14;
 
   setFill(doc, opts.boxFill ?? opts.accent);
-  doc.roundedRect(x - 10, y, 216, 34, 4, 4, "F");
+  doc.roundedRect(x - 12, y, 242, 38, 5, 5, "F");
   doc.setFont("helvetica", "bold");
+  doc.setCharSpace(0);
   doc.setFontSize(11);
   if (opts.boxFill) setText(doc, opts.text);
   else doc.setTextColor(255, 255, 255);
-  doc.text(opts.label ?? "Balance Due", x, y + 22);
-  doc.setFontSize(14);
-  doc.text(money(balance, input.invoice.currency), RIGHT - 5, y + 22, { align: "right" });
-  return y + 48;
+  doc.text(opts.label ?? "Balance Due", x, y + 24);
+  doc.setFontSize(amountText.length > 18 ? 11.5 : 13.5);
+  doc.text(amountText, RIGHT - 8, y + 24, { align: "right" });
+  return y + 54;
 }
 
 function drawNotes(doc: PdfDoc, input: InvoicePdfInput, y: number, accent: readonly [number, number, number]) {
@@ -262,65 +276,124 @@ function drawFooter(doc: PdfDoc, company: string, accent: readonly [number, numb
 }
 
 async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string | null) {
-  const navy = [13, 39, 78] as const;
-  const blue = [37, 128, 235] as const;
-  const pale = [239, 247, 255] as const;
-  const line = [222, 231, 240] as const;
+  const navy = [12, 39, 76] as const;
+  const blue = [39, 128, 230] as const;
+  const pale = [244, 248, 253] as const;
+  const paleBlue = [231, 242, 253] as const;
+  const line = [220, 228, 238] as const;
+  const muted = [91, 106, 126] as const;
   const company = input.businessProfile.companyName || "Your Business Name";
+  doc.setCharSpace(0);
 
-  drawLogoOrName(doc, logo, company, MARGIN, 38, 120, 45, navy);
+  // Compact branded header.
+  drawLogoOrName(doc, logo, company, MARGIN, 28, 58, 38, navy);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(28);
+  doc.setFontSize(27);
   setText(doc, navy);
-  doc.text("INVOICE", RIGHT, 64, { align: "right" });
+  doc.text("INVOICE", RIGHT, 52, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  setText(doc, [105, 125, 150]);
-  doc.text("IT'S A PLEASURE TO WORK WITH YOU", RIGHT, 82, { align: "right" });
+  doc.setFontSize(7.8);
+  setText(doc, muted);
+  doc.text(input.invoice.invoiceNumber, RIGHT, 68, { align: "right" });
 
-  let y = 116;
-  setFill(doc, pale);
-  doc.roundedRect(MARGIN, y, CONTENT / 2 - 7, 112, 5, 5, "F");
-  doc.roundedRect(MARGIN + CONTENT / 2 + 7, y, CONTENT / 2 - 7, 112, 5, 5, "F");
+  setDraw(doc, line);
+  doc.setLineWidth(0.8);
+  doc.line(MARGIN, 88, RIGHT, 88);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  setText(doc, [90, 110, 135]);
-  doc.text("BILL TO", MARGIN + 16, y + 22);
-  doc.text("INVOICE DETAILS", MARGIN + CONTENT / 2 + 23, y + 22);
+  // Three compact information cards.
+  const y = 106;
+  const gap = 10;
+  const cardW = (CONTENT - gap * 2) / 3;
+  const cardH = 108;
+  const cardXs = [MARGIN, MARGIN + cardW + gap, MARGIN + (cardW + gap) * 2];
 
-  const lines = clientLines(input.client);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  setText(doc, navy);
-  doc.text(lines[0] || "Client", MARGIN + 16, y + 42);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  setText(doc, [80, 100, 125]);
-  let ly = y + 58;
-  for (const lineText of lines.slice(1, 5)) {
-    doc.text(lineText, MARGIN + 16, ly);
-    ly += 13;
+  for (const x of cardXs) {
+    setFill(doc, pale);
+    setDraw(doc, line);
+    doc.roundedRect(x, y, cardW, cardH, 6, 6, "FD");
   }
 
-  const metaX = MARGIN + CONTENT / 2 + 23;
-  doc.setFontSize(9);
-  setText(doc, navy);
-  doc.text(`Invoice #   ${input.invoice.invoiceNumber}`, metaX, y + 44);
-  doc.text(`Issue date   ${input.invoice.issueDate}`, metaX, y + 61);
-  doc.text(`Due date     ${input.invoice.dueDate}`, metaX, y + 78);
-  drawStatusPill(doc, input.invoice, metaX, y + 85, blue);
+  const cardTitle = (title: string, x: number) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.6);
+    setText(doc, blue);
+    doc.text(title, x + 13, y + 20);
+  };
+  cardTitle("FROM", cardXs[0]!);
+  cardTitle("BILL TO", cardXs[1]!);
+  cardTitle("INVOICE DETAILS", cardXs[2]!);
 
-  y += 132;
-  y = drawStandardItemsTable(doc, input, y, {
-    headerFill: [227, 241, 255],
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  setText(doc, navy);
+  doc.text(company, cardXs[0]! + 13, y + 42, { maxWidth: cardW - 26 });
+
+  const lines = clientLines(input.client);
+  doc.text(lines[0] || "Client", cardXs[1]! + 13, y + 42, { maxWidth: cardW - 26 });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.3);
+  setText(doc, muted);
+  let billY = y + 58;
+  for (const lineText of lines.slice(1, 5)) {
+    const wrapped = doc.splitTextToSize(lineText, cardW - 26) as string[];
+    doc.text(wrapped, cardXs[1]! + 13, billY);
+    billY += wrapped.length * 10.5;
+  }
+
+  const detailsX = cardXs[2]! + 13;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.3);
+  setText(doc, muted);
+  doc.text("Invoice #", detailsX, y + 40);
+  doc.text("Issue date", detailsX, y + 56);
+  doc.text("Due date", detailsX, y + 72);
+  doc.setFont("helvetica", "bold");
+  setText(doc, navy);
+  doc.text(input.invoice.invoiceNumber, cardXs[2]! + cardW - 13, y + 40, { align: "right" });
+  doc.text(input.invoice.issueDate, cardXs[2]! + cardW - 13, y + 56, { align: "right" });
+  doc.text(input.invoice.dueDate, cardXs[2]! + cardW - 13, y + 72, { align: "right" });
+
+  const statusFill =
+    input.invoice.status === "paid"
+      ? ([26, 145, 94] as const)
+      : input.invoice.status === "overdue"
+        ? ([203, 68, 74] as const)
+        : blue;
+  drawStatusPill(doc, input.invoice, cardXs[2]! + 13, y + 80, statusFill);
+
+  let nextY = y + cardH + 26;
+
+  nextY = drawStandardItemsTable(doc, input, nextY, {
+    headerFill: paleBlue,
     headerText: navy,
     bodyText: navy,
     border: line,
     headerRounded: true,
   });
-  y = drawTotals(doc, input, y + 10, { accent: blue, text: navy, muted: [90, 110, 130], boxFill: [229, 242, 255] });
-  drawNotes(doc, input, y + 8, blue);
+
+  nextY = drawTotals(doc, input, nextY + 12, {
+    accent: blue,
+    text: navy,
+    muted,
+    boxFill: paleBlue,
+  });
+
+  nextY = drawNotes(doc, input, nextY + 6, blue);
+
+  // Clean payment / footer strip for a finished look.
+  if (nextY < PAGE_HEIGHT - 110) {
+    setDraw(doc, line);
+    doc.line(MARGIN, PAGE_HEIGHT - 92, RIGHT, PAGE_HEIGHT - 92);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    setText(doc, navy);
+    doc.text("PAYMENT", MARGIN, PAGE_HEIGHT - 72);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    setText(doc, muted);
+    doc.text("Please use the invoice number as your payment reference.", MARGIN, PAGE_HEIGHT - 57);
+  }
+
   drawFooter(doc, company, blue);
 }
 
@@ -546,6 +619,7 @@ async function buildPremiumTeal(doc: PdfDoc, input: InvoicePdfInput, logo: strin
 async function buildInvoicePdf(input: InvoicePdfInput) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  doc.setCharSpace(0);
   const logo = await loadImageAsDataUrl(input.businessProfile.logoUrl);
   const template: InvoiceTemplateKey = input.invoice.templateKey ?? "modern_blue";
 
