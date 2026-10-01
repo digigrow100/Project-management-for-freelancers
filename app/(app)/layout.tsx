@@ -1,7 +1,6 @@
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
-import { DomainExpiryTicker } from "@/components/DomainExpiryTicker";
 import { AiAssistant } from "@/components/AiAssistant";
 import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
 import { getCurrentProfile } from "@/lib/auth";
@@ -9,15 +8,14 @@ import {
   countUnseenNotes,
   countUnseenProjects,
   countUnseenTasks,
+  ensureDomainExpiryAdminWorkItems,
+  getAdminWorkflowSettings,
   getProjectsForProfile,
+  listAdminWorkItems,
   listClients,
   listDomainClients,
   listDomains,
-  listRenewals,
-  listAdminWorkItems,
-  getAdminWorkflowSettings,
 } from "@/lib/store";
-import { buildExpiryTickerItems } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -25,20 +23,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
   const canSeeClients = isAdmin || !!profile?.canAccessFinance;
-  const [projects, unseenProjects, unseenNotes, unseenTasks, domains, domainClients, renewals, clients, adminWorkItems, adminWorkflowSettings] = await Promise.all([
+
+  const [
+    projects,
+    unseenProjects,
+    unseenNotes,
+    unseenTasks,
+    domains,
+    domainClients,
+    clients,
+    adminWorkflowSettings,
+  ] = await Promise.all([
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     profile ? countUnseenProjects(profile.id, isAdmin) : Promise.resolve(0),
     profile ? countUnseenNotes(profile.id) : Promise.resolve(0),
     profile ? countUnseenTasks(profile.id) : Promise.resolve(0),
     isAdmin ? listDomains() : Promise.resolve([]),
     isAdmin ? listDomainClients() : Promise.resolve([]),
-    isAdmin ? listRenewals() : Promise.resolve([]),
     canSeeClients ? listClients() : Promise.resolve([]),
-    isAdmin && profile ? listAdminWorkItems(profile.id) : Promise.resolve([]),
     isAdmin && profile ? getAdminWorkflowSettings(profile.id) : Promise.resolve(null),
   ]);
 
-  const tickerItems = isAdmin ? buildExpiryTickerItems(domains, domainClients, renewals) : [];
+  if (isAdmin && profile) {
+    await ensureDomainExpiryAdminWorkItems(profile.id, domains, domainClients);
+  }
+
+  const adminWorkItems =
+    isAdmin && profile ? await listAdminWorkItems(profile.id) : [];
 
   return (
     <div className="flex min-h-screen md:h-screen md:overflow-hidden">
@@ -51,12 +62,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       />
       <div className="flex-1 md:h-screen md:overflow-y-auto">
         <MobileTopBar />
-        <main className={tickerItems.length > 0 ? "pb-32 md:pb-10" : "pb-24 md:pb-0"}>
+        <main className="pb-24 md:pb-0">
           <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">{children}</div>
         </main>
       </div>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
-      <DomainExpiryTicker items={tickerItems} />
       {isAdmin && profile && adminWorkflowSettings && (
         <AdminWorkflowLauncher
           initialItems={adminWorkItems}
@@ -64,7 +74,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           projects={projects}
         />
       )}
-      {profile && <AiAssistant projects={projects} clients={clients} hasTicker={tickerItems.length > 0} />}
+      {profile && <AiAssistant projects={projects} clients={clients} hasTicker={false} />}
     </div>
   );
 }
