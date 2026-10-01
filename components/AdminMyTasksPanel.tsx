@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useTransition } from "react";
 import {
+  Banknote,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -117,15 +119,19 @@ export function AdminMyTasksPanel({
                     "grid h-7 w-7 place-items-center rounded-lg",
                     item.source === "team_request"
                       ? "bg-rose-500/10 text-rose-300"
-                      : item.source === "domain_expiry"
-                        ? "bg-amber-500/10 text-amber-300"
-                        : "bg-accent-500/10 text-accent-300",
+                      : item.source === "invoice_reminder"
+                        ? "bg-sky-500/10 text-sky-300"
+                        : item.source === "domain_expiry"
+                          ? "bg-amber-500/10 text-amber-300"
+                          : "bg-accent-500/10 text-accent-300",
                   )}>
                     {item.source === "team_request"
                       ? <ShieldAlert size={14} />
-                      : item.source === "domain_expiry"
-                        ? <Globe2 size={14} />
-                        : <UserRound size={14} />}
+                      : item.source === "invoice_reminder"
+                        ? <Banknote size={14} />
+                        : item.source === "domain_expiry"
+                          ? <Globe2 size={14} />
+                          : <UserRound size={14} />}
                   </span>
                   <p className="min-w-0 truncate text-sm font-semibold text-neutral-100">{item.title}</p>
                   <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase", priorityClass[item.priority])}>
@@ -134,6 +140,11 @@ export function AdminMyTasksPanel({
                   {item.source === "team_request" && (
                     <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-rose-300">
                       Team Request
+                    </span>
+                  )}
+                  {item.source === "invoice_reminder" && (
+                    <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-sky-300">
+                      Invoice
                     </span>
                   )}
                   {item.source === "domain_expiry" && (
@@ -164,15 +175,25 @@ export function AdminMyTasksPanel({
               </div>
 
               <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => startTransition(() => completeAdminWorkItemAction(item.id))}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400"
-                >
-                  <CheckCircle2 size={14} />
-                  {item.source === "team_request" ? "Done & Return" : "Done"}
-                </button>
+                {item.source === "invoice_reminder" ? (
+                  <Link
+                    href="/invoices"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-sky-400"
+                  >
+                    <Banknote size={14} />
+                    Open Invoices
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => startTransition(() => completeAdminWorkItemAction(item.id))}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400"
+                  >
+                    <CheckCircle2 size={14} />
+                    {item.source === "team_request" ? "Done & Return" : "Done"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => startTransition(() => snoozeAdminWorkItemAction(item.id, "30m"))}
@@ -213,9 +234,11 @@ export function AdminMyTasksPanel({
                 <p className="mt-0.5 text-[10px] text-neutral-600">
                   {item.source === "team_request"
                     ? "Team request resolved"
-                    : item.source === "domain_expiry"
-                      ? "Domain reminder completed"
-                      : "Personal task"} · {item.completedAt ? new Date(item.completedAt).toLocaleString() : "Done"}
+                    : item.source === "invoice_reminder"
+                      ? "Invoice reminder completed automatically"
+                      : item.source === "domain_expiry"
+                        ? "Domain reminder completed"
+                        : "Personal task"} · {item.completedAt ? new Date(item.completedAt).toLocaleString() : "Done"}
                 </p>
               </div>
             </div>
