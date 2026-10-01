@@ -883,6 +883,7 @@ export interface ClientService {
 }
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "partially_paid" | "overdue" | "cancelled";
+export type InvoiceTemplateKey = "modern_blue" | "corporate_navy" | "minimal_clean" | "premium_teal";
 
 export interface InvoiceItem {
   id: string;
@@ -908,6 +909,7 @@ export interface Invoice {
   dueDate: string;
   status: InvoiceStatus;
   notes: string;
+  templateKey: InvoiceTemplateKey;
   createdAt: string;
   updatedAt: string;
 }
