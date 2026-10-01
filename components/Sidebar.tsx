@@ -52,7 +52,12 @@ export function Sidebar({
 
       <nav className="flex flex-col gap-1">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const resolvedHref = isAdmin && href === "/" ? "/admin" : href;
+          const resolvedHref =
+            isAdmin && href === "/"
+              ? "/admin"
+              : isAdmin && href === "/my-tasks"
+                ? "/admin/my-tasks"
+                : href;
           return (
           <Link
             key={href}
