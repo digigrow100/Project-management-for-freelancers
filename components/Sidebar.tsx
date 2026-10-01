@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft } from "lucide-react";
-import type { Profile, Project } from "@/lib/types";
+import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
 import { RefreshButton } from "./RefreshButton";
@@ -17,13 +17,11 @@ const NAV = [
 ];
 
 export function Sidebar({
-  projects,
   profile,
   unseenProjects = 0,
   unseenNotes = 0,
   unseenTasks = 0,
 }: {
-  projects: Project[];
   profile: Profile | null;
   unseenProjects?: number;
   unseenNotes?: number;
