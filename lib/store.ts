@@ -1185,7 +1185,6 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
           priority: "medium",
           assignedTo: userId,
           seoModule: "on_page",
-          pageId: page.id,
           checklist: pendingChecks.map((check) => ({ id: randomUUID(), text: check.label, done: false })),
           why: "This is the next unfinished page in the project's rotating SEO workflow.",
           expectedOutcome: "All page checklist items are completed and verified.",
