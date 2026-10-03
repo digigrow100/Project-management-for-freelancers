@@ -68,30 +68,26 @@ edge middleware only.
 
 ### Forgot your password?
 
-Click **Forgot password?** on `/login` to email yourself a reset link
-(`/login/forgot-password` → `/login/reset-password`). This needs one
-one-time setup in Supabase before it'll work, since the default reset email
-doesn't ship the link this app expects:
+Click **Forgot password?** on `/login` to email a reset link
+(`/login/forgot-password` → `/auth/confirm` → `/login/reset-password`).
+The confirmation route supports both Supabase's default PKCE recovery links
+and custom `token_hash` templates.
 
-1. In the Supabase dashboard, go to **Authentication > Email Templates >
-   Reset Password**.
-2. Replace the template body with a link to your app's confirm route
-   instead of Supabase's own hosted one:
-   ```html
-   <h2>Reset your password</h2>
-   <p>We received a request to reset your password. Follow the link below to choose a new one.</p>
-   <p>
-     <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/login/reset-password">
-       Reset password
-     </a>
-   </p>
-   ```
-3. In **Authentication > URL Configuration**, make sure **Site URL** matches
-   your deployed URL (or `http://localhost:3000` for local dev), and add it
-   under **Redirect URLs** too.
+For production, set **Authentication > URL Configuration > Site URL** in
+Supabase to the production app URL and allow the production
+`/auth/confirm` URL under **Redirect URLs**. The app prefers `APP_URL` or
+`NEXT_PUBLIC_SITE_URL` when configured, otherwise Vercel's
+`VERCEL_PROJECT_PRODUCTION_URL`, so password-reset emails do not accidentally
+point users at a preview deployment.
 
-Without this, clicking the emailed link falls back to Supabase's own verify
-page instead of landing back in the app.
+A custom Reset Password email template is optional. If you use one, this link
+shape remains supported:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/login/reset-password">
+  Reset password
+</a>
+```
 
 ## Team accounts & the Admin panel
 
