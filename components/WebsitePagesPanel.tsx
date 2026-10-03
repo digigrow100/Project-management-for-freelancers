@@ -320,51 +320,56 @@ export function WebsitePagesPanel({
                           setAddingKeywordForPageId(null);
                         });
                       }}
-                      className="mb-3 grid gap-2 rounded-lg border border-base-700 bg-base-950/55 p-2.5 sm:grid-cols-[minmax(0,1fr)_90px_80px_110px_auto]"
+                      className="mb-3 space-y-2 rounded-lg border border-base-700 bg-base-950/55 p-2.5"
                     >
                       <input
                         name="keyword"
                         required
                         placeholder="Keyword"
-                        className="rounded-md border border-base-700 bg-base-950 px-2.5 py-1.5 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                        className="w-full rounded-md border border-base-700 bg-base-950 px-2.5 py-2 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
                       />
-                      <input
-                        name="searchVolume"
-                        type="number"
-                        min="0"
-                        placeholder="Volume"
-                        className="rounded-md border border-base-700 bg-base-950 px-2.5 py-1.5 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
-                      />
-                      <input
-                        name="currentRank"
-                        type="number"
-                        min="1"
-                        placeholder="Rank"
-                        className="rounded-md border border-base-700 bg-base-950 px-2.5 py-1.5 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
-                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          name="searchVolume"
+                          type="number"
+                          min="0"
+                          placeholder="Volume"
+                          className="w-full rounded-md border border-base-700 bg-base-950 px-2.5 py-2 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                        />
+                        <input
+                          name="currentRank"
+                          type="number"
+                          min="1"
+                          placeholder="Rank"
+                          className="w-full rounded-md border border-base-700 bg-base-950 px-2.5 py-2 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                        />
+                      </div>
+
                       <select
                         name="keywordRole"
                         defaultValue="secondary"
-                        className="rounded-md border border-base-700 bg-base-950 px-2 py-1.5 text-[11px] text-neutral-100 focus:border-accent-500 focus:outline-none"
+                        className="w-full rounded-md border border-base-700 bg-base-950 px-2.5 py-2 text-[11px] text-neutral-100 focus:border-accent-500 focus:outline-none"
                       >
                         <option value="primary">Primary</option>
                         <option value="secondary">Secondary</option>
                         <option value="supporting">Supporting</option>
                         <option value="long_tail">Long-tail</option>
                       </select>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="submit"
-                          className="rounded-md bg-accent-500 px-2.5 py-1.5 text-[10px] font-semibold text-base-950 hover:bg-accent-400"
-                        >
-                          Save
-                        </button>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-0.5">
                         <button
                           type="button"
                           onClick={() => setAddingKeywordForPageId(null)}
-                          className="rounded-md border border-base-700 px-2 py-1.5 text-[10px] text-neutral-500 hover:text-neutral-300"
+                          className="rounded-md border border-base-700 px-3 py-2 text-[10px] font-medium text-neutral-400 hover:border-base-600 hover:text-neutral-200"
                         >
                           Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-accent-500 px-3 py-2 text-[10px] font-semibold text-base-950 hover:bg-accent-400"
+                        >
+                          Save Keyword
                         </button>
                       </div>
                     </form>
