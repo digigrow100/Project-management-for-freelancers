@@ -10,6 +10,7 @@ import {
   setMemberBacklinkCredentialAccessAction,
   setMemberFinanceAccessAction,
   setMemberRenewalsAccessAction,
+  setMemberTemporaryPasswordAction,
   updateMemberRoleAction,
   updateMemberJobRoleAction,
 } from "@/lib/actions";
@@ -153,6 +154,8 @@ function MemberRow({
 }) {
   const [isPending, startTransition] = useTransition();
   const [assignOpen, setAssignOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set(assignedIds));
 
   function toggleProject(id: string) {
@@ -290,6 +293,21 @@ function MemberRow({
               type="button"
               disabled={isPending}
               onClick={() => {
+                setPasswordMessage(null);
+                setPasswordOpen((value) => !value);
+              }}
+              className="flex items-center gap-1.5 rounded-md border border-base-600 px-2.5 py-1.5 text-xs text-neutral-300 hover:border-accent-500/60 hover:text-accent-300 disabled:opacity-50"
+              title="Set a temporary login password"
+            >
+              <KeyRound size={13} />
+              Temp password
+            </button>
+          )}
+          {!isSelf && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => {
                 if (confirm(`Remove ${member.name || member.email} from the team?`)) {
                   startTransition(() => removeMemberAction(member.id));
                 }
@@ -302,6 +320,52 @@ function MemberRow({
           )}
         </div>
       </div>
+
+      {passwordOpen && !isSelf && (
+        <form
+          action={(formData) => {
+            const password = String(formData.get("password") ?? "");
+            setPasswordMessage(null);
+            startTransition(async () => {
+              const result = await setMemberTemporaryPasswordAction(member.id, password);
+              if (result.ok) {
+                setPasswordMessage("Temporary password updated.");
+                setPasswordOpen(false);
+              } else {
+                setPasswordMessage(result.error);
+              }
+            });
+          }}
+          className="mt-3 flex flex-col gap-2 border-t border-base-700/60 pt-3 sm:flex-row sm:items-center"
+        >
+          <input
+            name="password"
+            type="password"
+            required
+            minLength={6}
+            placeholder="New temporary password"
+            className="w-full max-w-sm rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-fit rounded-md bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-accent-400 disabled:opacity-60"
+          >
+            {isPending ? "Updating…" : "Set password"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPasswordOpen(false)}
+            className="w-fit rounded-md border border-base-600 px-3 py-2 text-xs text-neutral-400 hover:text-neutral-200"
+          >
+            Cancel
+          </button>
+        </form>
+      )}
+
+      {passwordMessage && (
+        <p className="mt-2 text-xs text-neutral-400">{passwordMessage}</p>
+      )}
 
       {assignOpen && member.role === "member" && (
         <form
