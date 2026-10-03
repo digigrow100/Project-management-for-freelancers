@@ -73,6 +73,7 @@ export function AdminDashboardOverview({
   domainClients,
   renewals,
   personalTasks,
+  assigneesByProject,
 }: {
   projects: Project[];
   progressMap: ProgressMap;
@@ -87,11 +88,20 @@ export function AdminDashboardOverview({
   domainClients: DomainClient[];
   renewals: Renewal[];
   personalTasks: AdminWorkItem[];
+  assigneesByProject: Record<string, string[]>;
 }) {
   const activeProjects = projects.filter((project) => !project.archived);
   const invoiceByProject = new Map<string, Invoice>();
   for (const invoice of invoices) {
     if (invoice.projectId && !invoiceByProject.has(invoice.projectId)) invoiceByProject.set(invoice.projectId, invoice);
+  }
+
+  const paidByProject = new Map<string, Map<string, number>>();
+  for (const payment of payments) {
+    if (!payment.projectId) continue;
+    const byCurrency = paidByProject.get(payment.projectId) ?? new Map<string, number>();
+    byCurrency.set(payment.currency, (byCurrency.get(payment.currency) ?? 0) + payment.amount);
+    paidByProject.set(payment.projectId, byCurrency);
   }
 
   const paidByInvoice = new Map<string, number>();
@@ -193,32 +203,67 @@ export function AdminDashboardOverview({
                 const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0 };
                 const percent = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
                 const invoice = invoiceByProject.get(project.id);
+                const assignees = assigneesByProject[project.id] ?? [];
+                const invoiceAmount = invoice ? invoiceTotal(invoice) : 0;
+                const invoicePaid = invoice ? (paidByInvoice.get(invoice.id) ?? 0) : 0;
+                const invoiceDue = Math.max(0, invoiceAmount - invoicePaid);
+                const projectPayments = paidByProject.get(project.id);
+                const fallbackPayments = projectPayments
+                  ? Array.from(projectPayments.entries()).map(([currency, amount]) => money(amount, currency)).join(" · ")
+                  : "";
                 return (
-                  <div key={project.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_170px_210px] md:items-center">
+                  <div key={project.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.35fr)_minmax(0,.9fr)_minmax(135px,.75fr)_minmax(150px,.8fr)_170px] md:items-center">
                     <div className="min-w-0">
                       <Link href={`/projects/${project.id}`} className="block truncate text-sm font-semibold text-neutral-100 hover:text-accent-300">
                         {project.name}
                       </Link>
                       <p className="mt-0.5 truncate text-xs text-neutral-500">{project.client || project.clientDetails.company || project.clientDetails.name || "No client"}</p>
+                      <p className="mt-1 truncate text-[10px] text-neutral-600">
+                        Assigned: {assignees.length > 0 ? assignees.join(", ") : "Unassigned"}
+                      </p>
                     </div>
+
                     <div>
                       <div className="mb-1 flex items-center justify-between text-[11px] text-neutral-500">
                         <span>{percent}%</span>
-                        <span>{progress.done}/{progress.total || 0}</span>
+                        <span>{progress.done}/{progress.total || 0} tasks</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-base-700">
                         <div className="h-1.5 rounded-full bg-emerald-400" style={{ width: `${percent}%` }} />
                       </div>
                     </div>
-                    <div>
+
+                    <div className="text-[10px]">
                       {invoice ? (
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${invoiceStatusClass(invoice.status)}`}>
-                          {invoice.status.replaceAll("_", " ")}
-                        </span>
+                        <>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold capitalize ${invoiceStatusClass(invoice.status)}`}>
+                            {invoice.status.replaceAll("_", " ")}
+                          </span>
+                          <p className="mt-1 text-neutral-600">{invoice.invoiceNumber}</p>
+                        </>
                       ) : (
                         <span className="text-[11px] text-neutral-600">No invoice</span>
                       )}
                     </div>
+
+                    <div className="text-[10px]">
+                      {invoice ? (
+                        <>
+                          <p className="font-medium text-emerald-300">Paid {money(invoicePaid, invoice.currency)}</p>
+                          <p className={invoiceDue > 0 ? "mt-1 text-amber-300" : "mt-1 text-neutral-600"}>
+                            {invoiceDue > 0 ? `Due ${money(invoiceDue, invoice.currency)}` : "Fully paid"}
+                          </p>
+                        </>
+                      ) : fallbackPayments ? (
+                        <>
+                          <p className="text-neutral-500">Received</p>
+                          <p className="mt-1 font-medium text-emerald-300">{fallbackPayments}</p>
+                        </>
+                      ) : (
+                        <span className="text-neutral-600">No payment</span>
+                      )}
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-2 md:justify-end">
                       {invoice && (
                         <>
