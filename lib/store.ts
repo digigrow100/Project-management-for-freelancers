@@ -3167,6 +3167,12 @@ export async function removeMember(userId: string): Promise<void> {
   if (error) throw error;
 }
 
+
+export async function setMemberTemporaryPassword(userId: string, password: string): Promise<void> {
+  const { error } = await getSupabase().auth.admin.updateUserById(userId, { password });
+  if (error) throw error;
+}
+
 export async function getAssignedProjectIds(userId: string): Promise<string[]> {
   try {
     const { data, error } = await getSupabase().from("freelance_hq_project_assignments").select("project_id").eq("user_id", userId);
