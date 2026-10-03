@@ -2196,6 +2196,80 @@ export async function getProjectProgressMap(): Promise<
 }
 
 
+/**
+ * Admin dashboard progress combines the work users actually see in the app:
+ * direct project tasks + each active SEO Website Page + SEO workflow items.
+ * A Website Page counts as complete only when every active checklist item for
+ * the current month is done or marked not applicable.
+ */
+export async function getAdminProjectProgressMap(): Promise<
+  Record<string, { done: number; total: number; openCount: number }>
+> {
+  const map = await getProjectProgressMap();
+  const currentMonth = todayDateKey().slice(0, 7);
+
+  try {
+    const [{ data: pages, error: pagesError }, { data: workflows, error: workflowError }, { data: templates, error: templatesError }] =
+      await Promise.all([
+        getSupabase()
+          .from("freelance_hq_project_pages")
+          .select("id, project_id")
+          .eq("is_active", true),
+        getSupabase()
+          .from("freelance_hq_seo_workflow_items")
+          .select("project_id, status"),
+        getSupabase()
+          .from("freelance_hq_page_check_templates")
+          .select("check_key")
+          .eq("is_active", true),
+      ]);
+
+    if (pagesError) throw pagesError;
+    if (workflowError) throw workflowError;
+    if (templatesError) throw templatesError;
+
+    const activePages = (pages ?? []) as Array<{ id: string; project_id: string }>;
+    const templateCount = (templates ?? []).length;
+    const completedChecksByPage = new Map<string, number>();
+
+    if (activePages.length > 0 && templateCount > 0) {
+      const { data: checks, error: checksError } = await getSupabase()
+        .from("freelance_hq_page_audit_checks")
+        .select("page_id, status")
+        .in("page_id", activePages.map((page) => page.id))
+        .eq("period_month", currentMonth);
+      if (checksError) throw checksError;
+
+      for (const row of (checks ?? []) as Array<{ page_id: string; status: PageAuditStatus }>) {
+        if (row.status !== "done" && row.status !== "not_applicable") continue;
+        completedChecksByPage.set(row.page_id, (completedChecksByPage.get(row.page_id) ?? 0) + 1);
+      }
+    }
+
+    for (const page of activePages) {
+      const entry = map[page.project_id] ?? { done: 0, total: 0, openCount: 0 };
+      const pageDone = templateCount > 0 && (completedChecksByPage.get(page.id) ?? 0) >= templateCount;
+      entry.total += 1;
+      if (pageDone) entry.done += 1;
+      else entry.openCount += 1;
+      map[page.project_id] = entry;
+    }
+
+    for (const row of (workflows ?? []) as Array<{ project_id: string; status: "pending" | "done" }>) {
+      const entry = map[row.project_id] ?? { done: 0, total: 0, openCount: 0 };
+      entry.total += 1;
+      if (row.status === "done") entry.done += 1;
+      else entry.openCount += 1;
+      map[row.project_id] = entry;
+    }
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+  }
+
+  return map;
+}
+
+
 interface AdminWorkItemRow {
   id: string;
   owner_id: string;
