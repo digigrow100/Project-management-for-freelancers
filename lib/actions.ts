@@ -1206,6 +1206,102 @@ export async function updatePageAuditCheckAction(input: {
   revalidatePath(`/projects/${input.projectId}`);
 }
 
+export async function createWebsitePageKeywordAction(formData: FormData) {
+  const projectId = str(formData, "projectId");
+  const projectPageId = str(formData, "projectPageId");
+  const keywordText = str(formData, "keyword");
+  if (!projectId || !projectPageId || !keywordText) return;
+
+  await requireProjectAccess(projectId);
+
+  const projectPages = await store.listProjectPages(projectId);
+  const projectPage = projectPages.find((page) => page.id === projectPageId);
+  if (!projectPage) return;
+
+  const normalizeUrl = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    try {
+      const url = new URL(trimmed.startsWith("http") ? trimmed : `https://example.com${trimmed.startsWith("/") ? "" : "/"}${trimmed}`);
+      return (url.pathname.replace(/\/+$/, "") || "/").toLowerCase();
+    } catch {
+      return trimmed.replace(/^https?:\/\/[^/]+/i, "").replace(/\/+$/, "").toLowerCase() || "/";
+    }
+  };
+
+  const groups = await store.listKeywordGroups(projectId);
+  const pagesByGroup = groups.length > 0 ? await store.listKeywordPages(groups.map((group) => group.id)) : {};
+  const allKeywordPages = Object.values(pagesByGroup).flat();
+  const projectPageUrl = normalizeUrl(projectPage.url);
+  const projectPageName = projectPage.name.trim().toLowerCase();
+
+  let targetKeywordPage = allKeywordPages.find((page) => {
+    const keywordPageUrl = normalizeUrl(page.url);
+    const keywordPageName = page.name.trim().toLowerCase();
+    return (
+      (projectPageUrl && keywordPageUrl && projectPageUrl === keywordPageUrl) ||
+      (projectPageName && keywordPageName && projectPageName === keywordPageName)
+    );
+  });
+
+  if (!targetKeywordPage) {
+    let websitePagesGroup = groups.find((group) => group.name.trim().toLowerCase() === "website pages");
+    if (!websitePagesGroup) {
+      websitePagesGroup = await store.createKeywordGroup({
+        projectId,
+        name: "Website Pages",
+        color: "accent",
+      });
+    }
+
+    targetKeywordPage = await store.createKeywordPage({
+      groupId: websitePagesGroup.id,
+      name: projectPage.name,
+      url: projectPage.url,
+    });
+
+    const pageType =
+      projectPage.pageType === "service" ||
+      projectPage.pageType === "location" ||
+      projectPage.pageType === "blog" ||
+      projectPage.pageType === "landing"
+        ? projectPage.pageType
+        : "other";
+    await store.updateKeywordPage(targetKeywordPage.id, { pageType });
+  }
+
+  const keywordRole = (str(formData, "keywordRole") || "secondary") as KeywordRole;
+  const created = await store.createKeyword({
+    projectId,
+    keyword: keywordText,
+    targetPage: "",
+    searchVolume: numOrNull(str(formData, "searchVolume")),
+    difficulty: null,
+    currentRank: numOrNull(str(formData, "currentRank")),
+    targetRank: null,
+    status: "not_started",
+    notes: "",
+    priority: "medium",
+    keywordRole,
+    targetMode: "existing_page",
+    primaryPageId: targetKeywordPage.id,
+  });
+
+  await store.addKeywordToPage(created.id, targetKeywordPage.id);
+
+  if (keywordRole === "primary") {
+    await store.setPrimaryKeywordForPage(targetKeywordPage.id, created.id);
+  } else {
+    await store.updateKeyword(created.id, {
+      keywordRole,
+      targetMode: "existing_page",
+      primaryPageId: targetKeywordPage.id,
+    });
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
 export async function createKeywordAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   const keyword = str(formData, "keyword");
