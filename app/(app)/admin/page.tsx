@@ -5,7 +5,7 @@ import {
   getAdminTaskTimeSummaries,
   getAssignedProjectIds,
   getOpenTasks,
-  getProjectProgressMap,
+  getAdminProjectProgressMap,
   getProjects,
   getRecentCompletedTasks,
   listAllPayments,
@@ -44,7 +44,7 @@ export default async function AdminPage() {
     getProjects(),
     getOpenTasks(),
     getRecentCompletedTasks(50),
-    getProjectProgressMap(),
+    getAdminProjectProgressMap(),
     getAdminTaskTimeSummaries(),
     listInvoices(),
     listAllPayments(),
@@ -60,6 +60,14 @@ export default async function AdminPage() {
   for (const member of members) {
     if (member.role === "admin") continue;
     assignmentsByMember.set(member.id, await getAssignedProjectIds(member.id));
+  }
+
+  const assigneesByProject: Record<string, string[]> = {};
+  for (const member of members) {
+    if (member.role === "admin") continue;
+    for (const projectId of assignmentsByMember.get(member.id) ?? []) {
+      (assigneesByProject[projectId] ??= []).push(member.name || member.email);
+    }
   }
 
   return (
@@ -85,6 +93,7 @@ export default async function AdminPage() {
         domainClients={domainClients}
         renewals={renewals}
         personalTasks={adminWorkItems.filter((task) => task.status !== "done")}
+        assigneesByProject={assigneesByProject}
       />
 
       <section id="team-access" className="scroll-mt-6">
