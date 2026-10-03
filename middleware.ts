@@ -4,6 +4,17 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/auth"];
 
 export async function middleware(request: NextRequest) {
+  // Supabase can fall back to the configured Site URL and append a PKCE
+  // recovery `code` there (for example "/?code=..."). Normalize that shape
+  // into our auth confirmation route so the code is exchanged for a session
+  // before the user reaches the reset-password form.
+  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.get("code")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/confirm";
+    url.searchParams.set("next", "/login/reset-password");
+    return NextResponse.redirect(url);
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
