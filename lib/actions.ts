@@ -898,6 +898,27 @@ export async function assignProjectsAction(formData: FormData) {
   revalidatePath("/admin");
 }
 
+export async function setMemberTemporaryPasswordAction(
+  userId: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+
+  if (!userId) return { ok: false, error: "User is required." };
+  if (!password || password.length < 6) {
+    return { ok: false, error: "Temporary password must be at least 6 characters." };
+  }
+
+  try {
+    await store.setMemberTemporaryPassword(userId, password);
+    revalidatePath("/admin");
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { ok: false, error: message || "Could not update the password." };
+  }
+}
+
 export async function removeMemberAction(userId: string) {
   await requireAdmin();
   await store.removeMember(userId);
