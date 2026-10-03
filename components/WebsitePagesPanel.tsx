@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, ExternalLink, FileText, Plus, Trash2 } from "luci
 import type { Keyword, KeywordPage, PageAuditCheck, PageAuditStatus, ProjectPage, ProjectPageType } from "@/lib/types";
 import {
   createProjectPageAction,
+  createWebsitePageKeywordAction,
   deleteProjectPageAction,
   updateKeywordRankAction,
   updatePageAuditCheckAction,
@@ -103,6 +104,7 @@ export function WebsitePagesPanel({
   keywordPages: KeywordPage[];
 }) {
   const [adding, setAdding] = useState(false);
+  const [addingKeywordForPageId, setAddingKeywordForPageId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const checksByPage = useMemo(() => {
@@ -292,10 +294,81 @@ export function WebsitePagesPanel({
                 <ChecklistColumn title="Technical SEO" checks={technicalChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />
 
                 <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between gap-2">
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Keywords</h4>
-                    <span className="text-[10px] text-neutral-600">{mappedKeywords.length} mapped</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-neutral-600">{mappedKeywords.length} mapped</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAddingKeywordForPageId((current) => (current === page.id ? null : page.id))
+                        }
+                        className="inline-flex items-center gap-1 rounded-md border border-base-700 px-2 py-1 text-[10px] font-semibold text-accent-300 hover:border-accent-500/40 hover:bg-accent-500/10"
+                      >
+                        <Plus size={11} /> Add Keyword
+                      </button>
+                    </div>
                   </div>
+
+                  {addingKeywordForPageId === page.id && (
+                    <form
+                      action={(formData) => {
+                        formData.set("projectId", projectId);
+                        formData.set("projectPageId", page.id);
+                        startTransition(async () => {
+                          await createWebsitePageKeywordAction(formData);
+                          setAddingKeywordForPageId(null);
+                        });
+                      }}
+                      className="mb-3 grid gap-2 rounded-lg border border-base-700 bg-base-950/55 p-2.5 sm:grid-cols-[minmax(0,1fr)_90px_80px_110px_auto]"
+                    >
+                      <input
+                        name="keyword"
+                        required
+                        placeholder="Keyword"
+                        className="rounded-md border border-base-700 bg-base-950 px-2.5 py-1.5 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                      />
+                      <input
+                        name="searchVolume"
+                        type="number"
+                        min="0"
+                        placeholder="Volume"
+                        className="rounded-md border border-base-700 bg-base-950 px-2.5 py-1.5 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                      />
+                      <input
+                        name="currentRank"
+                        type="number"
+                        min="1"
+                        placeholder="Rank"
+                        className="rounded-md border border-base-700 bg-base-950 px-2.5 py-1.5 text-[11px] text-neutral-100 placeholder:text-neutral-700 focus:border-accent-500 focus:outline-none"
+                      />
+                      <select
+                        name="keywordRole"
+                        defaultValue="secondary"
+                        className="rounded-md border border-base-700 bg-base-950 px-2 py-1.5 text-[11px] text-neutral-100 focus:border-accent-500 focus:outline-none"
+                      >
+                        <option value="primary">Primary</option>
+                        <option value="secondary">Secondary</option>
+                        <option value="supporting">Supporting</option>
+                        <option value="long_tail">Long-tail</option>
+                      </select>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="submit"
+                          className="rounded-md bg-accent-500 px-2.5 py-1.5 text-[10px] font-semibold text-base-950 hover:bg-accent-400"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddingKeywordForPageId(null)}
+                          className="rounded-md border border-base-700 px-2 py-1.5 text-[10px] text-neutral-500 hover:text-neutral-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   {mappedKeywords.length > 0 ? (
                     <div className="space-y-2">
