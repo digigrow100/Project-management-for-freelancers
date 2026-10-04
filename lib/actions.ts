@@ -1840,6 +1840,18 @@ export async function deleteContentItemAction(id: string, projectId: string) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+export async function getSeoTaskReportAction(
+  projectId: string,
+  startDate: string,
+  endDate: string,
+) {
+  await requireProjectAccess(projectId);
+  if (!startDate || !endDate || startDate > endDate) {
+    throw new Error("Invalid report date range.");
+  }
+  return store.buildSeoTaskReport(projectId, startDate, endDate);
+}
+
 export async function generateSeoReportAction(
   projectId: string,
   period: string,
