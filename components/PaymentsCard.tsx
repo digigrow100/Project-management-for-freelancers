@@ -5,6 +5,7 @@ import { Wallet, Trash2, Pencil, Plus } from "lucide-react";
 import type { Payment, PaymentKind, PaymentPlan, PaymentPlanType } from "@/lib/types";
 import { addPaymentAction, deletePaymentAction, deletePaymentPlanAction, setPaymentPlanAction } from "@/lib/actions";
 import { cn, currencySymbol, formatMoney } from "@/lib/utils";
+import { businessDateKey, businessMonthKey } from "@/lib/date";
 
 const KIND_LABEL: Record<PaymentKind, string> = {
   monthly: "Monthly fee",
@@ -15,13 +16,11 @@ const KIND_LABEL: Record<PaymentKind, string> = {
 const ALL_CURRENCIES = ["PKR", "USD", "GBP"];
 
 function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return businessDateKey();
 }
 
 function monthKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return businessMonthKey();
 }
 
 export function PaymentsCard({
@@ -153,7 +152,7 @@ function PlanSummary({
   onDelete: () => void;
   isPending: boolean;
 }) {
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = payments.filter((p) => p.kind !== "additional").reduce((sum, p) => sum + p.amount, 0);
   const collectedThisMonth = payments
     .filter((p) => p.kind === "monthly" && p.period === monthKey())
     .reduce((sum, p) => sum + p.amount, 0);
@@ -306,12 +305,17 @@ function RecordPaymentForm({ projectId, plans }: { projectId: string; plans: [Pa
   const [currency, setCurrency] = useState(plans[0].currency);
   const plan = plans.find((p) => p.currency === currency) ?? plans[0];
   const [kind, setKind] = useState<PaymentKind>(plan.planType === "monthly_fixed" ? "monthly" : "installment");
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
       action={(formData) => {
         formData.set("projectId", projectId);
-        startTransition(() => addPaymentAction(formData));
+        setError(null);
+        startTransition(async () => {
+          const result = await addPaymentAction(formData);
+          if (!result.ok) setError(result.error);
+        });
       }}
       className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-base-600 p-3"
     >
@@ -392,6 +396,11 @@ function RecordPaymentForm({ projectId, plans }: { projectId: string; plans: [Pa
           className="w-full rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
         />
       </div>
+      {error && (
+        <p className="w-full rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
         disabled={isPending}
