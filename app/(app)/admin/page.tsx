@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import {
   getAdminTaskTimeSummaries,
   getAssignedProjectIds,
+  getDomainSettings,
   getOpenTasks,
   getAdminProjectProgressMap,
   getProjects,
@@ -17,6 +18,7 @@ import {
   listPaymentPlans,
   listRenewals,
   listTeamMembers,
+  listWebsitesByDomainIds,
   listAdminWorkItems,
 } from "@/lib/store";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
@@ -60,7 +62,11 @@ export default async function AdminPage() {
     listAdminWorkItems(currentProfile.id),
   ]);
 
-  const invoiceItems = await listInvoiceItemsForInvoices(invoices.map((invoice) => invoice.id));
+  const [invoiceItems, domainSettings, websitesByDomainId] = await Promise.all([
+    listInvoiceItemsForInvoices(invoices.map((invoice) => invoice.id)),
+    getDomainSettings(),
+    listWebsitesByDomainIds(domains.map((domain) => domain.id)),
+  ]);
 
   const assignmentsByMember = new Map<string, string[]>();
   for (const member of members) {
@@ -101,6 +107,8 @@ export default async function AdminPage() {
         domains={domains}
         domainClients={domainClients}
         renewals={renewals}
+        websitesByDomainId={websitesByDomainId}
+        hasDynadotApiKey={Boolean(domainSettings.dynadotApiKeyEncrypted)}
         personalTasks={adminWorkItems.filter((task) => task.status !== "done")}
         assigneesByProject={assigneesByProject}
       />
