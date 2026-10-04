@@ -9,6 +9,7 @@ import {
   getProjects,
   getRecentCompletedTasks,
   listAllPayments,
+  listTaskTimeEntries,
   listDomainClients,
   listDomains,
   listInvoiceItemsForInvoices,
@@ -34,6 +35,7 @@ export default async function AdminPage() {
     completedTasks,
     progressMap,
     timeSummaries,
+    timeEntries,
     invoices,
     payments,
     paymentPlans,
@@ -48,6 +50,7 @@ export default async function AdminPage() {
     getRecentCompletedTasks(50),
     getAdminProjectProgressMap(),
     getAdminTaskTimeSummaries(),
+    listTaskTimeEntries(),
     listInvoices(),
     listAllPayments(),
     listPaymentPlans(),
@@ -89,6 +92,8 @@ export default async function AdminPage() {
         completedTasks={completedTasks}
         members={members}
         timeSummaries={timeSummaries}
+        timeEntries={timeEntries}
+        memberProjectIds={Object.fromEntries(assignmentsByMember)}
         invoices={invoices}
         invoiceItems={invoiceItems}
         payments={payments}
