@@ -52,13 +52,30 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
   const start = rangeStart(range);
   const today = businessDateKey();
 
-  const [allPayments, allPlans, projects, allInvoices] = await Promise.all([
+  const [paymentsResult, plansResult, projectsResult, invoicesResult] = await Promise.allSettled([
     listAllPayments(),
     listPaymentPlans(),
     getProjects(),
     listInvoices(),
   ]);
-  const invoiceItemsByInvoice = await listInvoiceItemsForInvoices(allInvoices.map((i) => i.id));
+
+  const allPayments = paymentsResult.status === "fulfilled" ? paymentsResult.value : [];
+  const allPlans = plansResult.status === "fulfilled" ? plansResult.value : [];
+  const projects = projectsResult.status === "fulfilled" ? projectsResult.value : [];
+  const allInvoices = invoicesResult.status === "fulfilled" ? invoicesResult.value : [];
+
+  let invoiceItemsByInvoice: Awaited<ReturnType<typeof listInvoiceItemsForInvoices>> = {};
+  try {
+    invoiceItemsByInvoice = await listInvoiceItemsForInvoices(allInvoices.map((invoice) => invoice.id));
+  } catch {
+    invoiceItemsByInvoice = {};
+  }
+
+  const financeDataDegraded =
+    paymentsResult.status === "rejected" ||
+    plansResult.status === "rejected" ||
+    projectsResult.status === "rejected" ||
+    invoicesResult.status === "rejected";
 
   const currencies = sortCurrencies(
     Array.from(
@@ -167,6 +184,12 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
         </div>
       </div>
 
+      {financeDataDegraded && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Some finance data could not be loaded right now. Available payment and invoice data is shown below instead of crashing the page.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label={`Collected · ${RANGE_LABEL[range]}`} value={formatMoney(collected, currency)} icon={Wallet} tone="accent" />
         <StatCard label="Additional charges" value={formatMoney(additional, currency)} icon={Receipt} tone="sky" />
@@ -214,7 +237,7 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
           </h2>
           <div className="flex flex-col gap-2">
             {Array.from(collectedByType.entries()).map(([type, total]) => {
-              const theme = PROJECT_THEME[type as Project["type"]];
+              const theme = PROJECT_THEME[type as Project["type"]] ?? PROJECT_THEME.other;
               return (
                 <div key={type} className="flex items-center justify-between rounded-lg border border-base-700/50 bg-base-900 px-3 py-2">
                   <span className={`text-sm font-medium ${theme.iconText}`}>{theme.label}</span>
@@ -237,7 +260,7 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
             </p>
           )}
           {projectRows.map(({ project, plan, collectedInRange, remaining, lastPayment }) => {
-            const theme = PROJECT_THEME[project.type];
+            const theme = PROJECT_THEME[project.type] ?? PROJECT_THEME.other;
             return (
               <Link
                 key={project.id}
