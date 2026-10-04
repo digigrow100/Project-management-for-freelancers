@@ -813,6 +813,38 @@ export type ReportPeriodType = "daily" | "weekly" | "monthly";
  * for attachment to a client invoice. Nothing here is ever permanently
  * locked — `approved` is a flag, not a read-only state.
  */
+export type SeoTaskReportStatus = "done" | "in_progress" | "pending" | "not_applicable";
+
+export interface SeoTaskReportItem {
+  id: string;
+  source: "page_check" | "workflow" | "task";
+  group: string;
+  pageName: string | null;
+  title: string;
+  status: SeoTaskReportStatus;
+  assignedToName: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  price: number | null;
+  currency: string | null;
+  notes: string;
+}
+
+export interface SeoTaskReportData {
+  projectId: string;
+  startDate: string;
+  endDate: string;
+  generatedAt: string;
+  totals: {
+    total: number;
+    done: number;
+    inProgress: number;
+    pending: number;
+    notApplicable: number;
+  };
+  items: SeoTaskReportItem[];
+}
+
 export interface SeoReport {
   id: string;
   projectId: string;
