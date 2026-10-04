@@ -13,6 +13,7 @@ import {
   listDomains,
   listInvoiceItemsForInvoices,
   listInvoices,
+  listPaymentPlans,
   listRenewals,
   listTeamMembers,
   listAdminWorkItems,
@@ -35,6 +36,7 @@ export default async function AdminPage() {
     timeSummaries,
     invoices,
     payments,
+    paymentPlans,
     domains,
     domainClients,
     renewals,
@@ -48,6 +50,7 @@ export default async function AdminPage() {
     getAdminTaskTimeSummaries(),
     listInvoices(),
     listAllPayments(),
+    listPaymentPlans(),
     listDomains(),
     listDomainClients(),
     listRenewals(),
@@ -89,6 +92,7 @@ export default async function AdminPage() {
         invoices={invoices}
         invoiceItems={invoiceItems}
         payments={payments}
+        paymentPlans={paymentPlans}
         domains={domains}
         domainClients={domainClients}
         renewals={renewals}
