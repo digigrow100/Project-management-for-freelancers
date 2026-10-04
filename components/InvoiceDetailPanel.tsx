@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions";
 import { downloadInvoicePdf, previewInvoicePdf } from "@/lib/invoicePdf";
 import { cn, formatMoney } from "@/lib/utils";
+import { businessDateKey } from "@/lib/date";
 import { InvoiceTemplateSelector } from "@/components/InvoiceTemplateSelector";
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
@@ -134,8 +135,8 @@ export function InvoiceDetailPanel({
             className="rounded-md border border-base-600 bg-base-900 px-2.5 py-2 text-sm text-neutral-300 focus:border-accent-500 focus:outline-none"
           >
             {(Object.keys(STATUS_LABEL) as InvoiceStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
+              <option key={s} value={s} disabled={s === "paid" || s === "partially_paid"}>
+                {STATUS_LABEL[s]}{s === "paid" || s === "partially_paid" ? " (automatic)" : ""}
               </option>
             ))}
           </select>
@@ -359,6 +360,7 @@ function PaymentsSection({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
@@ -375,8 +377,13 @@ function PaymentsSection({
           formData.set("invoiceId", invoice.id);
           formData.set("clientId", clientId);
           formData.set("currency", invoice.currency);
+          setPaymentError(null);
           startTransition(async () => {
-            await addInvoicePaymentAction(formData);
+            const result = await addInvoicePaymentAction(formData);
+            if (!result.ok) {
+              setPaymentError(result.error);
+              return;
+            }
             router.refresh();
           });
         }}
@@ -398,7 +405,7 @@ function PaymentsSection({
           <input
             name="paidOn"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={businessDateKey()}
             className="rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 focus:border-accent-500 focus:outline-none"
           />
         </div>
@@ -410,6 +417,11 @@ function PaymentsSection({
             className="w-full rounded-md border border-base-600 bg-base-900 px-2 py-1.5 text-xs text-neutral-300 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
           />
         </div>
+        {paymentError && (
+          <p className="w-full rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            {paymentError}
+          </p>
+        )}
         <button
           type="submit"
           disabled={isPending}

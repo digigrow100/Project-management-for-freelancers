@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { businessDateKey } from "./date";
 import { getSupabase } from "./supabaseClient";
 import { PROJECT_TEMPLATES } from "./templates";
 import { decryptSecret, encryptSecret, hashVaultPassword, verifyVaultPassword } from "./backlinkCrypto";
@@ -283,7 +284,7 @@ export function isMissingTableError(error: unknown): boolean {
 }
 
 export function todayDateKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDateKey();
 }
 
 function toCompletedTimestamp(dateKey: string | null): string {
@@ -3429,18 +3430,37 @@ export async function listPaymentsForInvoice(invoiceId: string): Promise<Payment
 
 export async function listPaymentsForClient(clientId: string): Promise<Payment[]> {
   try {
-    const invoices = await listInvoicesForClient(clientId);
-    if (invoices.length === 0) return [];
-    const { data, error } = await getSupabase()
-      .from("freelance_hq_payments")
-      .select("*")
-      .in(
-        "invoice_id",
-        invoices.map((i) => i.id),
-      )
-      .order("paid_on", { ascending: false });
-    if (error) throw error;
-    return ((data ?? []) as PaymentRow[]).map(toPayment);
+    const [invoices, projects] = await Promise.all([
+      listInvoicesForClient(clientId),
+      getProjectsForClient(clientId),
+    ]);
+
+    const paymentRows: PaymentRow[] = [];
+
+    if (invoices.length > 0) {
+      const { data, error } = await getSupabase()
+        .from("freelance_hq_payments")
+        .select("*")
+        .in("invoice_id", invoices.map((invoice) => invoice.id));
+      if (error) throw error;
+      paymentRows.push(...((data ?? []) as PaymentRow[]));
+    }
+
+    if (projects.length > 0) {
+      const { data, error } = await getSupabase()
+        .from("freelance_hq_payments")
+        .select("*")
+        .in("project_id", projects.map((project) => project.id));
+      if (error) throw error;
+      paymentRows.push(...((data ?? []) as PaymentRow[]));
+    }
+
+    const unique = new Map<string, PaymentRow>();
+    for (const row of paymentRows) unique.set(row.id, row);
+
+    return Array.from(unique.values())
+      .map(toPayment)
+      .sort((a, b) => (a.paidOn === b.paidOn ? (a.createdAt < b.createdAt ? 1 : -1) : a.paidOn < b.paidOn ? 1 : -1));
   } catch (error) {
     if (isMissingTableError(error)) return [];
     throw error;
@@ -3984,16 +4004,22 @@ export function invoiceTotal(items: InvoiceItem[]): number {
  */
 export async function recomputeInvoiceStatus(invoiceId: string): Promise<void> {
   const invoice = await getInvoice(invoiceId);
-  if (!invoice || invoice.status === "draft" || invoice.status === "cancelled") return;
+  if (!invoice || invoice.status === "cancelled") return;
 
   const [items, payments] = await Promise.all([listInvoiceItems(invoiceId), listPaymentsForInvoice(invoiceId)]);
   const total = invoiceTotal(items);
-  const paid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const paid = payments.reduce((sum, payment) => sum + payment.amount, 0);
 
-  let status: InvoiceStatus = invoice.status === "overdue" ? "sent" : invoice.status;
-  if (paid <= 0) status = "sent";
-  else if (paid >= total && total > 0) status = "paid";
-  else status = "partially_paid";
+  let status: InvoiceStatus;
+  if (paid <= 0) {
+    // Preserve a draft until it is explicitly sent; sent/overdue display is
+    // otherwise derived from the due date at read time.
+    status = invoice.status === "draft" ? "draft" : "sent";
+  } else if (paid >= total && total > 0) {
+    status = "paid";
+  } else {
+    status = "partially_paid";
+  }
 
   await updateInvoice(invoiceId, { status });
 }
@@ -4035,17 +4061,43 @@ export async function generateDueInvoiceDrafts(): Promise<Invoice[]> {
 /** Aggregated invoiced/paid/outstanding across every one of a client's invoices, per currency (first currency used if the client bills in more than one). */
 export async function getClientBalance(clientId: string): Promise<ClientBalance> {
   const invoices = await listInvoicesForClient(clientId);
-  const nonCancelled = invoices.filter((i) => i.status !== "cancelled");
-  const currency = nonCancelled[0]?.currency ?? "PKR";
-  const relevant = nonCancelled.filter((i) => i.currency === currency);
+  const nonCancelled = invoices.filter((invoice) => invoice.status !== "cancelled");
+  const items = await listInvoiceItemsForInvoices(nonCancelled.map((invoice) => invoice.id));
+  const payments = (await listPaymentsForClient(clientId)).filter((payment) => payment.invoiceId);
 
-  const items = await listInvoiceItemsForInvoices(relevant.map((i) => i.id));
-  const totalInvoiced = relevant.reduce((sum, inv) => sum + invoiceTotal(items[inv.id] ?? []), 0);
+  const currencies = Array.from(
+    new Set([
+      ...nonCancelled.map((invoice) => invoice.currency),
+      ...payments.map((payment) => payment.currency),
+    ]),
+  );
 
-  const payments = await listPaymentsForClient(clientId);
-  const totalPaid = payments.filter((p) => p.currency === currency).reduce((sum, p) => sum + p.amount, 0);
+  if (currencies.length === 0) currencies.push("PKR");
 
-  return { totalInvoiced, totalPaid, outstanding: Math.max(0, totalInvoiced - totalPaid), currency };
+  const byCurrency = currencies.map((currency) => {
+    const totalInvoiced = nonCancelled
+      .filter((invoice) => invoice.currency === currency)
+      .reduce((sum, invoice) => sum + invoiceTotal(items[invoice.id] ?? []), 0);
+    const totalPaid = payments
+      .filter((payment) => payment.currency === currency)
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    return {
+      currency,
+      totalInvoiced,
+      totalPaid,
+      outstanding: Math.max(0, totalInvoiced - totalPaid),
+    };
+  });
+
+  const primary = byCurrency[0];
+  return {
+    totalInvoiced: primary.totalInvoiced,
+    totalPaid: primary.totalPaid,
+    outstanding: primary.outstanding,
+    currency: primary.currency,
+    byCurrency,
+  };
 }
 
 interface KeywordRow {

@@ -915,11 +915,19 @@ export interface Invoice {
 }
 
 /** Aggregated billing snapshot for one client, used by the client overview and future AI queries. */
+export interface ClientCurrencyBalance {
+  currency: string;
+  totalInvoiced: number;
+  totalPaid: number;
+  outstanding: number;
+}
+
 export interface ClientBalance {
   totalInvoiced: number;
   totalPaid: number;
   outstanding: number;
   currency: string;
+  byCurrency: ClientCurrencyBalance[];
 }
 
 /**
