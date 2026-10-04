@@ -16,7 +16,6 @@ import {
   Globe2,
   ReceiptText,
   CreditCard,
-  PlusCircle,
   Users,
   WalletCards,
 } from "lucide-react";
@@ -172,12 +171,19 @@ export function AdminDashboardOverview({
     () => activeProjects.filter((project) => project.type === activeProjectType),
     [activeProjects, activeProjectType],
   );
-  const invoiceByProject = new Map<string, Invoice>();
+  const currentMonth = businessMonthKey();
+  const invoicesByProject = new Map<string, Invoice[]>();
   for (const invoice of invoices) {
-    if (invoice.projectId && !invoiceByProject.has(invoice.projectId)) invoiceByProject.set(invoice.projectId, invoice);
+    if (!invoice.projectId) continue;
+    if (invoice.billingPeriod !== currentMonth && !invoice.issueDate.startsWith(currentMonth)) continue;
+    const list = invoicesByProject.get(invoice.projectId) ?? [];
+    list.push(invoice);
+    invoicesByProject.set(invoice.projectId, list);
+  }
+  for (const list of invoicesByProject.values()) {
+    list.sort((a, b) => a.currency.localeCompare(b.currency));
   }
 
-  const currentMonth = businessMonthKey();
   const currentMonthPayments = payments.filter((payment) => payment.paidOn.startsWith(currentMonth));
 
   const paidByProject = new Map<string, Map<string, number>>();
@@ -402,7 +408,8 @@ export function AdminDashboardOverview({
                       const percent = progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0);
                       const remainingTasks = Math.max(0, progress.total - progress.done);
                       const assignees = assigneesByProject[project.id] ?? [];
-                      const invoice = invoiceByProject.get(project.id);
+                      const projectInvoices = invoicesByProject.get(project.id) ?? [];
+                      const invoice = projectInvoices[0];
                       const projectPlans = paymentPlans.filter((plan) => plan.projectId === project.id);
                       const projectPaymentsAll = payments.filter((payment) => payment.projectId === project.id);
                       const ageDays = projectAgeDays(project.createdAt);
@@ -518,58 +525,62 @@ export function AdminDashboardOverview({
                           </div>
 
                           <div className="mt-3 border-t border-base-700/40 pt-3">
-                            {invoice ? (
+                            {projectInvoices.length > 0 ? (
                               <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="text-[9px] uppercase tracking-wide text-neutral-700">Latest invoice</p>
-                                    <p className="mt-1 truncate text-[11px] font-medium text-neutral-300">{invoice.invoiceNumber}</p>
-                                  </div>
-                                  <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold capitalize ${invoiceStatusClass(invoice.status)}`}>
-                                    {invoice.status.replaceAll("_", " ")}
-                                  </span>
-                                </div>
+                                <p className="text-[9px] uppercase tracking-wide text-neutral-700">This month invoices</p>
+                                {projectInvoices.map((currentInvoice) => (
+                                  <div key={currentInvoice.id} className="rounded-lg border border-base-700/50 bg-base-950/35 p-2.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <p className="truncate text-[11px] font-medium text-neutral-300">
+                                          {currentInvoice.invoiceNumber} · {currentInvoice.currency}
+                                        </p>
+                                        <p className="mt-0.5 text-[9px] text-neutral-700">
+                                          Due {formatProjectDate(currentInvoice.dueDate)}
+                                        </p>
+                                      </div>
+                                      <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold capitalize ${invoiceStatusClass(currentInvoice.status)}`}>
+                                        {currentInvoice.status.replaceAll("_", " ")}
+                                      </span>
+                                    </div>
 
-                                <div className="grid grid-cols-3 gap-1.5">
-                                  <Link
-                                    href={`/invoices/${invoice.id}?download=1`}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-accent-500/50 hover:text-accent-300"
-                                    title="Download invoice PDF"
-                                  >
-                                    <Download size={12} />
-                                    Download
-                                  </Link>
-                                  <Link
-                                    href={`/invoices/${invoice.id}`}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-sky-500/50 hover:text-sky-300"
-                                    title="Edit invoice"
-                                  >
-                                    <FilePenLine size={12} />
-                                    Edit
-                                  </Link>
-                                  <Link
-                                    href={`/invoices/${invoice.id}#payments`}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-amber-500/50 hover:text-amber-300"
-                                    title="Manage invoice payments"
-                                  >
-                                    <CreditCard size={12} />
-                                    Payment
-                                  </Link>
-                                </div>
+                                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                                      <Link
+                                        href={`/invoices/${currentInvoice.id}?download=1`}
+                                        className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-900/60 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-accent-500/50 hover:text-accent-300"
+                                        title="Download invoice PDF"
+                                      >
+                                        <Download size={12} />
+                                        Download
+                                      </Link>
+                                      <Link
+                                        href={`/invoices/${currentInvoice.id}`}
+                                        className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-900/60 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-sky-500/50 hover:text-sky-300"
+                                        title="Edit invoice and add extra items"
+                                      >
+                                        <FilePenLine size={12} />
+                                        Edit
+                                      </Link>
+                                      <Link
+                                        href={`/invoices/${currentInvoice.id}#payments`}
+                                        className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-900/60 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-amber-500/50 hover:text-amber-300"
+                                        title="Manage invoice payments"
+                                      >
+                                        <CreditCard size={12} />
+                                        Payment
+                                      </Link>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             ) : (
-                              <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-base-700 bg-base-950/25 px-3 py-2.5">
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-medium text-neutral-400">No invoice yet</p>
-                                  <p className="mt-0.5 text-[9px] text-neutral-700">Create one to manage billing from this card.</p>
-                                </div>
-                                <Link
-                                  href="/invoices"
-                                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-accent-300 hover:bg-accent-500/15"
-                                >
-                                  <PlusCircle size={12} />
-                                  Create
-                                </Link>
+                              <div className="rounded-lg border border-dashed border-base-700 bg-base-950/25 px-3 py-2.5">
+                                <p className="text-[10px] font-medium text-neutral-400">Invoice is generated automatically</p>
+                                <p className="mt-0.5 text-[9px] text-neutral-700">
+                                  {project.clientId || project.clientDetails.name || project.clientDetails.company
+                                    ? "Current month invoice is being prepared from the monthly billing plan."
+                                    : "Add/link client details so the automatic invoice can be issued."}
+                                </p>
                               </div>
                             )}
                           </div>
