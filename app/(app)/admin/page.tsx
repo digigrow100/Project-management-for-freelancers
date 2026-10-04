@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Users } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import {
+  ensureMonthlyProjectInvoices,
   getAdminTaskTimeSummaries,
   getAssignedProjectIds,
   getDomainSettings,
@@ -29,6 +30,8 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const currentProfile = await getCurrentProfile();
   if (currentProfile?.role !== "admin") notFound();
+
+  await ensureMonthlyProjectInvoices();
 
   const [
     members,
