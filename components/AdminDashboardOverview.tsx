@@ -17,10 +17,10 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeSummary } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary } from "@/lib/types";
 import { businessMonthKey } from "@/lib/date";
 
-type ProgressMap = Record<string, { done: number; total: number; openCount: number }>;
+type ProgressMap = Record<string, { done: number; total: number; openCount: number; percent?: number }>;
 
 function money(value: number, currency: string) {
   try {
@@ -85,6 +85,36 @@ function projectAgeDays(value: string) {
   return Math.max(0, Math.floor(diff / 86400000));
 }
 
+
+function businessDayKey(value: string | number | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function timeLabel(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Karachi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function liveEntrySeconds(entry: TaskTimeEntry, nowMs: number) {
+  if (entry.endedAt) return Math.max(0, entry.durationSeconds ?? 0);
+  return Math.max(0, Math.floor((nowMs - new Date(entry.startedAt).getTime()) / 1000));
+}
+
 export function AdminDashboardOverview({
   projects,
   progressMap,
@@ -92,6 +122,8 @@ export function AdminDashboardOverview({
   completedTasks,
   members,
   timeSummaries,
+  timeEntries,
+  memberProjectIds,
   invoices,
   invoiceItems,
   payments,
@@ -108,6 +140,8 @@ export function AdminDashboardOverview({
   completedTasks: Task[];
   members: Profile[];
   timeSummaries: TaskTimeSummary[];
+  timeEntries: TaskTimeEntry[];
+  memberProjectIds: Record<string, string[]>;
   invoices: Invoice[];
   invoiceItems: Record<string, InvoiceItem[]>;
   payments: Payment[];
@@ -174,6 +208,78 @@ export function AdminDashboardOverview({
   for (const row of timeSummaries) timeByMember.set(row.userId, (timeByMember.get(row.userId) ?? 0) + row.totalSeconds);
   const maxTaskCount = Math.max(1, ...Array.from(taskCountByMember.values()));
 
+  const nowMs = Date.now();
+  const todayKey = businessDayKey(nowMs);
+  const memberPerformance = members
+    .filter((member) => member.role !== "admin")
+    .map((member) => {
+      const assignedProjectIds = memberProjectIds[member.id] ?? [];
+      const assignedProjects = activeProjects.filter((project) => assignedProjectIds.includes(project.id));
+      const projectProgress = assignedProjects.map((project) => {
+        const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0, percent: 0 };
+        return {
+          project,
+          percent: progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0),
+        };
+      });
+      const overallPercent =
+        projectProgress.length > 0
+          ? Math.round(projectProgress.reduce((sum, item) => sum + item.percent, 0) / projectProgress.length)
+          : 0;
+
+      const entries = timeEntries.filter((entry) => entry.userId === member.id);
+      const todayEntries = entries.filter((entry) => businessDayKey(entry.startedAt) === todayKey);
+      const allTimeSeconds = entries.reduce((sum, entry) => sum + liveEntrySeconds(entry, nowMs), 0);
+      const todaySeconds = todayEntries.reduce((sum, entry) => sum + liveEntrySeconds(entry, nowMs), 0);
+
+      const firstStartedAt =
+        todayEntries.length > 0
+          ? [...todayEntries].sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0]?.startedAt ?? null
+          : null;
+      const latestActivityAt =
+        todayEntries.length > 0
+          ? todayEntries
+              .map((entry) => entry.endedAt ?? entry.startedAt)
+              .sort((a, b) => b.localeCompare(a))[0] ?? null
+          : null;
+
+      const activeEntry = todayEntries.find((entry) => !entry.endedAt);
+      const spanEndMs = activeEntry
+        ? nowMs
+        : latestActivityAt
+          ? new Date(latestActivityAt).getTime()
+          : 0;
+      const firstStartMs = firstStartedAt ? new Date(firstStartedAt).getTime() : 0;
+      const idleSeconds =
+        firstStartMs > 0 && spanEndMs >= firstStartMs
+          ? Math.max(0, Math.floor((spanEndMs - firstStartMs) / 1000) - todaySeconds)
+          : 0;
+
+      const todayByProject = new Map<string, number>();
+      const allTimeByProject = new Map<string, number>();
+      for (const entry of entries) {
+        const seconds = liveEntrySeconds(entry, nowMs);
+        allTimeByProject.set(entry.projectId, (allTimeByProject.get(entry.projectId) ?? 0) + seconds);
+        if (businessDayKey(entry.startedAt) === todayKey) {
+          todayByProject.set(entry.projectId, (todayByProject.get(entry.projectId) ?? 0) + seconds);
+        }
+      }
+
+      return {
+        member,
+        projectProgress,
+        overallPercent,
+        allTimeSeconds,
+        todaySeconds,
+        firstStartedAt,
+        latestActivityAt,
+        idleSeconds,
+        isActive: entries.some((entry) => !entry.endedAt),
+        todayByProject,
+        allTimeByProject,
+      };
+    });
+
   const domainClientById = new Map(domainClients.map((client) => [client.id, client]));
   const expiringDomains = domains
     .map((domain) => ({ domain, days: daysUntil(domain.expiryDate) }))
@@ -239,7 +345,7 @@ export function AdminDashboardOverview({
         ))}
       </nav>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="space-y-4">
           <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
             <SectionHead
@@ -281,7 +387,7 @@ export function AdminDashboardOverview({
                   <div className="grid auto-cols-[minmax(290px,340px)] grid-flow-col gap-3">
                     {visibleProjects.map((project) => {
                       const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0 };
-                      const percent = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+                      const percent = progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0);
                       const remainingTasks = Math.max(0, progress.total - progress.done);
                       const assignees = assigneesByProject[project.id] ?? [];
                       const invoice = invoiceByProject.get(project.id);
@@ -559,30 +665,81 @@ export function AdminDashboardOverview({
           </div>
         </div>
 
-        <aside className="self-start rounded-xl2 border border-base-700/60 bg-base-850 shadow-card xl:sticky xl:top-4">
-          <SectionHead icon={Activity} title="Recent Activity" subtitle="Latest completed work and alerts" />
-          <div className="divide-y divide-base-700/50">
-            {recentDone.map((task) => (
-              <div key={task.id} className="flex gap-3 px-4 py-3">
-                <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-300"><CheckCircle2 size={14} /></span>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-neutral-200">Task completed</p>
-                  <p className="mt-0.5 truncate text-[11px] text-neutral-500">{task.title}</p>
-                  <p className="mt-1 text-[10px] text-neutral-700">{task.assignedToName ?? "Team member"}</p>
+        <aside className="self-start overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card xl:sticky xl:top-4">
+          <SectionHead icon={Activity} title="Team Performance" subtitle="Daily activity, time and assigned-project progress" />
+          <div className="space-y-3 p-3">
+            {memberPerformance.map((row) => (
+              <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${row.isActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600"}`} />
+                      <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
+                    </div>
+                    <p className="mt-1 text-[10px] text-neutral-600">{jobRoleLabel(row.member.jobRole)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">overall</p>
+                  </div>
                 </div>
-              </div>
+
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
+                  <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, row.overallPercent)}%` }} />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Today</p>
+                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
+                  </div>
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">All time</p>
+                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.allTimeSeconds)}</p>
+                  </div>
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
+                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
+                  </div>
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last activity</p>
+                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between rounded-lg border border-amber-500/15 bg-amber-500/5 px-2.5 py-2">
+                  <span className="text-[10px] text-neutral-500">Idle / paused today</span>
+                  <span className="text-[11px] font-semibold text-amber-300">{duration(row.idleSeconds)}</span>
+                </div>
+
+                <div className="mt-3 border-t border-base-700/40 pt-3">
+                  <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">Assigned projects</p>
+                  <div className="space-y-2.5">
+                    {row.projectProgress.map(({ project, percent }) => (
+                      <div key={project.id}>
+                        <div className="flex items-center justify-between gap-2">
+                          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[11px] font-medium text-neutral-300 hover:text-accent-300">
+                            {project.name}
+                          </Link>
+                          <span className="shrink-0 text-[10px] font-semibold text-neutral-400">{percent}%</span>
+                        </div>
+                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-base-700">
+                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(100, percent)}%` }} />
+                        </div>
+                        <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
+                          <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
+                          <span>Total {duration(row.allTimeByProject.get(project.id) ?? 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {row.projectProgress.length === 0 && (
+                      <p className="text-[10px] text-neutral-600">No active project assigned.</p>
+                    )}
+                  </div>
+                </div>
+              </section>
             ))}
-            {expiringDomains[0] && (
-              <div className="flex gap-3 px-4 py-3">
-                <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-500/10 text-amber-300"><AlertTriangle size={14} /></span>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-neutral-200">Domain renewal reminder</p>
-                  <p className="mt-0.5 text-[11px] text-neutral-500">{expiringDomains[0].domain.name}</p>
-                  <p className="mt-1 text-[10px] text-neutral-700">Expires in {expiringDomains[0].days} days</p>
-                </div>
-              </div>
-            )}
-            {recentDone.length === 0 && !expiringDomains[0] && <Empty text="No recent activity." />}
+            {memberPerformance.length === 0 && <Empty text="No team members." />}
           </div>
         </aside>
       </div>
