@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -14,7 +17,7 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, Profile, Project, Renewal, Task, TaskTimeSummary } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeSummary } from "@/lib/types";
 import { businessMonthKey } from "@/lib/date";
 
 type ProgressMap = Record<string, { done: number; total: number; openCount: number }>;
@@ -60,6 +63,28 @@ function invoiceStatusClass(status: Invoice["status"]) {
   return "bg-base-700 text-neutral-400";
 }
 
+
+const PROJECT_TABS: Array<{ key: ProjectType; label: string }> = [
+  { key: "seo", label: "SEO" },
+  { key: "web_dev", label: "Web Development" },
+  { key: "web_app", label: "Web Apps" },
+  { key: "digital_marketing", label: "Digital Marketing" },
+  { key: "other", label: "Other" },
+];
+
+function formatProjectDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function projectAgeDays(value: string) {
+  const created = new Date(value);
+  if (Number.isNaN(created.getTime())) return 0;
+  const diff = Date.now() - created.getTime();
+  return Math.max(0, Math.floor(diff / 86400000));
+}
+
 export function AdminDashboardOverview({
   projects,
   progressMap,
@@ -70,6 +95,7 @@ export function AdminDashboardOverview({
   invoices,
   invoiceItems,
   payments,
+  paymentPlans,
   domains,
   domainClients,
   renewals,
@@ -85,6 +111,7 @@ export function AdminDashboardOverview({
   invoices: Invoice[];
   invoiceItems: Record<string, InvoiceItem[]>;
   payments: Payment[];
+  paymentPlans: PaymentPlan[];
   domains: Domain[];
   domainClients: DomainClient[];
   renewals: Renewal[];
@@ -92,6 +119,16 @@ export function AdminDashboardOverview({
   assigneesByProject: Record<string, string[]>;
 }) {
   const activeProjects = projects.filter((project) => !project.archived);
+  const availableProjectTypes = PROJECT_TABS.filter((tab) =>
+    activeProjects.some((project) => project.type === tab.key),
+  );
+  const [activeProjectType, setActiveProjectType] = useState<ProjectType>(
+    availableProjectTypes[0]?.key ?? "seo",
+  );
+  const visibleProjects = useMemo(
+    () => activeProjects.filter((project) => project.type === activeProjectType),
+    [activeProjects, activeProjectType],
+  );
   const invoiceByProject = new Map<string, Invoice>();
   for (const invoice of invoices) {
     if (invoice.projectId && !invoiceByProject.has(invoice.projectId)) invoiceByProject.set(invoice.projectId, invoice);
@@ -204,91 +241,185 @@ export function AdminDashboardOverview({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-            <SectionHead icon={FolderKanban} title="Active Projects" subtitle="Project progress, client identity and payment status" href="/projects" action="View all projects" />
-            <div className="divide-y divide-base-700/50">
-              {activeProjects.slice(0, 8).map((project) => {
-                const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0 };
-                const percent = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
-                const invoice = invoiceByProject.get(project.id);
-                const assignees = assigneesByProject[project.id] ?? [];
-                const invoiceAmount = invoice ? invoiceTotal(invoice) : 0;
-                const invoicePaid = invoice ? (paidByInvoice.get(invoice.id) ?? 0) : 0;
-                const invoiceDue = Math.max(0, invoiceAmount - invoicePaid);
-                const projectPayments = paidByProject.get(project.id);
-                const fallbackPayments = projectPayments
-                  ? Array.from(projectPayments.entries()).map(([currency, amount]) => money(amount, currency)).join(" · ")
-                  : "";
-                return (
-                  <div key={project.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.35fr)_minmax(0,.9fr)_minmax(135px,.75fr)_minmax(150px,.8fr)_170px] md:items-center">
-                    <div className="min-w-0">
-                      <Link href={`/projects/${project.id}`} className="block truncate text-sm font-semibold text-neutral-100 hover:text-accent-300">
-                        {project.name}
-                      </Link>
-                      <p className="mt-0.5 truncate text-xs text-neutral-500">{project.client || project.clientDetails.company || project.clientDetails.name || "No client"}</p>
-                      <p className="mt-1 truncate text-[10px] text-neutral-600">
-                        Assigned: {assignees.length > 0 ? assignees.join(", ") : "Unassigned"}
-                      </p>
-                    </div>
+          <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+            <SectionHead
+              icon={FolderKanban}
+              title="Active Projects"
+              subtitle="Progress, assignment, payments and project age"
+              href="/projects"
+              action="View all projects"
+            />
 
-                    <div>
-                      <div className="mb-1 flex items-center justify-between text-[11px] text-neutral-500">
-                        <span>{percent}%</span>
-                        <span>{progress.done}/{progress.total || 0} tasks</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-base-700">
-                        <div className="h-1.5 rounded-full bg-emerald-400" style={{ width: `${percent}%` }} />
-                      </div>
-                    </div>
-
-                    <div className="text-[10px]">
-                      {invoice ? (
-                        <>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 font-semibold capitalize ${invoiceStatusClass(invoice.status)}`}>
-                            {invoice.status.replaceAll("_", " ")}
+            {activeProjects.length > 0 ? (
+              <>
+                <div className="border-b border-base-700/50 px-4 py-3">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {availableProjectTypes.map((tab) => {
+                      const count = activeProjects.filter((project) => project.type === tab.key).length;
+                      return (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => setActiveProjectType(tab.key)}
+                          className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                            activeProjectType === tab.key
+                              ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
+                              : "border-base-700 bg-base-900/50 text-neutral-500 hover:border-base-600 hover:text-neutral-300"
+                          }`}
+                        >
+                          {tab.label}
+                          <span className="ml-2 rounded-full bg-base-950/70 px-1.5 py-0.5 text-[9px] text-neutral-500">
+                            {count}
                           </span>
-                          <p className="mt-1 text-neutral-600">{invoice.invoiceNumber}</p>
-                        </>
-                      ) : (
-                        <span className="text-[11px] text-neutral-600">No invoice</span>
-                      )}
-                    </div>
-
-                    <div className="text-[10px]">
-                      {invoice ? (
-                        <>
-                          <p className="font-medium text-emerald-300">Paid {money(invoicePaid, invoice.currency)}</p>
-                          <p className={invoiceDue > 0 ? "mt-1 text-amber-300" : "mt-1 text-neutral-600"}>
-                            {invoiceDue > 0 ? `Due ${money(invoiceDue, invoice.currency)}` : "Fully paid"}
-                          </p>
-                        </>
-                      ) : fallbackPayments ? (
-                        <>
-                          <p className="text-neutral-500">Received</p>
-                          <p className="mt-1 font-medium text-emerald-300">{fallbackPayments}</p>
-                        </>
-                      ) : (
-                        <span className="text-neutral-600">No payment</span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                      {invoice && (
-                        <>
-                          <Link href={`/invoices/${invoice.id}?download=1`} className="inline-flex items-center gap-1.5 rounded-md border border-base-600 px-2.5 py-1.5 text-[11px] text-neutral-300 hover:border-accent-500/50 hover:text-accent-300">
-                            <Download size={12} /> Download
-                          </Link>
-                          <Link href={`/invoices/${invoice.id}`} className="rounded-md border border-base-600 px-2.5 py-1.5 text-[11px] text-neutral-400 hover:text-neutral-200">
-                            Edit
-                          </Link>
-                        </>
-                      )}
-                    </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
-              {activeProjects.length === 0 && <Empty text="No active projects." />}
-            </div>
+                </div>
+
+                <div className="overflow-x-auto p-4">
+                  <div className="grid auto-cols-[minmax(290px,340px)] grid-flow-col gap-3">
+                    {visibleProjects.map((project) => {
+                      const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0 };
+                      const percent = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+                      const remainingTasks = Math.max(0, progress.total - progress.done);
+                      const assignees = assigneesByProject[project.id] ?? [];
+                      const invoice = invoiceByProject.get(project.id);
+                      const projectPlans = paymentPlans.filter((plan) => plan.projectId === project.id);
+                      const projectPaymentsAll = payments.filter((payment) => payment.projectId === project.id);
+                      const ageDays = projectAgeDays(project.createdAt);
+
+                      const paymentRows = projectPlans.map((plan) => {
+                        const relevantPayments =
+                          plan.planType === "monthly_fixed"
+                            ? projectPaymentsAll.filter(
+                                (payment) =>
+                                  payment.currency === plan.currency &&
+                                  payment.kind !== "additional" &&
+                                  (payment.period === currentMonth || payment.paidOn.startsWith(currentMonth)),
+                              )
+                            : projectPaymentsAll.filter(
+                                (payment) => payment.currency === plan.currency && payment.kind !== "additional",
+                              );
+                        const paid = relevantPayments.reduce((sum, payment) => sum + payment.amount, 0);
+                        return {
+                          currency: plan.currency,
+                          paid,
+                          due: Math.max(0, plan.amount - paid),
+                          label: plan.planType === "monthly_fixed" ? "This month" : "Project",
+                        };
+                      });
+
+                      if (paymentRows.length === 0 && invoice) {
+                        const invoiceAmount = invoiceTotal(invoice);
+                        const invoicePaid = paidByInvoice.get(invoice.id) ?? 0;
+                        paymentRows.push({
+                          currency: invoice.currency,
+                          paid: invoicePaid,
+                          due: Math.max(0, invoiceAmount - invoicePaid),
+                          label: "Invoice",
+                        });
+                      }
+
+                      return (
+                        <article
+                          key={project.id}
+                          className="flex min-h-[285px] flex-col rounded-xl border border-base-700/60 bg-base-900/55 p-4 transition-colors hover:border-accent-500/35"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <Link
+                                href={`/projects/${project.id}`}
+                                className="block truncate text-base font-semibold text-neutral-100 hover:text-accent-300"
+                              >
+                                {project.name}
+                              </Link>
+                              <p className="mt-1 truncate text-xs text-neutral-600">
+                                {project.client || project.clientDetails.company || project.clientDetails.name || "No client"}
+                              </p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-base-800 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-neutral-500">
+                              {PROJECT_TABS.find((tab) => tab.key === project.type)?.label ?? "Project"}
+                            </span>
+                          </div>
+
+                          <div className="mt-4 rounded-lg border border-base-700/50 bg-base-950/45 p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] uppercase tracking-wide text-neutral-600">Assigned to</p>
+                                <p className="mt-1 text-xs font-medium text-neutral-300">
+                                  {assignees.length > 0 ? assignees.join(", ") : "Unassigned"}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-semibold text-accent-300">{percent}%</p>
+                                <p className="text-[9px] text-neutral-600">complete</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
+                              <div
+                                className="h-full rounded-full bg-emerald-400"
+                                style={{ width: `${Math.min(100, percent)}%` }}
+                              />
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-600">
+                              <span>{progress.done} done</span>
+                              <span>{remainingTasks} remaining</span>
+                              <span>{progress.total} total</span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            <p className="text-[10px] uppercase tracking-wide text-neutral-600">Payment</p>
+                            {paymentRows.length > 0 ? (
+                              <div className="mt-2 space-y-2">
+                                {paymentRows.slice(0, 2).map((row) => (
+                                  <div
+                                    key={`${project.id}-${row.currency}`}
+                                    className="flex items-center justify-between rounded-lg border border-base-700/40 bg-base-950/35 px-3 py-2"
+                                  >
+                                    <div>
+                                      <p className="text-[10px] text-neutral-600">{row.label} · {row.currency}</p>
+                                      <p className="mt-0.5 text-xs font-semibold text-emerald-300">
+                                        Paid {money(row.paid, row.currency)}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[10px] text-neutral-600">Due</p>
+                                      <p className={`mt-0.5 text-xs font-semibold ${row.due > 0 ? "text-amber-300" : "text-emerald-300"}`}>
+                                        {row.due > 0 ? money(row.due, row.currency) : "Paid"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-2 text-xs text-neutral-600">No payment plan or invoice yet</p>
+                            )}
+                          </div>
+
+                          <div className="mt-auto flex items-end justify-between gap-3 border-t border-base-700/40 pt-3">
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wide text-neutral-700">Added</p>
+                              <p className="mt-1 text-[11px] text-neutral-400">{formatProjectDate(project.createdAt)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[9px] uppercase tracking-wide text-neutral-700">Project age</p>
+                              <p className="mt-1 text-[11px] font-medium text-neutral-300">
+                                {ageDays === 0 ? "Added today" : `${ageDays} day${ageDays === 1 ? "" : "s"}`}
+                              </p>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <Empty text="No active projects." />
+            )}
           </section>
 
           <div className="grid gap-4 lg:grid-cols-3">
