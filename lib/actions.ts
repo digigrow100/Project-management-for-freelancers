@@ -962,6 +962,7 @@ export async function addPaymentAction(formData: FormData) {
   await store.addPayment({ projectId, amount, currency, kind, period, note, paidOn });
   refresh(projectId);
   revalidatePath("/finance");
+  revalidatePath("/admin");
 }
 
 export async function deletePaymentAction(id: string, projectId: string) {
@@ -969,6 +970,7 @@ export async function deletePaymentAction(id: string, projectId: string) {
   await store.deletePayment(id);
   refresh(projectId);
   revalidatePath("/finance");
+  revalidatePath("/admin");
 }
 
 export async function deletePaymentPlanAction(formData: FormData) {
@@ -1112,6 +1114,7 @@ export async function updateInvoiceAction(id: string, clientId: string, formData
     issueDate: str(formData, "issueDate") || store.todayDateKey(),
     dueDate: str(formData, "dueDate") || store.todayDateKey(),
     notes: str(formData, "notes"),
+    templateKey: (str(formData, "templateKey") || "modern_blue") as import("./types").InvoiceTemplateKey,
   });
   await store.replaceInvoiceItems(id, items);
   await store.recomputeInvoiceStatus(id);
@@ -1149,8 +1152,10 @@ export async function addInvoicePaymentAction(formData: FormData) {
   const note = str(formData, "note");
   const paidOn = str(formData, "paidOn") || store.todayDateKey();
 
+  const invoice = await store.getInvoice(invoiceId);
+
   await store.addPayment({
-    projectId: null,
+    projectId: invoice?.projectId ?? null,
     invoiceId,
     amount,
     currency,
@@ -1164,6 +1169,7 @@ export async function addInvoicePaymentAction(formData: FormData) {
   revalidatePath("/invoices");
   if (clientId) revalidatePath(`/clients/${clientId}`);
   revalidatePath("/finance");
+  revalidatePath("/admin");
 }
 
 export async function deleteInvoicePaymentAction(paymentId: string, invoiceId: string, clientId: string) {
@@ -1174,6 +1180,7 @@ export async function deleteInvoicePaymentAction(paymentId: string, invoiceId: s
   revalidatePath("/invoices");
   if (clientId) revalidatePath(`/clients/${clientId}`);
   revalidatePath("/finance");
+  revalidatePath("/admin");
 }
 
 /** Generates draft invoices for every due recurring client_service. Never sends — drafts always need manual review. */

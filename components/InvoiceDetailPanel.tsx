@@ -231,6 +231,7 @@ export function InvoiceDetailPanel({
         <div>
           <label className="mb-2 block text-xs font-medium text-neutral-400">Invoice template</label>
           <InvoiceTemplateSelector value={templateKey} onChange={setTemplateKey} />
+          <input type="hidden" name="templateKey" value={templateKey} />
         </div>
 
         <div className="flex flex-col gap-2">

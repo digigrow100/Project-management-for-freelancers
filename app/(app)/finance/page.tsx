@@ -43,7 +43,7 @@ function rangeStart(range: RangeKey): string {
 
 export default async function FinancePage({ searchParams }: { searchParams: { range?: string; currency?: string } }) {
   const profile = await getCurrentProfile();
-  if (profile?.role !== "admin") notFound();
+  if (!profile || (profile.role !== "admin" && !profile.canAccessFinance)) notFound();
 
   const range = (["month", "6m", "year"].includes(searchParams.range ?? "") ? searchParams.range : "month") as RangeKey;
   const start = rangeStart(range);
@@ -57,7 +57,15 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
   ]);
   const invoiceItemsByInvoice = await listInvoiceItemsForInvoices(allInvoices.map((i) => i.id));
 
-  const currencies = sortCurrencies(Array.from(new Set(allPlans.map((p) => p.currency))));
+  const currencies = sortCurrencies(
+    Array.from(
+      new Set([
+        ...allPlans.map((p) => p.currency),
+        ...allPayments.map((p) => p.currency),
+        ...allInvoices.map((i) => i.currency),
+      ]),
+    ),
+  );
   const currency = resolveSelectedCurrency(currencies, searchParams.currency);
   if (currencies.length === 0) currencies.push(currency);
 
