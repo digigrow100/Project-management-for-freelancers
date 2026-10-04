@@ -31,10 +31,6 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function dateKey(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function rangeStart(range: RangeKey): string {
   const today = businessDateKey();
   const [year, month] = today.split("-").map(Number);
