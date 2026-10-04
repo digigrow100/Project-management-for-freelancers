@@ -79,9 +79,10 @@ function rangeFor(
   }
 
   if (mode === "monthly") {
-    const [year, monthNumber] = month.split("-").map(Number);
-    const first = new Date(year, (monthNumber || 1) - 1, 1);
-    const last = new Date(year, monthNumber || 1, 0);
+    const year = Number(month.slice(0, 4)) || new Date().getFullYear();
+    const monthNumber = Number(month.slice(5, 7)) || 1;
+    const first = new Date(year, monthNumber - 1, 1);
+    const last = new Date(year, monthNumber, 0);
     return { startDate: dateKey(first), endDate: dateKey(last) };
   }
 
