@@ -946,12 +946,17 @@ export async function setPaymentPlanAction(formData: FormData) {
   revalidatePath("/finance");
 }
 
-export async function addPaymentAction(formData: FormData) {
+export async function addPaymentAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireAdmin();
 
   const projectId = str(formData, "projectId");
   const amount = Number(str(formData, "amount"));
-  if (!projectId || !amount) return;
+  if (!projectId) return { ok: false, error: "Project is required." };
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: "Payment amount must be greater than zero." };
+  }
 
   const currency = str(formData, "currency") || "PKR";
   const kind = (str(formData, "kind") || "installment") as PaymentKind;
@@ -959,10 +964,31 @@ export async function addPaymentAction(formData: FormData) {
   const note = str(formData, "note");
   const paidOn = str(formData, "paidOn") || store.todayDateKey();
 
+  if (kind === "monthly" && !period) {
+    return { ok: false, error: "Select the month for a monthly payment." };
+  }
+
+  const plans = await store.listPaymentPlansForProject(projectId);
+  const plan = plans.find((item) => item.currency === currency);
+  if (kind === "installment" && plan?.planType === "one_time") {
+    const payments = await store.listPaymentsForProject(projectId);
+    const contractPaid = payments
+      .filter((payment) => payment.currency === currency && payment.kind !== "additional")
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    const remaining = Math.max(0, plan.amount - contractPaid);
+    if (amount > remaining) {
+      return {
+        ok: false,
+        error: `Payment exceeds the remaining project balance of ${currency} ${remaining.toLocaleString("en-GB")}.`,
+      };
+    }
+  }
+
   await store.addPayment({ projectId, amount, currency, kind, period, note, paidOn });
   refresh(projectId);
   revalidatePath("/finance");
   revalidatePath("/admin");
+  return { ok: true };
 }
 
 export async function deletePaymentAction(id: string, projectId: string) {
@@ -1126,11 +1152,23 @@ export async function updateInvoiceAction(id: string, clientId: string, formData
 
 export async function setInvoiceStatusAction(id: string, clientId: string, status: InvoiceStatus) {
   await requireFinanceAccess();
-  await store.updateInvoice(id, { status });
+
+  if (status === "cancelled") {
+    await store.updateInvoice(id, { status });
+  } else {
+    const payments = await store.listPaymentsForInvoice(id);
+    if (payments.length > 0 || status === "paid" || status === "partially_paid") {
+      await store.recomputeInvoiceStatus(id);
+    } else {
+      await store.updateInvoice(id, { status });
+    }
+  }
+
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/finance");
+  revalidatePath("/admin");
 }
 
 export async function deleteInvoiceAction(id: string, clientId: string) {
@@ -1141,11 +1179,16 @@ export async function deleteInvoiceAction(id: string, clientId: string) {
   revalidatePath("/finance");
 }
 
-export async function addInvoicePaymentAction(formData: FormData) {
+export async function addInvoicePaymentAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const invoiceId = str(formData, "invoiceId");
   const clientId = str(formData, "clientId");
   const amount = Number(str(formData, "amount"));
-  if (!invoiceId || !amount) return;
+  if (!invoiceId) return { ok: false, error: "Invoice is required." };
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: "Payment amount must be greater than zero." };
+  }
   await requireFinanceAccess();
 
   const currency = str(formData, "currency") || "PKR";
@@ -1153,9 +1196,33 @@ export async function addInvoicePaymentAction(formData: FormData) {
   const paidOn = str(formData, "paidOn") || store.todayDateKey();
 
   const invoice = await store.getInvoice(invoiceId);
+  if (!invoice) return { ok: false, error: "Invoice was not found." };
+  if (invoice.status === "cancelled") {
+    return { ok: false, error: "A cancelled invoice cannot receive payments." };
+  }
+  if (invoice.status === "draft") {
+    return { ok: false, error: "Mark the invoice as Sent before recording a payment." };
+  }
+  if (currency !== invoice.currency) {
+    return { ok: false, error: "Payment currency must match the invoice currency." };
+  }
+
+  const [items, payments] = await Promise.all([
+    store.listInvoiceItems(invoiceId),
+    store.listPaymentsForInvoice(invoiceId),
+  ]);
+  const total = store.invoiceTotal(items);
+  const alreadyPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const remaining = Math.max(0, total - alreadyPaid);
+  if (amount > remaining) {
+    return {
+      ok: false,
+      error: `Payment exceeds the remaining invoice balance of ${currency} ${remaining.toLocaleString("en-GB")}.`,
+    };
+  }
 
   await store.addPayment({
-    projectId: invoice?.projectId ?? null,
+    projectId: invoice.projectId ?? null,
     invoiceId,
     amount,
     currency,
@@ -1170,6 +1237,7 @@ export async function addInvoicePaymentAction(formData: FormData) {
   if (clientId) revalidatePath(`/clients/${clientId}`);
   revalidatePath("/finance");
   revalidatePath("/admin");
+  return { ok: true };
 }
 
 export async function deleteInvoicePaymentAction(paymentId: string, invoiceId: string, clientId: string) {
