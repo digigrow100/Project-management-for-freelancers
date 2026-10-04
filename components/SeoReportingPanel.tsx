@@ -10,7 +10,6 @@ import {
   FileSpreadsheet,
   FileText,
   PoundSterling,
-  Printer,
   ShieldCheck,
 } from "lucide-react";
 import type {
@@ -135,14 +134,6 @@ function statusClass(status: SeoTaskReportItem["status"]) {
 }
 
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
 
 function csvCell(value: string | number | null | undefined) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -319,14 +310,88 @@ export function SeoReportingPanel({
     URL.revokeObjectURL(url);
   };
 
-  const exportClientPdf = () => {
+  const exportClientPdf = async () => {
     if (clientItems.length === 0) return;
 
-    const popup = window.open("", "_blank", "noopener,noreferrer");
-    if (!popup) {
-      window.alert("Please allow pop-ups to export the PDF.");
-      return;
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 42;
+    const contentWidth = pageWidth - margin * 2;
+    const bottomLimit = pageHeight - 48;
+    let y = 48;
+
+    const ensureSpace = (height: number) => {
+      if (y + height <= bottomLimit) return;
+      doc.addPage();
+      y = 48;
+    };
+
+    const drawWrapped = (
+      text: string,
+      x: number,
+      maxWidth: number,
+      fontSize: number,
+      lineHeight: number,
+      style: "normal" | "bold" = "normal",
+    ) => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(fontSize);
+      const lines = doc.splitTextToSize(text || "", maxWidth) as string[];
+      ensureSpace(Math.max(lineHeight, lines.length * lineHeight));
+      doc.text(lines, x, y);
+      y += Math.max(lineHeight, lines.length * lineHeight);
+    };
+
+    doc.setTextColor(4, 120, 87);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text((companyName || "Company").toUpperCase(), margin, y);
+    y += 20;
+
+    doc.setTextColor(17, 24, 39);
+    doc.setFontSize(22);
+    doc.text("SEO Work Report", margin, y);
+    y += 22;
+
+    doc.setFontSize(12);
+    doc.text(projectName, margin, y);
+    y += 18;
+
+    if (!hideDatesFromClient) {
+      doc.setTextColor(107, 114, 128);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(
+        `Report period: ${displayDate(selectedRange.startDate)} - ${displayDate(selectedRange.endDate)}`,
+        margin,
+        y,
+      );
+      y += 18;
     }
+
+    doc.setDrawColor(209, 213, 219);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 18;
+
+    doc.setTextColor(75, 85, 99);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const selectedStatusLabels =
+      allStatuses
+        .filter((status) => includedStatuses.has(status.key))
+        .map((status) => status.label)
+        .join(", ") || "No statuses selected";
+    drawWrapped(
+      `${clientItems.length} included tasks | ${selectedStatusLabels} | ${includePricesForClient ? "Prices included" : "Prices hidden"} | ${hideDatesFromClient ? "Dates hidden" : "Dates included"}`,
+      margin,
+      contentWidth,
+      9,
+      13,
+    );
+    y += 8;
 
     const grouped = new Map<string, SeoTaskReportItem[]>();
     for (const item of clientItems) {
@@ -335,102 +400,102 @@ export function SeoReportingPanel({
       grouped.set(item.group, list);
     }
 
-    const reportRange = hideDatesFromClient
-      ? ""
-      : `<p class="range">Report period: ${escapeHtml(displayDate(selectedRange.startDate))} – ${escapeHtml(displayDate(selectedRange.endDate))}</p>`;
+    for (const [group, items] of grouped.entries()) {
+      ensureSpace(54);
+      doc.setTextColor(17, 24, 39);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text(group, margin, y);
+      y += 16;
 
-    const sections = Array.from(grouped.entries())
-      .map(([group, items]) => {
-        const rows = items
-          .map((item) => {
-            const price = priceLabel(item);
-            const dates = hideDatesFromClient
-              ? ""
-              : `<div class="dates">${item.startedAt ? `Started: ${escapeHtml(displayDate(item.startedAt, true))}` : ""}${item.startedAt && item.completedAt ? " · " : ""}${item.completedAt ? `Completed: ${escapeHtml(displayDate(item.completedAt, true))}` : ""}</div>`;
-            const priceHtml =
-              includePricesForClient && price
-                ? `<span class="price">${escapeHtml(price)}</span>`
-                : "";
+      const doneCount = items.filter((item) => item.status === "done").length;
+      const pendingCount = items.filter((item) => item.status === "pending").length;
+      const progressCount = items.filter((item) => item.status === "in_progress").length;
 
-            return `
-              <tr>
-                <td>
-                  <strong>${escapeHtml(item.title)}</strong>
-                  <div class="meta">
-                    ${item.assignedToName ? `By ${escapeHtml(item.assignedToName)} · ` : ""}
-                    ${escapeHtml(item.source.replaceAll("_", " "))}
-                    ${priceHtml ? ` · ${priceHtml}` : ""}
-                  </div>
-                  ${dates}
-                  ${item.notes ? `<div class="notes">${escapeHtml(item.notes)}</div>` : ""}
-                </td>
-                <td class="status">${escapeHtml(statusLabel(item.status))}</td>
-              </tr>`;
-          })
-          .join("");
+      doc.setTextColor(107, 114, 128);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text(
+        `${items.length} tasks | ${doneCount} done | ${progressCount} in progress | ${pendingCount} pending`,
+        margin,
+        y,
+      );
+      y += 14;
 
-        return `
-          <section>
-            <h2>${escapeHtml(group)}</h2>
-            <table>
-              <thead><tr><th>Task</th><th>Status</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </section>`;
-      })
-      .join("");
+      for (const item of items) {
+        const price = priceLabel(item);
+        const details: string[] = [];
+        if (item.assignedToName) details.push(`By ${item.assignedToName}`);
+        details.push(item.source.replaceAll("_", " "));
+        if (includePricesForClient && price) details.push(`Price ${price}`);
 
-    const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(companyName || "Company")} - ${escapeHtml(projectName)} - SEO Report</title>
-  <style>
-    @page { size: A4; margin: 16mm; }
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; color: #111827; margin: 0; font-size: 12px; }
-    header { border-bottom: 2px solid #111827; padding-bottom: 14px; margin-bottom: 18px; }
-    .company { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #047857; }
-    h1 { font-size: 24px; margin: 5px 0 4px; }
-    .project { font-size: 14px; font-weight: 600; color: #374151; margin: 0; }
-    .range { color: #6b7280; margin: 7px 0 0; }
-    .summary { display: flex; gap: 8px; margin: 0 0 18px; flex-wrap: wrap; }
-    .pill { border: 1px solid #d1d5db; border-radius: 999px; padding: 5px 9px; color: #4b5563; }
-    section { margin: 0 0 18px; break-inside: avoid; }
-    h2 { font-size: 14px; margin: 0 0 7px; }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; background: #f3f4f6; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
-    th, td { padding: 8px; border: 1px solid #e5e7eb; vertical-align: top; }
-    th:last-child, td.status { width: 95px; }
-    .meta, .dates, .notes { margin-top: 4px; color: #6b7280; font-size: 10px; }
-    .notes { color: #4b5563; }
-    .price { color: #92400e; font-weight: 600; }
-    footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 9px; }
-    @media print { .no-print { display: none !important; } }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="company">${escapeHtml(companyName || "Company")}</div>
-    <h1>SEO Work Report</h1>
-    <p class="project">${escapeHtml(projectName)}</p>
-    ${reportRange}
-  </header>
-  <div class="summary">
-    <span class="pill">${clientItems.length} included tasks</span>
-    <span class="pill">${escapeHtml(allStatuses.filter((status) => includedStatuses.has(status.key)).map((status) => status.label).join(", ") || "No statuses selected")}</span>
-    <span class="pill">${includePricesForClient ? "Prices included" : "Prices hidden"}</span>
-    <span class="pill">${hideDatesFromClient ? "Dates hidden" : "Dates included"}</span>
-  </div>
-  ${sections}
-  <footer>Generated from the project reporting dashboard.</footer>
-  <script>window.addEventListener("load", function () { window.print(); });<\/script>
-</body>
-</html>`;
+        const dateParts: string[] = [];
+        if (!hideDatesFromClient) {
+          if (item.startedAt) dateParts.push(`Started ${displayDate(item.startedAt, true)}`);
+          if (item.completedAt) dateParts.push(`Completed ${displayDate(item.completedAt, true)}`);
+        }
 
-    popup.document.open();
-    popup.document.write(html);
-    popup.document.close();
+        const titleLines = doc.splitTextToSize(item.title, contentWidth - 90) as string[];
+        const notesLines = item.notes ? (doc.splitTextToSize(item.notes, contentWidth - 12) as string[]) : [];
+        const rowHeight =
+          18 +
+          titleLines.length * 11 +
+          (details.length ? 13 : 0) +
+          (dateParts.length ? 13 : 0) +
+          (notesLines.length ? notesLines.length * 10 + 5 : 0);
+
+        ensureSpace(rowHeight + 10);
+
+        doc.setFillColor(249, 250, 251);
+        doc.setDrawColor(229, 231, 235);
+        doc.roundedRect(margin, y - 9, contentWidth, rowHeight, 4, 4, "FD");
+
+        doc.setTextColor(17, 24, 39);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.text(titleLines, margin + 9, y + 4);
+
+        doc.setTextColor(75, 85, 99);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.text(statusLabel(item.status), pageWidth - margin - 9, y + 4, { align: "right" });
+
+        let detailY = y + 4 + titleLines.length * 11;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.8);
+        doc.setTextColor(107, 114, 128);
+
+        if (details.length) {
+          doc.text(details.join(" | "), margin + 9, detailY);
+          detailY += 13;
+        }
+
+        if (dateParts.length) {
+          doc.text(dateParts.join(" | "), margin + 9, detailY);
+          detailY += 13;
+        }
+
+        if (notesLines.length) {
+          doc.setTextColor(75, 85, 99);
+          doc.text(notesLines, margin + 9, detailY + 2);
+        }
+
+        y += rowHeight + 8;
+      }
+
+      y += 8;
+    }
+
+    ensureSpace(28);
+    doc.setDrawColor(229, 231, 235);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 14;
+    doc.setTextColor(156, 163, 175);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text("Generated from the project reporting dashboard.", margin, y);
+
+    doc.save(`${safeFilename(companyName)}-${safeFilename(projectName)}-seo-report.pdf`);
   };
 
   return (
@@ -474,10 +539,10 @@ export function SeoReportingPanel({
                 disabled={activityLoading || clientItems.length === 0}
                 onClick={exportClientPdf}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-base-600 bg-base-900 px-3 py-2 text-xs font-medium text-neutral-300 hover:border-accent-500/50 hover:text-accent-300 disabled:cursor-not-allowed disabled:opacity-40"
-                title="Open a clean client report and print or save it as PDF"
+                title="Download the selected client report as a PDF"
               >
-                <Printer size={13} />
-                Export PDF
+                <Download size={13} />
+                Download PDF
               </button>
               <button
                 type="button"
