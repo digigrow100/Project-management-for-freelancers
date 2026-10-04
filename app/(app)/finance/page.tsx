@@ -13,8 +13,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { PROJECT_THEME } from "@/lib/projectTheme";
 import { cn, formatMoney, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
-import { INVOICE_STATUS_LABEL, INVOICE_STATUS_STYLE } from "@/components/InvoicesPanel";
-import type { PaymentPlan, Project } from "@/lib/types";
+import type { InvoiceStatus, PaymentPlan, Project } from "@/lib/types";
 import { businessDateKey } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +24,25 @@ const RANGE_LABEL: Record<RangeKey, string> = {
   month: "This month",
   "6m": "Last 6 months",
   year: "This year",
+};
+
+
+const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  paid: "Paid",
+  partially_paid: "Partially Paid",
+  overdue: "Overdue",
+  cancelled: "Cancelled",
+};
+
+const INVOICE_STATUS_STYLE: Record<InvoiceStatus, string> = {
+  draft: "bg-base-700/60 text-neutral-400",
+  sent: "bg-sky-500/15 text-sky-400",
+  paid: "bg-accent-500/15 text-accent-400",
+  partially_paid: "bg-amber-500/15 text-amber-400",
+  overdue: "bg-rose-500/15 text-rose-400",
+  cancelled: "bg-neutral-700/40 text-neutral-500",
 };
 
 function pad(n: number): string {
