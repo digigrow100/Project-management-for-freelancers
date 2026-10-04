@@ -15,6 +15,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, Profile, Project, Renewal, Task, TaskTimeSummary } from "@/lib/types";
+import { businessMonthKey } from "@/lib/date";
 
 type ProgressMap = Record<string, { done: number; total: number; openCount: number }>;
 
@@ -96,7 +97,7 @@ export function AdminDashboardOverview({
     if (invoice.projectId && !invoiceByProject.has(invoice.projectId)) invoiceByProject.set(invoice.projectId, invoice);
   }
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = businessMonthKey();
   const currentMonthPayments = payments.filter((payment) => payment.paidOn.startsWith(currentMonth));
 
   const paidByProject = new Map<string, Map<string, number>>();
