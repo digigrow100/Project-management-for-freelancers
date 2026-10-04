@@ -345,33 +345,45 @@ export function SeoReportingPanel({
       y += Math.max(lineHeight, lines.length * lineHeight);
     };
 
+    const headerTop = y;
+
     doc.setTextColor(4, 120, 87);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text((companyName || "Company").toUpperCase(), margin, y);
-    y += 20;
+    doc.setFontSize(8.5);
+    doc.text((companyName || "Company").toUpperCase(), margin, headerTop);
 
     doc.setTextColor(17, 24, 39);
-    doc.setFontSize(22);
-    doc.text("SEO Work Report", margin, y);
-    y += 22;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("SEO Work Report", margin, headerTop + 22);
 
-    doc.setFontSize(12);
-    doc.text(projectName, margin, y);
-    y += 18;
+    const projectMaxWidth = contentWidth * 0.48;
+    let projectFontSize = 22;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(projectFontSize);
+    while (projectFontSize > 14 && doc.getTextWidth(projectName) > projectMaxWidth) {
+      projectFontSize -= 1;
+      doc.setFontSize(projectFontSize);
+    }
+    doc.setTextColor(17, 24, 39);
+    doc.text(projectName, pageWidth - margin, headerTop + 18, {
+      align: "right",
+      maxWidth: projectMaxWidth,
+    });
 
     if (!hideDatesFromClient) {
       doc.setTextColor(107, 114, 128);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       doc.text(
         `Report period: ${displayDate(selectedRange.startDate)} - ${displayDate(selectedRange.endDate)}`,
-        margin,
-        y,
+        pageWidth - margin,
+        headerTop + 38,
+        { align: "right" },
       );
-      y += 18;
     }
 
+    y = headerTop + 54;
     doc.setDrawColor(209, 213, 219);
     doc.line(margin, y, pageWidth - margin, y);
     y += 18;
