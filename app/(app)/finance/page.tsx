@@ -15,6 +15,7 @@ import { PROJECT_THEME } from "@/lib/projectTheme";
 import { cn, formatMoney, resolveSelectedCurrency, sortCurrencies } from "@/lib/utils";
 import { INVOICE_STATUS_LABEL, INVOICE_STATUS_STYLE } from "@/components/InvoicesPanel";
 import type { PaymentPlan, Project } from "@/lib/types";
+import { businessDateKey } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +36,14 @@ function dateKey(d: Date): string {
 }
 
 function rangeStart(range: RangeKey): string {
-  const now = new Date();
-  if (range === "month") return dateKey(new Date(now.getFullYear(), now.getMonth(), 1));
-  if (range === "6m") return dateKey(new Date(now.getFullYear(), now.getMonth() - 5, 1));
-  return dateKey(new Date(now.getFullYear(), 0, 1));
+  const today = businessDateKey();
+  const [year, month] = today.split("-").map(Number);
+  if (range === "month") return `${year}-${pad(month)}-01`;
+  if (range === "6m") {
+    const start = new Date(Date.UTC(year, month - 6, 1));
+    return `${start.getUTCFullYear()}-${pad(start.getUTCMonth() + 1)}-01`;
+  }
+  return `${year}-01-01`;
 }
 
 export default async function FinancePage({ searchParams }: { searchParams: { range?: string; currency?: string } }) {
@@ -47,7 +52,7 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
 
   const range = (["month", "6m", "year"].includes(searchParams.range ?? "") ? searchParams.range : "month") as RangeKey;
   const start = rangeStart(range);
-  const today = dateKey(new Date());
+  const today = businessDateKey();
 
   const [allPayments, allPlans, projects, allInvoices] = await Promise.all([
     listAllPayments(),
@@ -82,7 +87,9 @@ export default async function FinancePage({ searchParams }: { searchParams: { ra
   const totalPaidByProject = new Map<string, number>();
   for (const payment of payments) {
     if (!payment.projectId) continue;
-    totalPaidByProject.set(payment.projectId, (totalPaidByProject.get(payment.projectId) ?? 0) + payment.amount);
+    if (payment.kind !== "additional") {
+      totalPaidByProject.set(payment.projectId, (totalPaidByProject.get(payment.projectId) ?? 0) + payment.amount);
+    }
   }
   const outstanding = plans
     .filter((p) => p.planType === "one_time")
