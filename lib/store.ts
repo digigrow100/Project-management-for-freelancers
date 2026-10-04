@@ -2204,9 +2204,17 @@ export async function getProjectProgressMap(): Promise<
  * the current month is done or marked not applicable.
  */
 export async function getAdminProjectProgressMap(): Promise<
-  Record<string, { done: number; total: number; openCount: number }>
+  Record<string, { done: number; total: number; openCount: number; percent: number }>
 > {
-  const map = await getProjectProgressMap();
+  const base = await getProjectProgressMap();
+  const map: Record<string, { done: number; total: number; openCount: number; percent: number }> = {};
+  const weighted = new Map<string, { done: number; total: number }>();
+
+  for (const [projectId, entry] of Object.entries(base)) {
+    map[projectId] = { ...entry, percent: entry.total > 0 ? Math.round((entry.done / entry.total) * 100) : 0 };
+    weighted.set(projectId, { done: entry.done, total: entry.total });
+  }
+
   const currentMonth = todayDateKey().slice(0, 7);
 
   try {
@@ -2248,23 +2256,45 @@ export async function getAdminProjectProgressMap(): Promise<
     }
 
     for (const page of activePages) {
-      const entry = map[page.project_id] ?? { done: 0, total: 0, openCount: 0 };
-      const pageDone = templateCount > 0 && (completedChecksByPage.get(page.id) ?? 0) >= templateCount;
+      const entry = map[page.project_id] ?? { done: 0, total: 0, openCount: 0, percent: 0 };
+      const completedChecks = Math.min(templateCount, completedChecksByPage.get(page.id) ?? 0);
+      const pageFraction = templateCount > 0 ? completedChecks / templateCount : 0;
+      const pageDone = templateCount > 0 && completedChecks >= templateCount;
+
+      // Display counts still treat one Website Page as one unit, while the
+      // percentage gives partial credit for every checklist item inside it.
+      // Example: if this page is 10% of the project and 5/10 checks are done,
+      // it contributes 5% to the overall project rather than 0% or 10%.
       entry.total += 1;
       if (pageDone) entry.done += 1;
       else entry.openCount += 1;
       map[page.project_id] = entry;
+
+      const weightedEntry = weighted.get(page.project_id) ?? { done: 0, total: 0 };
+      weightedEntry.total += 1;
+      weightedEntry.done += pageFraction;
+      weighted.set(page.project_id, weightedEntry);
     }
 
     for (const row of (workflows ?? []) as Array<{ project_id: string; status: "pending" | "done" }>) {
-      const entry = map[row.project_id] ?? { done: 0, total: 0, openCount: 0 };
+      const entry = map[row.project_id] ?? { done: 0, total: 0, openCount: 0, percent: 0 };
       entry.total += 1;
       if (row.status === "done") entry.done += 1;
       else entry.openCount += 1;
       map[row.project_id] = entry;
+
+      const weightedEntry = weighted.get(row.project_id) ?? { done: 0, total: 0 };
+      weightedEntry.total += 1;
+      if (row.status === "done") weightedEntry.done += 1;
+      weighted.set(row.project_id, weightedEntry);
     }
   } catch (error) {
     if (!isMissingTableError(error)) throw error;
+  }
+
+  for (const [projectId, entry] of Object.entries(map)) {
+    const score = weighted.get(projectId) ?? { done: entry.done, total: entry.total };
+    entry.percent = score.total > 0 ? Math.round((score.done / score.total) * 100) : 0;
   }
 
   return map;
