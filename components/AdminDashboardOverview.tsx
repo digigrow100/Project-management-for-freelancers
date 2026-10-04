@@ -345,8 +345,7 @@ export function AdminDashboardOverview({
         ))}
       </nav>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="space-y-4">
+      <div className="space-y-4">
           <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
             <SectionHead
               icon={FolderKanban}
@@ -528,6 +527,84 @@ export function AdminDashboardOverview({
             )}
           </section>
 
+        <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+          <SectionHead icon={Activity} title="Team Performance" subtitle="Daily activity, time and assigned-project progress" />
+          <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
+            {memberPerformance.map((row) => (
+              <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${row.isActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600"}`} />
+                      <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
+                    </div>
+                    <p className="mt-1 text-[10px] text-neutral-600">{jobRoleLabel(row.member.jobRole)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">overall</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
+                  <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, row.overallPercent)}%` }} />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Today</p>
+                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
+                  </div>
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">All time</p>
+                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.allTimeSeconds)}</p>
+                  </div>
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
+                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
+                  </div>
+                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last activity</p>
+                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between rounded-lg border border-amber-500/15 bg-amber-500/5 px-2.5 py-2">
+                  <span className="text-[10px] text-neutral-500">Idle / paused today</span>
+                  <span className="text-[11px] font-semibold text-amber-300">{duration(row.idleSeconds)}</span>
+                </div>
+
+                <div className="mt-3 border-t border-base-700/40 pt-3">
+                  <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">Assigned projects</p>
+                  <div className="space-y-2.5">
+                    {row.projectProgress.map(({ project, percent }) => (
+                      <div key={project.id}>
+                        <div className="flex items-center justify-between gap-2">
+                          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[11px] font-medium text-neutral-300 hover:text-accent-300">
+                            {project.name}
+                          </Link>
+                          <span className="shrink-0 text-[10px] font-semibold text-neutral-400">{percent}%</span>
+                        </div>
+                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-base-700">
+                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(100, percent)}%` }} />
+                        </div>
+                        <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
+                          <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
+                          <span>Total {duration(row.allTimeByProject.get(project.id) ?? 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {row.projectProgress.length === 0 && (
+                      <p className="text-[10px] text-neutral-600">No active project assigned.</p>
+                    )}
+                  </div>
+                </div>
+              </section>
+            ))}
+            {memberPerformance.length === 0 && <Empty text="No team members." />}
+          </div>
+        </section>
+
           <div className="grid gap-4 lg:grid-cols-3">
             <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
               <SectionHead title="Task Queue" subtitle="Important work needing attention" href="/" action="View all tasks" />
@@ -663,85 +740,7 @@ export function AdminDashboardOverview({
               </div>
             </section>
           </div>
-        </div>
 
-        <aside className="self-start overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card xl:sticky xl:top-4">
-          <SectionHead icon={Activity} title="Team Performance" subtitle="Daily activity, time and assigned-project progress" />
-          <div className="space-y-3 p-3">
-            {memberPerformance.map((row) => (
-              <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${row.isActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600"}`} />
-                      <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
-                    </div>
-                    <p className="mt-1 text-[10px] text-neutral-600">{jobRoleLabel(row.member.jobRole)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">overall</p>
-                  </div>
-                </div>
-
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
-                  <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, row.overallPercent)}%` }} />
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Today</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">All time</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.allTimeSeconds)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
-                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last activity</p>
-                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
-                  </div>
-                </div>
-
-                <div className="mt-2 flex items-center justify-between rounded-lg border border-amber-500/15 bg-amber-500/5 px-2.5 py-2">
-                  <span className="text-[10px] text-neutral-500">Idle / paused today</span>
-                  <span className="text-[11px] font-semibold text-amber-300">{duration(row.idleSeconds)}</span>
-                </div>
-
-                <div className="mt-3 border-t border-base-700/40 pt-3">
-                  <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">Assigned projects</p>
-                  <div className="space-y-2.5">
-                    {row.projectProgress.map(({ project, percent }) => (
-                      <div key={project.id}>
-                        <div className="flex items-center justify-between gap-2">
-                          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[11px] font-medium text-neutral-300 hover:text-accent-300">
-                            {project.name}
-                          </Link>
-                          <span className="shrink-0 text-[10px] font-semibold text-neutral-400">{percent}%</span>
-                        </div>
-                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-base-700">
-                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(100, percent)}%` }} />
-                        </div>
-                        <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
-                          <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
-                          <span>Total {duration(row.allTimeByProject.get(project.id) ?? 0)}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {row.projectProgress.length === 0 && (
-                      <p className="text-[10px] text-neutral-600">No active project assigned.</p>
-                    )}
-                  </div>
-                </div>
-              </section>
-            ))}
-            {memberPerformance.length === 0 && <Empty text="No team members." />}
-          </div>
-        </aside>
       </div>
     </div>
   );
