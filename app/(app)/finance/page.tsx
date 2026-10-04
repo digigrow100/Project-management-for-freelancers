@@ -33,7 +33,9 @@ function pad(n: number): string {
 
 function rangeStart(range: RangeKey): string {
   const today = businessDateKey();
-  const [year, month] = today.split("-").map(Number);
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+
   if (range === "month") return `${year}-${pad(month)}-01`;
   if (range === "6m") {
     const start = new Date(Date.UTC(year, month - 6, 1));
