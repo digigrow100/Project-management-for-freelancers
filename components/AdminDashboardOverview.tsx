@@ -96,8 +96,11 @@ export function AdminDashboardOverview({
     if (invoice.projectId && !invoiceByProject.has(invoice.projectId)) invoiceByProject.set(invoice.projectId, invoice);
   }
 
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonthPayments = payments.filter((payment) => payment.paidOn.startsWith(currentMonth));
+
   const paidByProject = new Map<string, Map<string, number>>();
-  for (const payment of payments) {
+  for (const payment of currentMonthPayments) {
     if (!payment.projectId) continue;
     const byCurrency = paidByProject.get(payment.projectId) ?? new Map<string, number>();
     byCurrency.set(payment.currency, (byCurrency.get(payment.currency) ?? 0) + payment.amount);
@@ -112,8 +115,12 @@ export function AdminDashboardOverview({
   const invoiceTotal = (invoice: Invoice) =>
     (invoiceItems[invoice.id] ?? []).reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
-  const primaryCurrency = invoices.find((invoice) => invoice.currency)?.currency ?? payments[0]?.currency ?? "GBP";
-  const totalReceived = payments
+  const primaryCurrency =
+    currentMonthPayments.find((payment) => payment.currency)?.currency ??
+    invoices.find((invoice) => invoice.currency)?.currency ??
+    payments[0]?.currency ??
+    "PKR";
+  const totalReceived = currentMonthPayments
     .filter((payment) => payment.currency === primaryCurrency)
     .reduce((sum, payment) => sum + payment.amount, 0);
   const outstanding = invoices
@@ -170,7 +177,7 @@ export function AdminDashboardOverview({
   return (
     <div className="space-y-4">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Banknote} label="Total Received" value={money(totalReceived, primaryCurrency)} sub="Recorded payments" />
+        <StatCard icon={Banknote} label="Total Received" value={money(totalReceived, primaryCurrency)} sub="Current month payments" />
         <StatCard icon={ReceiptText} label="Outstanding Invoices" value={money(outstanding, primaryCurrency)} sub={`${openInvoices} invoices open`} warning />
         <StatCard icon={Users} label="Active Clients" value={String(new Set(activeProjects.map((project) => project.clientId).filter(Boolean)).size)} sub={`${activeProjects.length} active projects`} />
         <StatCard icon={WalletCards} label="Open Tasks" value={String(openTasks.length)} sub="Across all active projects" />
