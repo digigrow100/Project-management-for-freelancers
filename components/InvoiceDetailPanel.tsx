@@ -134,8 +134,8 @@ export function InvoiceDetailPanel({
             className="rounded-md border border-base-600 bg-base-900 px-2.5 py-2 text-sm text-neutral-300 focus:border-accent-500 focus:outline-none"
           >
             {(Object.keys(STATUS_LABEL) as InvoiceStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
+              <option key={s} value={s} disabled={s === "paid" || s === "partially_paid"}>
+                {STATUS_LABEL[s]}{s === "paid" || s === "partially_paid" ? " (automatic)" : ""}
               </option>
             ))}
           </select>
@@ -311,6 +311,11 @@ export function InvoiceDetailPanel({
           className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
         />
 
+        {paymentError && (
+          <p className="w-full rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            {paymentError}
+          </p>
+        )}
         <button
           type="submit"
           disabled={isPending}
@@ -359,6 +364,7 @@ function PaymentsSection({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
@@ -375,8 +381,13 @@ function PaymentsSection({
           formData.set("invoiceId", invoice.id);
           formData.set("clientId", clientId);
           formData.set("currency", invoice.currency);
+          setPaymentError(null);
           startTransition(async () => {
-            await addInvoicePaymentAction(formData);
+            const result = await addInvoicePaymentAction(formData);
+            if (!result.ok) {
+              setPaymentError(result.error);
+              return;
+            }
             router.refresh();
           });
         }}
