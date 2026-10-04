@@ -4090,7 +4090,13 @@ export async function getClientBalance(clientId: string): Promise<ClientBalance>
     };
   });
 
-  const primary = byCurrency[0];
+  const primary = byCurrency[0] ?? {
+    currency: "PKR",
+    totalInvoiced: 0,
+    totalPaid: 0,
+    outstanding: 0,
+  };
+
   return {
     totalInvoiced: primary.totalInvoiced,
     totalPaid: primary.totalPaid,
