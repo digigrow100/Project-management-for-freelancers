@@ -364,7 +364,7 @@ function PaymentsSection({
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
-    <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
+    <div id="payments" className="scroll-mt-6 rounded-xl2 border border-base-700/60 bg-base-850 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Payments</h2>
         <p className="text-xs text-neutral-500">
