@@ -20,8 +20,9 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary, Website } from "@/lib/types";
 import { businessMonthKey } from "@/lib/date";
+import { DomainsPanel } from "@/components/DomainsPanel";
 
 type ProgressMap = Record<string, { done: number; total: number; openCount: number; percent?: number }>;
 
@@ -136,6 +137,8 @@ export function AdminDashboardOverview({
   renewals,
   personalTasks,
   assigneesByProject,
+  websitesByDomainId,
+  hasDynadotApiKey,
 }: {
   projects: Project[];
   progressMap: ProgressMap;
@@ -154,7 +157,10 @@ export function AdminDashboardOverview({
   renewals: Renewal[];
   personalTasks: AdminWorkItem[];
   assigneesByProject: Record<string, string[]>;
+  websitesByDomainId: Record<string, Website>;
+  hasDynadotApiKey: boolean;
 }) {
+  const [dashboardTab, setDashboardTab] = useState<"overview" | "reports" | "accounts" | "domains">("overview");
   const activeProjects = projects.filter((project) => !project.archived);
   const availableProjectTypes = PROJECT_TABS.filter((tab) =>
     activeProjects.some((project) => project.type === tab.key),
@@ -330,507 +336,619 @@ export function AdminDashboardOverview({
         <StatCard icon={WalletCards} label="Open Tasks" value={String(openTasks.length)} sub="Across all active projects" />
       </section>
 
-      <nav className="grid grid-cols-5 overflow-hidden rounded-xl border border-base-700/70 bg-base-850">
+      <nav className="grid grid-cols-4 overflow-hidden rounded-xl border border-base-700/70 bg-base-850">
         {([
-          ["Overview", "/admin"],
-          ["Projects", "/projects"],
-          ["Team", "#team-access"],
-          ["Reports", "/seo/pages"],
-          ["Accounts", "/invoices"],
-        ] as const).map(([label, href], index) => (
-          <Link
-            key={label}
-            href={href}
-            className={`flex items-center justify-center border-r border-base-700/50 px-2 py-3 text-xs font-medium last:border-r-0 ${index === 0 ? "bg-accent-500/10 text-accent-300 shadow-[inset_0_-2px_0_rgba(52,211,153,.9)]" : "text-neutral-400 hover:bg-base-800 hover:text-neutral-200"}`}
+          ["overview", "Overview"],
+          ["reports", "Reports"],
+          ["accounts", "Accounts"],
+          ["domains", "Domain / Hosting"],
+        ] as const).map(([key, label], index) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setDashboardTab(key)}
+            className={`flex items-center justify-center border-r border-base-700/50 px-2 py-3 text-xs font-medium transition-colors last:border-r-0 ${
+              dashboardTab === key
+                ? "bg-accent-500/10 text-accent-300 shadow-[inset_0_-2px_0_rgba(52,211,153,.9)]"
+                : "text-neutral-400 hover:bg-base-800 hover:text-neutral-200"
+            }`}
           >
             {label}
-          </Link>
+          </button>
         ))}
       </nav>
 
-      <div className="space-y-4">
-          <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-            <SectionHead
-              icon={FolderKanban}
-              title="Active Projects"
-              subtitle="Progress, assignment, payments and project age"
-              href="/projects"
-              action="View all projects"
-            />
-
-            {activeProjects.length > 0 ? (
-              <>
-                <div className="border-b border-base-700/50 px-4 py-3">
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {availableProjectTypes.map((tab) => {
-                      const count = activeProjects.filter((project) => project.type === tab.key).length;
-                      return (
-                        <button
-                          key={tab.key}
-                          type="button"
-                          onClick={() => setActiveProjectType(tab.key)}
-                          className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                            activeProjectType === tab.key
-                              ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
-                              : "border-base-700 bg-base-900/50 text-neutral-500 hover:border-base-600 hover:text-neutral-300"
-                          }`}
-                        >
-                          {tab.label}
-                          <span className="ml-2 rounded-full bg-base-950/70 px-1.5 py-0.5 text-[9px] text-neutral-500">
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto p-4">
-                  <div className="grid auto-cols-[minmax(290px,340px)] grid-flow-col gap-3">
-                    {visibleProjects.map((project) => {
-                      const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0 };
-                      const percent = progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0);
-                      const remainingTasks = Math.max(0, progress.total - progress.done);
-                      const assignees = assigneesByProject[project.id] ?? [];
-                      const invoice = invoiceByProject.get(project.id);
-                      const projectPlans = paymentPlans.filter((plan) => plan.projectId === project.id);
-                      const projectPaymentsAll = payments.filter((payment) => payment.projectId === project.id);
-                      const ageDays = projectAgeDays(project.createdAt);
-
-                      const paymentRows = projectPlans.map((plan) => {
-                        const relevantPayments =
-                          plan.planType === "monthly_fixed"
-                            ? projectPaymentsAll.filter(
-                                (payment) =>
-                                  payment.currency === plan.currency &&
-                                  payment.kind !== "additional" &&
-                                  (payment.period === currentMonth || payment.paidOn.startsWith(currentMonth)),
-                              )
-                            : projectPaymentsAll.filter(
-                                (payment) => payment.currency === plan.currency && payment.kind !== "additional",
+      {dashboardTab === "overview" && (
+              <div className="space-y-4">
+                  <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+                    <SectionHead
+                      icon={FolderKanban}
+                      title="Active Projects"
+                      subtitle="Progress, assignment, payments and project age"
+                      href="/projects"
+                      action="View all projects"
+                    />
+        
+                    {activeProjects.length > 0 ? (
+                      <>
+                        <div className="border-b border-base-700/50 px-4 py-3">
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {availableProjectTypes.map((tab) => {
+                              const count = activeProjects.filter((project) => project.type === tab.key).length;
+                              return (
+                                <button
+                                  key={tab.key}
+                                  type="button"
+                                  onClick={() => setActiveProjectType(tab.key)}
+                                  className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                                    activeProjectType === tab.key
+                                      ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
+                                      : "border-base-700 bg-base-900/50 text-neutral-500 hover:border-base-600 hover:text-neutral-300"
+                                  }`}
+                                >
+                                  {tab.label}
+                                  <span className="ml-2 rounded-full bg-base-950/70 px-1.5 py-0.5 text-[9px] text-neutral-500">
+                                    {count}
+                                  </span>
+                                </button>
                               );
-                        const paid = relevantPayments.reduce((sum, payment) => sum + payment.amount, 0);
-                        return {
-                          currency: plan.currency,
-                          paid,
-                          due: Math.max(0, plan.amount - paid),
-                          label: plan.planType === "monthly_fixed" ? "This month" : "Project",
-                        };
-                      });
-
-                      if (paymentRows.length === 0 && invoice) {
-                        const invoiceAmount = invoiceTotal(invoice);
-                        const invoicePaid = paidByInvoice.get(invoice.id) ?? 0;
-                        paymentRows.push({
-                          currency: invoice.currency,
-                          paid: invoicePaid,
-                          due: Math.max(0, invoiceAmount - invoicePaid),
-                          label: "Invoice",
-                        });
-                      }
-
-                      return (
-                        <article
-                          key={project.id}
-                          className="flex min-h-[285px] flex-col rounded-xl border border-base-700/60 bg-base-900/55 p-4 transition-colors hover:border-accent-500/35"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <Link
-                                href={`/projects/${project.id}`}
-                                className="block truncate text-base font-semibold text-neutral-100 hover:text-accent-300"
-                              >
-                                {project.name}
-                              </Link>
-                              <p className="mt-1 truncate text-xs text-neutral-600">
-                                {project.client || project.clientDetails.company || project.clientDetails.name || "No client"}
-                              </p>
-                            </div>
-                            <span className="shrink-0 rounded-full bg-base-800 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-neutral-500">
-                              {PROJECT_TABS.find((tab) => tab.key === project.type)?.label ?? "Project"}
-                            </span>
+                            })}
                           </div>
-
-                          <div className="mt-4 rounded-lg border border-base-700/50 bg-base-950/45 p-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-[10px] uppercase tracking-wide text-neutral-600">Assigned to</p>
-                                <p className="mt-1 text-xs font-medium text-neutral-300">
-                                  {assignees.length > 0 ? assignees.join(", ") : "Unassigned"}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-2xl font-semibold text-accent-300">{percent}%</p>
-                                <p className="text-[9px] text-neutral-600">complete</p>
-                              </div>
-                            </div>
-
-                            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
-                              <div
-                                className="h-full rounded-full bg-emerald-400"
-                                style={{ width: `${Math.min(100, percent)}%` }}
-                              />
-                            </div>
-                            <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-600">
-                              <span>{progress.done} done</span>
-                              <span>{remainingTasks} remaining</span>
-                              <span>{progress.total} total</span>
-                            </div>
-                          </div>
-
-                          <div className="mt-3">
-                            <p className="text-[10px] uppercase tracking-wide text-neutral-600">Payment</p>
-                            {paymentRows.length > 0 ? (
-                              <div className="mt-2 space-y-2">
-                                {paymentRows.slice(0, 2).map((row) => (
-                                  <div
-                                    key={`${project.id}-${row.currency}`}
-                                    className="flex items-center justify-between rounded-lg border border-base-700/40 bg-base-950/35 px-3 py-2"
-                                  >
-                                    <div>
-                                      <p className="text-[10px] text-neutral-600">{row.label} · {row.currency}</p>
-                                      <p className="mt-0.5 text-xs font-semibold text-emerald-300">
-                                        Paid {money(row.paid, row.currency)}
+                        </div>
+        
+                        <div className="overflow-x-auto p-4">
+                          <div className="grid auto-cols-[minmax(290px,340px)] grid-flow-col gap-3">
+                            {visibleProjects.map((project) => {
+                              const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0 };
+                              const percent = progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0);
+                              const remainingTasks = Math.max(0, progress.total - progress.done);
+                              const assignees = assigneesByProject[project.id] ?? [];
+                              const invoice = invoiceByProject.get(project.id);
+                              const projectPlans = paymentPlans.filter((plan) => plan.projectId === project.id);
+                              const projectPaymentsAll = payments.filter((payment) => payment.projectId === project.id);
+                              const ageDays = projectAgeDays(project.createdAt);
+        
+                              const paymentRows = projectPlans.map((plan) => {
+                                const relevantPayments =
+                                  plan.planType === "monthly_fixed"
+                                    ? projectPaymentsAll.filter(
+                                        (payment) =>
+                                          payment.currency === plan.currency &&
+                                          payment.kind !== "additional" &&
+                                          (payment.period === currentMonth || payment.paidOn.startsWith(currentMonth)),
+                                      )
+                                    : projectPaymentsAll.filter(
+                                        (payment) => payment.currency === plan.currency && payment.kind !== "additional",
+                                      );
+                                const paid = relevantPayments.reduce((sum, payment) => sum + payment.amount, 0);
+                                return {
+                                  currency: plan.currency,
+                                  paid,
+                                  due: Math.max(0, plan.amount - paid),
+                                  label: plan.planType === "monthly_fixed" ? "This month" : "Project",
+                                };
+                              });
+        
+                              if (paymentRows.length === 0 && invoice) {
+                                const invoiceAmount = invoiceTotal(invoice);
+                                const invoicePaid = paidByInvoice.get(invoice.id) ?? 0;
+                                paymentRows.push({
+                                  currency: invoice.currency,
+                                  paid: invoicePaid,
+                                  due: Math.max(0, invoiceAmount - invoicePaid),
+                                  label: "Invoice",
+                                });
+                              }
+        
+                              return (
+                                <article
+                                  key={project.id}
+                                  className="flex min-h-[285px] flex-col rounded-xl border border-base-700/60 bg-base-900/55 p-4 transition-colors hover:border-accent-500/35"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <Link
+                                        href={`/projects/${project.id}`}
+                                        className="block truncate text-base font-semibold text-neutral-100 hover:text-accent-300"
+                                      >
+                                        {project.name}
+                                      </Link>
+                                      <p className="mt-1 truncate text-xs text-neutral-600">
+                                        {project.client || project.clientDetails.company || project.clientDetails.name || "No client"}
                                       </p>
+                                    </div>
+                                    <span className="shrink-0 rounded-full bg-base-800 px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-neutral-500">
+                                      {PROJECT_TABS.find((tab) => tab.key === project.type)?.label ?? "Project"}
+                                    </span>
+                                  </div>
+        
+                                  <div className="mt-4 rounded-lg border border-base-700/50 bg-base-950/45 p-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div>
+                                        <p className="text-[10px] uppercase tracking-wide text-neutral-600">Assigned to</p>
+                                        <p className="mt-1 text-xs font-medium text-neutral-300">
+                                          {assignees.length > 0 ? assignees.join(", ") : "Unassigned"}
+                                        </p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-2xl font-semibold text-accent-300">{percent}%</p>
+                                        <p className="text-[9px] text-neutral-600">complete</p>
+                                      </div>
+                                    </div>
+        
+                                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
+                                      <div
+                                        className="h-full rounded-full bg-emerald-400"
+                                        style={{ width: `${Math.min(100, percent)}%` }}
+                                      />
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-600">
+                                      <span>{progress.done} done</span>
+                                      <span>{remainingTasks} remaining</span>
+                                      <span>{progress.total} total</span>
+                                    </div>
+                                  </div>
+        
+                                  <div className="mt-3">
+                                    <p className="text-[10px] uppercase tracking-wide text-neutral-600">Payment</p>
+                                    {paymentRows.length > 0 ? (
+                                      <div className="mt-2 space-y-2">
+                                        {paymentRows.slice(0, 2).map((row) => (
+                                          <div
+                                            key={`${project.id}-${row.currency}`}
+                                            className="flex items-center justify-between rounded-lg border border-base-700/40 bg-base-950/35 px-3 py-2"
+                                          >
+                                            <div>
+                                              <p className="text-[10px] text-neutral-600">{row.label} · {row.currency}</p>
+                                              <p className="mt-0.5 text-xs font-semibold text-emerald-300">
+                                                Paid {money(row.paid, row.currency)}
+                                              </p>
+                                            </div>
+                                            <div className="text-right">
+                                              <p className="text-[10px] text-neutral-600">Due</p>
+                                              <p className={`mt-0.5 text-xs font-semibold ${row.due > 0 ? "text-amber-300" : "text-emerald-300"}`}>
+                                                {row.due > 0 ? money(row.due, row.currency) : "Paid"}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="mt-2 text-xs text-neutral-600">No payment plan or invoice yet</p>
+                                    )}
+                                  </div>
+        
+                                  <div className="mt-3 border-t border-base-700/40 pt-3">
+                                    {invoice ? (
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="min-w-0">
+                                            <p className="text-[9px] uppercase tracking-wide text-neutral-700">Latest invoice</p>
+                                            <p className="mt-1 truncate text-[11px] font-medium text-neutral-300">{invoice.invoiceNumber}</p>
+                                          </div>
+                                          <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold capitalize ${invoiceStatusClass(invoice.status)}`}>
+                                            {invoice.status.replaceAll("_", " ")}
+                                          </span>
+                                        </div>
+        
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                          <Link
+                                            href={`/invoices/${invoice.id}?download=1`}
+                                            className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-accent-500/50 hover:text-accent-300"
+                                            title="Download invoice PDF"
+                                          >
+                                            <Download size={12} />
+                                            Download
+                                          </Link>
+                                          <Link
+                                            href={`/invoices/${invoice.id}`}
+                                            className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-sky-500/50 hover:text-sky-300"
+                                            title="Edit invoice"
+                                          >
+                                            <FilePenLine size={12} />
+                                            Edit
+                                          </Link>
+                                          <Link
+                                            href={`/invoices/${invoice.id}#payments`}
+                                            className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-amber-500/50 hover:text-amber-300"
+                                            title="Manage invoice payments"
+                                          >
+                                            <CreditCard size={12} />
+                                            Payment
+                                          </Link>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-base-700 bg-base-950/25 px-3 py-2.5">
+                                        <div className="min-w-0">
+                                          <p className="text-[10px] font-medium text-neutral-400">No invoice yet</p>
+                                          <p className="mt-0.5 text-[9px] text-neutral-700">Create one to manage billing from this card.</p>
+                                        </div>
+                                        <Link
+                                          href="/invoices"
+                                          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-accent-300 hover:bg-accent-500/15"
+                                        >
+                                          <PlusCircle size={12} />
+                                          Create
+                                        </Link>
+                                      </div>
+                                    )}
+                                  </div>
+        
+                                  <div className="mt-3 flex items-end justify-between gap-3 border-t border-base-700/40 pt-3">
+                                    <div>
+                                      <p className="text-[9px] uppercase tracking-wide text-neutral-700">Added</p>
+                                      <p className="mt-1 text-[11px] text-neutral-400">{formatProjectDate(project.createdAt)}</p>
                                     </div>
                                     <div className="text-right">
-                                      <p className="text-[10px] text-neutral-600">Due</p>
-                                      <p className={`mt-0.5 text-xs font-semibold ${row.due > 0 ? "text-amber-300" : "text-emerald-300"}`}>
-                                        {row.due > 0 ? money(row.due, row.currency) : "Paid"}
+                                      <p className="text-[9px] uppercase tracking-wide text-neutral-700">Project age</p>
+                                      <p className="mt-1 text-[11px] font-medium text-neutral-300">
+                                        {ageDays === 0 ? "Added today" : `${ageDays} day${ageDays === 1 ? "" : "s"}`}
                                       </p>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="mt-2 text-xs text-neutral-600">No payment plan or invoice yet</p>
-                            )}
+                                </article>
+                              );
+                            })}
                           </div>
-
-                          <div className="mt-3 border-t border-base-700/40 pt-3">
-                            {invoice ? (
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="text-[9px] uppercase tracking-wide text-neutral-700">Latest invoice</p>
-                                    <p className="mt-1 truncate text-[11px] font-medium text-neutral-300">{invoice.invoiceNumber}</p>
-                                  </div>
-                                  <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold capitalize ${invoiceStatusClass(invoice.status)}`}>
-                                    {invoice.status.replaceAll("_", " ")}
-                                  </span>
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-1.5">
-                                  <Link
-                                    href={`/invoices/${invoice.id}?download=1`}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-accent-500/50 hover:text-accent-300"
-                                    title="Download invoice PDF"
-                                  >
-                                    <Download size={12} />
-                                    Download
-                                  </Link>
-                                  <Link
-                                    href={`/invoices/${invoice.id}`}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-sky-500/50 hover:text-sky-300"
-                                    title="Edit invoice"
-                                  >
-                                    <FilePenLine size={12} />
-                                    Edit
-                                  </Link>
-                                  <Link
-                                    href={`/invoices/${invoice.id}#payments`}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-base-600 bg-base-950/45 px-2 py-2 text-[10px] font-medium text-neutral-300 hover:border-amber-500/50 hover:text-amber-300"
-                                    title="Manage invoice payments"
-                                  >
-                                    <CreditCard size={12} />
-                                    Payment
-                                  </Link>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-base-700 bg-base-950/25 px-3 py-2.5">
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-medium text-neutral-400">No invoice yet</p>
-                                  <p className="mt-0.5 text-[9px] text-neutral-700">Create one to manage billing from this card.</p>
-                                </div>
-                                <Link
-                                  href="/invoices"
-                                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-accent-300 hover:bg-accent-500/15"
-                                >
-                                  <PlusCircle size={12} />
-                                  Create
-                                </Link>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-3 flex items-end justify-between gap-3 border-t border-base-700/40 pt-3">
-                            <div>
-                              <p className="text-[9px] uppercase tracking-wide text-neutral-700">Added</p>
-                              <p className="mt-1 text-[11px] text-neutral-400">{formatProjectDate(project.createdAt)}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <Empty text="No active projects." />
+                    )}
+                  </section>
+        
+                <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+                  <SectionHead icon={Activity} title="Team Performance" subtitle="Daily activity, time and assigned-project progress" />
+                  <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
+                    {memberPerformance.map((row) => (
+                      <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 w-2 shrink-0 rounded-full ${row.isActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600"}`} />
+                              <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
                             </div>
-                            <div className="text-right">
-                              <p className="text-[9px] uppercase tracking-wide text-neutral-700">Project age</p>
-                              <p className="mt-1 text-[11px] font-medium text-neutral-300">
-                                {ageDays === 0 ? "Added today" : `${ageDays} day${ageDays === 1 ? "" : "s"}`}
+                            <p className="mt-1 text-[10px] text-neutral-600">{jobRoleLabel(row.member.jobRole)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
+                            <p className="text-[9px] uppercase tracking-wide text-neutral-600">overall</p>
+                          </div>
+                        </div>
+        
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
+                          <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, row.overallPercent)}%` }} />
+                        </div>
+        
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                            <p className="text-[9px] uppercase tracking-wide text-neutral-600">Today</p>
+                            <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
+                          </div>
+                          <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                            <p className="text-[9px] uppercase tracking-wide text-neutral-600">All time</p>
+                            <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.allTimeSeconds)}</p>
+                          </div>
+                          <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                            <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
+                            <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
+                          </div>
+                          <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
+                            <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last activity</p>
+                            <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
+                          </div>
+                        </div>
+        
+                        <div className="mt-2 flex items-center justify-between rounded-lg border border-amber-500/15 bg-amber-500/5 px-2.5 py-2">
+                          <span className="text-[10px] text-neutral-500">Idle / paused today</span>
+                          <span className="text-[11px] font-semibold text-amber-300">{duration(row.idleSeconds)}</span>
+                        </div>
+        
+                        <div className="mt-3 border-t border-base-700/40 pt-3">
+                          <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">Assigned projects</p>
+                          <div className="space-y-2.5">
+                            {row.projectProgress.map(({ project, percent }) => (
+                              <div key={project.id}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[11px] font-medium text-neutral-300 hover:text-accent-300">
+                                    {project.name}
+                                  </Link>
+                                  <span className="shrink-0 text-[10px] font-semibold text-neutral-400">{percent}%</span>
+                                </div>
+                                <div className="mt-1 h-1 overflow-hidden rounded-full bg-base-700">
+                                  <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(100, percent)}%` }} />
+                                </div>
+                                <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
+                                  <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
+                                  <span>Total {duration(row.allTimeByProject.get(project.id) ?? 0)}</span>
+                                </div>
+                              </div>
+                            ))}
+                            {row.projectProgress.length === 0 && (
+                              <p className="text-[10px] text-neutral-600">No active project assigned.</p>
+                            )}
+                          </div>
+                        </div>
+                      </section>
+                    ))}
+                    {memberPerformance.length === 0 && <Empty text="No team members." />}
+                  </div>
+                </section>
+        
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+                      <SectionHead title="Task Queue" subtitle="Important work needing attention" href="/" action="View all tasks" />
+                      <div className="divide-y divide-base-700/50">
+                        {openTasks.slice(0, 6).map((task) => (
+                          <div key={task.id} className="flex items-center gap-3 px-4 py-3">
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-600" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-neutral-200">{task.title}</p>
+                              <p className="mt-0.5 truncate text-[10px] text-neutral-600">{projects.find((project) => project.id === task.projectId)?.name ?? "Project"}</p>
+                            </div>
+                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold capitalize ${priorityClass(task.priority)}`}>{task.priority}</span>
+                            <span className="whitespace-nowrap text-[10px] text-neutral-500">{task.dueDate || "No date"}</span>
+                          </div>
+                        ))}
+                        {openTasks.length === 0 && <Empty text="No open tasks." />}
+                      </div>
+                    </section>
+        
+                    <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+                      <SectionHead icon={Users} title="Team Workload" subtitle="Tasks and tracked work time" href="/admin/time-tracking" action="View time" />
+                      <div className="divide-y divide-base-700/50">
+                        {members.filter((member) => member.role !== "admin").slice(0, 6).map((member) => {
+                          const tasks = taskCountByMember.get(member.id) ?? 0;
+                          const pct = Math.round((tasks / maxTaskCount) * 100);
+                          return (
+                            <div key={member.id} className="px-4 py-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-semibold text-neutral-200">{member.name || member.email}</p>
+                                  <p className="mt-0.5 text-[10px] text-neutral-600">{jobRoleLabel(member.jobRole)}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[11px] text-neutral-300">{tasks} tasks</p>
+                                  <p className="text-[10px] text-neutral-600">{duration(timeByMember.get(member.id) ?? 0)} tracked</p>
+                                </div>
+                              </div>
+                              <div className="mt-2 h-1.5 rounded-full bg-base-700">
+                                <div className="h-1.5 rounded-full bg-emerald-400" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+        
+                    <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+                      <SectionHead icon={CheckCircle2} title="My Tasks" subtitle="Personal work, team requests, invoices and renewals" href="/admin/my-tasks" action="Open My Tasks" />
+                      <div className="divide-y divide-base-700/50">
+                        {personalTasks.slice(0, 7).map((task) => (
+                          <Link key={task.id} href="/admin/my-tasks" className="flex items-center gap-3 px-4 py-3 hover:bg-base-800/50">
+                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                              task.source === "team_request"
+                                ? "bg-rose-400"
+                                : task.source === "invoice_reminder"
+                                  ? "bg-sky-400"
+                                  : task.source === "domain_expiry"
+                                    ? "bg-amber-400"
+                                    : task.priority === "high"
+                                    ? "bg-amber-400"
+                                    : "bg-neutral-600"
+                            }`} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <p className="truncate text-xs text-neutral-200">{task.title}</p>
+                                {task.source === "team_request" && (
+                                  <span className="shrink-0 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-rose-300">
+                                    Team
+                                  </span>
+                                )}
+                                {task.source === "invoice_reminder" && (
+                                  <span className="shrink-0 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-sky-300">
+                                    Invoice
+                                  </span>
+                                )}
+                                {task.source === "domain_expiry" && (
+                                  <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-amber-300">
+                                    Domain
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-0.5 truncate text-[10px] text-neutral-600">
+                                {task.source === "team_request"
+                                  ? `High Priority · ${task.sentByName ?? "Team member"}`
+                                  : task.source === "invoice_reminder"
+                                    ? `Billing reminder · ${task.dueDate ?? "this month"}`
+                                    : task.source === "domain_expiry"
+                                      ? `High Priority · Expires ${task.dueDate ?? "soon"}`
+                                      : task.dueDate || "No due date"}
                               </p>
                             </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <Empty text="No active projects." />
-            )}
-          </section>
-
-        <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-          <SectionHead icon={Activity} title="Team Performance" subtitle="Daily activity, time and assigned-project progress" />
-          <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
-            {memberPerformance.map((row) => (
-              <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${row.isActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600"}`} />
-                      <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
-                    </div>
-                    <p className="mt-1 text-[10px] text-neutral-600">{jobRoleLabel(row.member.jobRole)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">overall</p>
-                  </div>
-                </div>
-
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
-                  <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, row.overallPercent)}%` }} />
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Today</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">All time</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.allTimeSeconds)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
-                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last activity</p>
-                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
-                  </div>
-                </div>
-
-                <div className="mt-2 flex items-center justify-between rounded-lg border border-amber-500/15 bg-amber-500/5 px-2.5 py-2">
-                  <span className="text-[10px] text-neutral-500">Idle / paused today</span>
-                  <span className="text-[11px] font-semibold text-amber-300">{duration(row.idleSeconds)}</span>
-                </div>
-
-                <div className="mt-3 border-t border-base-700/40 pt-3">
-                  <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">Assigned projects</p>
-                  <div className="space-y-2.5">
-                    {row.projectProgress.map(({ project, percent }) => (
-                      <div key={project.id}>
-                        <div className="flex items-center justify-between gap-2">
-                          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[11px] font-medium text-neutral-300 hover:text-accent-300">
-                            {project.name}
                           </Link>
-                          <span className="shrink-0 text-[10px] font-semibold text-neutral-400">{percent}%</span>
-                        </div>
-                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-base-700">
-                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(100, percent)}%` }} />
-                        </div>
-                        <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
-                          <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
-                          <span>Total {duration(row.allTimeByProject.get(project.id) ?? 0)}</span>
-                        </div>
+                        ))}
+                        {personalTasks.length === 0 && <Empty text="No admin tasks waiting." />}
                       </div>
-                    ))}
-                    {row.projectProgress.length === 0 && (
-                      <p className="text-[10px] text-neutral-600">No active project assigned.</p>
-                    )}
+                    </section>
+                  </div>
+        
+                        ))}
+                        {expiringDomains.length === 0 && <Empty text="No domains expiring in the next 90 days." />}
+                      </div>
+                    </section>
+        
+                    <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+                      <SectionHead icon={CalendarClock} title="Finance Reminders" subtitle="Upcoming invoices and renewals" href="/invoices" action="View finance" />
+                      <div className="divide-y divide-base-700/50">
+                        {financeReminders.map((item) => (
+                          <Link key={item.id} href={item.href} className="grid grid-cols-[90px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-base-800/40">
+                            <span className="text-[10px] uppercase tracking-wide text-neutral-600">{item.type}</span>
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium text-neutral-200">{item.label}</p>
+                              <p className="mt-0.5 text-[10px] text-neutral-600">Due {item.dueDate || "not set"}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-semibold text-neutral-200">{money(item.amount, item.currency)}</p>
+                              <p className={`mt-0.5 text-[10px] ${item.status === "Overdue" ? "text-rose-300" : "text-amber-300"}`}>{item.status}</p>
+                            </div>
+                          </Link>
+                        ))}
+                        {financeReminders.length === 0 && <Empty text="No finance reminders." />}
+                      </div>
+                    </section>
+                  </div>
+        
+              </div>
+            </div>
+          );
+        }
+        
+        function StatCard({
+          icon: Icon,
+          label,
+          value,
+          sub,
+          warning = false,
+        }: {
+          icon: typeof Banknote;
+          label: string;
+          value: string;
+          sub: string;
+          warning?: boolean;
+        }) {
+          return (
+            <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
+              <div className="flex items-start gap-3">
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${warning ? "bg-amber-500/10 text-amber-300" : "bg-accent-500/10 text-accent-300"}`}>
+                  <Icon size={18} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] text-neutral-500">{label}</p>
+                  <p className="mt-1 truncate text-2xl font-semibold text-neutral-50">{value}</p>
+                  <p className="mt-1 text-[10px] text-neutral-600">{sub}</p>
+                </div>
+              </div>
+      )}
+
+      {dashboardTab === "reports" && (
+        <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+          <SectionHead icon={ReceiptText} title="Reports" subtitle="Open project reporting work without leaving the dashboard" />
+          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {activeProjects.filter((project) => project.type === "seo").map((project) => {
+              const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0, percent: 0 };
+              const percent = progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0);
+              return (
+                <div key={project.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-neutral-100">{project.name}</p>
+                      <p className="mt-1 text-xs text-neutral-600">{percent}% project progress</p>
+                    </div>
+                    <span className="rounded-full bg-violet-500/10 px-2 py-1 text-[9px] font-semibold uppercase text-violet-300">SEO</span>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
+                    <div className="h-full rounded-full bg-violet-400" style={{ width: `${Math.min(100, percent)}%` }} />
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Link href={`/projects/${project.id}?seoTab=reporting`} className="rounded-lg bg-accent-500 px-3 py-2 text-center text-xs font-semibold text-base-950 hover:bg-accent-400">
+                      Open Reporting
+                    </Link>
+                    <Link href={`/projects/${project.id}?seoTab=pages`} className="rounded-lg border border-base-600 bg-base-950/40 px-3 py-2 text-center text-xs font-medium text-neutral-300 hover:border-sky-500/50 hover:text-sky-300">
+                      Website Pages
+                    </Link>
                   </div>
                 </div>
-              </section>
-            ))}
-            {memberPerformance.length === 0 && <Empty text="No team members." />}
+              );
+            })}
+            {activeProjects.filter((project) => project.type === "seo").length === 0 && <Empty text="No active SEO projects." />}
           </div>
         </section>
+      )}
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead title="Task Queue" subtitle="Important work needing attention" href="/" action="View all tasks" />
-              <div className="divide-y divide-base-700/50">
-                {openTasks.slice(0, 6).map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 px-4 py-3">
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-600" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-neutral-200">{task.title}</p>
-                      <p className="mt-0.5 truncate text-[10px] text-neutral-600">{projects.find((project) => project.id === task.projectId)?.name ?? "Project"}</p>
-                    </div>
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold capitalize ${priorityClass(task.priority)}`}>{task.priority}</span>
-                    <span className="whitespace-nowrap text-[10px] text-neutral-500">{task.dueDate || "No date"}</span>
-                  </div>
-                ))}
-                {openTasks.length === 0 && <Empty text="No open tasks." />}
-              </div>
-            </section>
+      {dashboardTab === "accounts" && (
+        <div className="space-y-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard icon={Banknote} label="Received this month" value={money(totalReceived, primaryCurrency)} sub="Current month payments" />
+            <StatCard icon={ReceiptText} label="Outstanding" value={money(outstanding, primaryCurrency)} sub={`${openInvoices} invoices open`} warning />
+            <StatCard icon={WalletCards} label="Invoices" value={String(invoices.length)} sub="All invoice records" />
+            <StatCard icon={CreditCard} label="Payments" value={String(payments.length)} sub="Recorded payment entries" />
+          </section>
 
-            <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead icon={Users} title="Team Workload" subtitle="Tasks and tracked work time" href="/admin/time-tracking" action="View time" />
-              <div className="divide-y divide-base-700/50">
-                {members.filter((member) => member.role !== "admin").slice(0, 6).map((member) => {
-                  const tasks = taskCountByMember.get(member.id) ?? 0;
-                  const pct = Math.round((tasks / maxTaskCount) * 100);
-                  return (
-                    <div key={member.id} className="px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-neutral-200">{member.name || member.email}</p>
-                          <p className="mt-0.5 text-[10px] text-neutral-600">{jobRoleLabel(member.jobRole)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[11px] text-neutral-300">{tasks} tasks</p>
-                          <p className="text-[10px] text-neutral-600">{duration(timeByMember.get(member.id) ?? 0)} tracked</p>
-                        </div>
-                      </div>
-                      <div className="mt-2 h-1.5 rounded-full bg-base-700">
-                        <div className="h-1.5 rounded-full bg-emerald-400" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead icon={CheckCircle2} title="My Tasks" subtitle="Personal work, team requests, invoices and renewals" href="/admin/my-tasks" action="Open My Tasks" />
-              <div className="divide-y divide-base-700/50">
-                {personalTasks.slice(0, 7).map((task) => (
-                  <Link key={task.id} href="/admin/my-tasks" className="flex items-center gap-3 px-4 py-3 hover:bg-base-800/50">
-                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                      task.source === "team_request"
-                        ? "bg-rose-400"
-                        : task.source === "invoice_reminder"
-                          ? "bg-sky-400"
-                          : task.source === "domain_expiry"
-                            ? "bg-amber-400"
-                            : task.priority === "high"
-                            ? "bg-amber-400"
-                            : "bg-neutral-600"
-                    }`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-xs text-neutral-200">{task.title}</p>
-                        {task.source === "team_request" && (
-                          <span className="shrink-0 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-rose-300">
-                            Team
-                          </span>
-                        )}
-                        {task.source === "invoice_reminder" && (
-                          <span className="shrink-0 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-sky-300">
-                            Invoice
-                          </span>
-                        )}
-                        {task.source === "domain_expiry" && (
-                          <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase text-amber-300">
-                            Domain
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 truncate text-[10px] text-neutral-600">
-                        {task.source === "team_request"
-                          ? `High Priority · ${task.sentByName ?? "Team member"}`
-                          : task.source === "invoice_reminder"
-                            ? `Billing reminder · ${task.dueDate ?? "this month"}`
-                            : task.source === "domain_expiry"
-                              ? `High Priority · Expires ${task.dueDate ?? "soon"}`
-                              : task.dueDate || "No due date"}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-                {personalTasks.length === 0 && <Empty text="No admin tasks waiting." />}
-              </div>
-            </section>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead icon={Globe2} title="Domains Expiring Soon" subtitle="Renewal deadlines with client names" href="/domains" action="View domains" />
-              <div className="divide-y divide-base-700/50">
-                {expiringDomains.map(({ domain, days }) => (
-                  <div key={domain.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_auto] items-center gap-3 px-4 py-3 text-xs">
-                    <Link href={`/domains/${domain.id}`} className="truncate font-medium text-neutral-200 hover:text-accent-300">{domain.name}</Link>
-                    <span className="truncate text-neutral-500">{domain.domainClientId ? domainClientById.get(domain.domainClientId)?.name ?? "Client" : "No client"}</span>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${(days ?? 99) <= 14 ? "bg-rose-500/15 text-rose-300" : (days ?? 99) <= 30 ? "bg-amber-500/15 text-amber-300" : "bg-emerald-500/15 text-emerald-300"}`}>
-                      {days === 0 ? "Today" : `${days} days`}
-                    </span>
-                  </div>
-                ))}
-                {expiringDomains.length === 0 && <Empty text="No domains expiring in the next 90 days." />}
-              </div>
-            </section>
-
-            <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead icon={CalendarClock} title="Finance Reminders" subtitle="Upcoming invoices and renewals" href="/invoices" action="View finance" />
-              <div className="divide-y divide-base-700/50">
-                {financeReminders.map((item) => (
-                  <Link key={item.id} href={item.href} className="grid grid-cols-[90px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-base-800/40">
-                    <span className="text-[10px] uppercase tracking-wide text-neutral-600">{item.type}</span>
+          <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+            <SectionHead icon={ReceiptText} title="Invoices & Accounts" subtitle="Edit invoices, manage payments and download PDFs" href="/invoices" action="Open full invoices" />
+            <div className="divide-y divide-base-700/50">
+              {invoices.slice(0, 12).map((invoice) => {
+                const total = invoiceTotal(invoice);
+                const paid = paidByInvoice.get(invoice.id) ?? 0;
+                const due = Math.max(0, total - paid);
+                return (
+                  <div key={invoice.id} className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-neutral-200">{item.label}</p>
-                      <p className="mt-0.5 text-[10px] text-neutral-600">Due {item.dueDate || "not set"}</p>
+                      <Link href={`/invoices/${invoice.id}`} className="truncate text-sm font-semibold text-neutral-100 hover:text-accent-300">
+                        {invoice.invoiceNumber} · {invoice.projectName || invoice.clientName}
+                      </Link>
+                      <p className="mt-1 text-[10px] text-neutral-600">Due {invoice.dueDate} · {invoice.currency}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-semibold text-neutral-200">{money(item.amount, item.currency)}</p>
-                      <p className={`mt-0.5 text-[10px] ${item.status === "Overdue" ? "text-rose-300" : "text-amber-300"}`}>{item.status}</p>
+                    <div className="text-xs">
+                      <p className="text-emerald-300">Paid {money(paid, invoice.currency)}</p>
+                      <p className={due > 0 ? "mt-1 text-amber-300" : "mt-1 text-neutral-600"}>{due > 0 ? `Due ${money(due, invoice.currency)}` : "Fully paid"}</p>
                     </div>
-                  </Link>
-                ))}
-                {financeReminders.length === 0 && <Empty text="No finance reminders." />}
-              </div>
-            </section>
-          </div>
+                    <div className="flex flex-wrap gap-1.5 md:justify-end">
+                      <Link href={`/invoices/${invoice.id}?download=1`} className="inline-flex items-center gap-1 rounded-md border border-base-600 px-2.5 py-1.5 text-[10px] text-neutral-300 hover:text-accent-300"><Download size={11}/> Download</Link>
+                      <Link href={`/invoices/${invoice.id}`} className="inline-flex items-center gap-1 rounded-md border border-base-600 px-2.5 py-1.5 text-[10px] text-neutral-300 hover:text-sky-300"><FilePenLine size={11}/> Edit</Link>
+                      <Link href={`/invoices/${invoice.id}#payments`} className="inline-flex items-center gap-1 rounded-md border border-base-600 px-2.5 py-1.5 text-[10px] text-neutral-300 hover:text-amber-300"><CreditCard size={11}/> Payment</Link>
+                    </div>
+                  </div>
+                );
+              })}
+              {invoices.length === 0 && <Empty text="No invoices yet." />}
+            </div>
+          </section>
 
-      </div>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  warning = false,
-}: {
-  icon: typeof Banknote;
-  label: string;
-  value: string;
-  sub: string;
-  warning?: boolean;
-}) {
-  return (
-    <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-      <div className="flex items-start gap-3">
-        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${warning ? "bg-amber-500/10 text-amber-300" : "bg-accent-500/10 text-accent-300"}`}>
-          <Icon size={18} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] text-neutral-500">{label}</p>
-          <p className="mt-1 truncate text-2xl font-semibold text-neutral-50">{value}</p>
-          <p className="mt-1 text-[10px] text-neutral-600">{sub}</p>
+          <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
+            <SectionHead icon={CalendarClock} title="Finance Reminders" subtitle="Upcoming invoices and renewals" />
+            <div className="divide-y divide-base-700/50">
+              {financeReminders.map((item) => (
+                <Link key={item.id} href={item.href} className="grid grid-cols-[90px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-base-800/40">
+                  <span className="text-[10px] uppercase tracking-wide text-neutral-600">{item.type}</span>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-neutral-200">{item.label}</p>
+                    <p className="mt-0.5 text-[10px] text-neutral-600">Due {item.dueDate || "not set"}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-neutral-200">{money(item.amount, item.currency)}</p>
+                    <p className={`mt-0.5 text-[10px] ${item.status === "Overdue" ? "text-rose-300" : "text-amber-300"}`}>{item.status}</p>
+                  </div>
+                </Link>
+              ))}
+              {financeReminders.length === 0 && <Empty text="No finance reminders." />}
+            </div>
+          </section>
         </div>
-      </div>
+      )}
+
+      {dashboardTab === "domains" && (
+        <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-neutral-100">Domain / Hosting</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Domains, renewals and client ownership live here now. This workspace is ready to expand into HouseMySite hosting accounts and server operations.
+            </p>
+          </div>
+          <DomainsPanel
+            renewals={renewals}
+            domainClients={domainClients}
+            domains={domains}
+            websitesByDomainId={websitesByDomainId}
+            hasDynadotApiKey={hasDynadotApiKey}
+            isAdmin
+          />
+        </section>
+      )}
+
+
     </div>
   );
 }
