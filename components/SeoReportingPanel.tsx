@@ -6,8 +6,11 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Download,
+  FileSpreadsheet,
   FileText,
   PoundSterling,
+  Printer,
   ShieldCheck,
 } from "lucide-react";
 import type {
@@ -131,6 +134,29 @@ function statusClass(status: SeoTaskReportItem["status"]) {
   return "bg-amber-500/15 text-amber-300";
 }
 
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function csvCell(value: string | number | null | undefined) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function safeFilename(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "report";
+}
+
 export function SeoReportingPanel({
   projectId,
   projectName,
@@ -240,6 +266,173 @@ export function SeoReportingPanel({
     );
   };
 
+  const exportClientCsv = () => {
+    if (clientItems.length === 0) return;
+
+    const header = [
+      "Group",
+      "Task",
+      "Status",
+      "Assigned To",
+      ...(hideDatesFromClient ? [] : ["Started", "Completed"]),
+      ...(includePricesForClient ? ["Price", "Currency"] : []),
+      "Notes",
+    ];
+
+    const rows = clientItems.map((item) => [
+      item.group,
+      item.title,
+      statusLabel(item.status),
+      item.assignedToName ?? "",
+      ...(hideDatesFromClient
+        ? []
+        : [
+            item.startedAt ? displayDate(item.startedAt, true) : "",
+            item.completedAt ? displayDate(item.completedAt, true) : "",
+          ]),
+      ...(includePricesForClient ? [item.price ?? "", item.currency ?? ""] : []),
+      item.notes,
+    ]);
+
+    const meta: Array<Array<string | number>> = [
+      ["Company", companyName || "Company"],
+      ["Project", projectName],
+      ...(!hideDatesFromClient
+        ? [["Report From", selectedRange.startDate], ["Report To", selectedRange.endDate]]
+        : []),
+      ["Included Statuses", allStatuses.filter((status) => includedStatuses.has(status.key)).map((status) => status.label).join(", ")],
+      [],
+    ];
+
+    const csv = [...meta, header, ...rows]
+      .map((row) => row.map((cell) => csvCell(cell)).join(","))
+      .join("\r\n");
+
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeFilename(companyName)}-${safeFilename(projectName)}-seo-report.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportClientPdf = () => {
+    if (clientItems.length === 0) return;
+
+    const popup = window.open("", "_blank", "noopener,noreferrer");
+    if (!popup) {
+      window.alert("Please allow pop-ups to export the PDF.");
+      return;
+    }
+
+    const grouped = new Map<string, SeoTaskReportItem[]>();
+    for (const item of clientItems) {
+      const list = grouped.get(item.group) ?? [];
+      list.push(item);
+      grouped.set(item.group, list);
+    }
+
+    const reportRange = hideDatesFromClient
+      ? ""
+      : `<p class="range">Report period: ${escapeHtml(displayDate(selectedRange.startDate))} – ${escapeHtml(displayDate(selectedRange.endDate))}</p>`;
+
+    const sections = Array.from(grouped.entries())
+      .map(([group, items]) => {
+        const rows = items
+          .map((item) => {
+            const price = priceLabel(item);
+            const dates = hideDatesFromClient
+              ? ""
+              : `<div class="dates">${item.startedAt ? `Started: ${escapeHtml(displayDate(item.startedAt, true))}` : ""}${item.startedAt && item.completedAt ? " · " : ""}${item.completedAt ? `Completed: ${escapeHtml(displayDate(item.completedAt, true))}` : ""}</div>`;
+            const priceHtml =
+              includePricesForClient && price
+                ? `<span class="price">${escapeHtml(price)}</span>`
+                : "";
+
+            return `
+              <tr>
+                <td>
+                  <strong>${escapeHtml(item.title)}</strong>
+                  <div class="meta">
+                    ${item.assignedToName ? `By ${escapeHtml(item.assignedToName)} · ` : ""}
+                    ${escapeHtml(item.source.replaceAll("_", " "))}
+                    ${priceHtml ? ` · ${priceHtml}` : ""}
+                  </div>
+                  ${dates}
+                  ${item.notes ? `<div class="notes">${escapeHtml(item.notes)}</div>` : ""}
+                </td>
+                <td class="status">${escapeHtml(statusLabel(item.status))}</td>
+              </tr>`;
+          })
+          .join("");
+
+        return `
+          <section>
+            <h2>${escapeHtml(group)}</h2>
+            <table>
+              <thead><tr><th>Task</th><th>Status</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>`;
+      })
+      .join("");
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(companyName || "Company")} - ${escapeHtml(projectName)} - SEO Report</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; color: #111827; margin: 0; font-size: 12px; }
+    header { border-bottom: 2px solid #111827; padding-bottom: 14px; margin-bottom: 18px; }
+    .company { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #047857; }
+    h1 { font-size: 24px; margin: 5px 0 4px; }
+    .project { font-size: 14px; font-weight: 600; color: #374151; margin: 0; }
+    .range { color: #6b7280; margin: 7px 0 0; }
+    .summary { display: flex; gap: 8px; margin: 0 0 18px; flex-wrap: wrap; }
+    .pill { border: 1px solid #d1d5db; border-radius: 999px; padding: 5px 9px; color: #4b5563; }
+    section { margin: 0 0 18px; break-inside: avoid; }
+    h2 { font-size: 14px; margin: 0 0 7px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; background: #f3f4f6; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+    th, td { padding: 8px; border: 1px solid #e5e7eb; vertical-align: top; }
+    th:last-child, td.status { width: 95px; }
+    .meta, .dates, .notes { margin-top: 4px; color: #6b7280; font-size: 10px; }
+    .notes { color: #4b5563; }
+    .price { color: #92400e; font-weight: 600; }
+    footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 9px; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="company">${escapeHtml(companyName || "Company")}</div>
+    <h1>SEO Work Report</h1>
+    <p class="project">${escapeHtml(projectName)}</p>
+    ${reportRange}
+  </header>
+  <div class="summary">
+    <span class="pill">${clientItems.length} included tasks</span>
+    <span class="pill">${escapeHtml(allStatuses.filter((status) => includedStatuses.has(status.key)).map((status) => status.label).join(", ") || "No statuses selected")}</span>
+    <span class="pill">${includePricesForClient ? "Prices included" : "Prices hidden"}</span>
+    <span class="pill">${hideDatesFromClient ? "Dates hidden" : "Dates included"}</span>
+  </div>
+  ${sections}
+  <footer>Generated from the project reporting dashboard.</footer>
+  <script>window.addEventListener("load", function () { window.print(); });<\/script>
+</body>
+</html>`;
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
@@ -258,20 +451,45 @@ export function SeoReportingPanel({
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-1 rounded-lg border border-base-700/60 bg-base-900 p-1">
-            {(["daily", "weekly", "monthly", "custom"] as ActivityRange[]).map((mode) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap gap-1 rounded-lg border border-base-700/60 bg-base-900 p-1">
+              {(["daily", "weekly", "monthly", "custom"] as ActivityRange[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setActivityRange(mode)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
+                    activityRange === mode ? "bg-accent-500 text-base-950" : "text-neutral-400 hover:text-neutral-200",
+                  )}
+                >
+                  {mode === "custom" ? "Selected Dates" : mode}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-1.5">
               <button
-                key={mode}
                 type="button"
-                onClick={() => setActivityRange(mode)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
-                  activityRange === mode ? "bg-accent-500 text-base-950" : "text-neutral-400 hover:text-neutral-200",
-                )}
+                disabled={activityLoading || clientItems.length === 0}
+                onClick={exportClientPdf}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-base-600 bg-base-900 px-3 py-2 text-xs font-medium text-neutral-300 hover:border-accent-500/50 hover:text-accent-300 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Open a clean client report and print or save it as PDF"
               >
-                {mode === "custom" ? "Selected Dates" : mode}
+                <Printer size={13} />
+                Export PDF
               </button>
-            ))}
+              <button
+                type="button"
+                disabled={activityLoading || clientItems.length === 0}
+                onClick={exportClientCsv}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-base-600 bg-base-900 px-3 py-2 text-xs font-medium text-neutral-300 hover:border-sky-500/50 hover:text-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Download the selected report rows as CSV"
+              >
+                <FileSpreadsheet size={13} />
+                CSV
+              </button>
+            </div>
           </div>
         </div>
 
@@ -453,7 +671,10 @@ export function SeoReportingPanel({
               )}
 
               <div className="rounded-lg border border-base-700/50 bg-base-950/30 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide text-neutral-600">Client-facing report preview</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-600">Client-facing report preview</p>
+                  <span className="inline-flex items-center gap-1 text-[9px] text-neutral-700"><Download size={10} /> Export uses this view</span>
+                </div>
                 <p className="mt-1 text-xs text-neutral-300">
                   {companyName || "Company"} · {projectName}
                   {!hideDatesFromClient && (
