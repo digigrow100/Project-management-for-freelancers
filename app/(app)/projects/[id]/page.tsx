@@ -290,7 +290,15 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               items={seoWorkflowItems.filter((item) => item.module === "recurring")}
             />
           }
-          reporting={<SeoReportingPanel projectId={project.id} reports={seoReports} preferences={reportPreferences} />}
+          reporting={
+            <SeoReportingPanel
+              projectId={project.id}
+              projectName={project.name}
+              companyName={businessProfile.companyName}
+              reports={seoReports}
+              preferences={reportPreferences}
+            />
+          }
           clientDetails={clientDetailsTab}
         />
       ) : (
