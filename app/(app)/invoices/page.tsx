@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import {
+  ensureMonthlyProjectInvoices,
   listApprovedSeoReportsForClient,
   listClients,
   listClientServices,
@@ -16,6 +17,8 @@ export const dynamic = "force-dynamic";
 export default async function InvoicesPage() {
   const profile = await getCurrentProfile();
   if (!profile || (profile.role !== "admin" && !profile.canAccessFinance)) notFound();
+
+  if (profile.role === "admin") await ensureMonthlyProjectInvoices();
 
   const [invoices, clients] = await Promise.all([listInvoices(), listClients()]);
   const itemsByInvoice = await listInvoiceItemsForInvoices(invoices.map((i) => i.id));
