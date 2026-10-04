@@ -87,6 +87,8 @@ import type {
   SeoWorkflowApprovalStatus,
   SeoReport,
   SeoReportMetrics,
+  SeoTaskReportData,
+  SeoTaskReportItem,
   Stage,
   Task,
   TaskFocusState,
@@ -6061,6 +6063,196 @@ export interface SeoReportDraft {
   completedTaskTitles: string[];
   backlinksCreated: number;
   metrics: SeoReportMetrics;
+}
+
+function reportMonthKeys(startDate: string, endDate: string): string[] {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const keys: string[] = [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+
+  while (cursor <= last) {
+    keys.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`);
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return keys;
+}
+
+function reportDateInRange(value: string | null, startDate: string, endDate: string): boolean {
+  if (!value) return false;
+  const key = value.slice(0, 10);
+  return key >= startDate && key <= endDate;
+}
+
+const SEO_WORKFLOW_LABELS: Record<SeoWorkflowModule, string> = {
+  full_website: "Full Website",
+  social_media: "Social Media",
+  local_listing: "Local Listing",
+  blog_onsite: "Blog Onsite",
+  web_2_0: "Web 2.0",
+  guest_blogging: "Guest Blogging",
+  recurring: "Recurring SEO",
+};
+
+export async function buildSeoTaskReport(
+  projectId: string,
+  startDate: string,
+  endDate: string,
+): Promise<SeoTaskReportData> {
+  const [pages, workflows, tasks, entries, members] = await Promise.all([
+    listProjectPages(projectId),
+    listSeoWorkflowItems(projectId),
+    getTasksByProject(projectId),
+    listTaskTimeEntries(),
+    listTeamMembers(),
+  ]);
+
+  const pageById = new Map(pages.map((page) => [page.id, page]));
+  const memberById = new Map(members.map((member) => [member.id, member.name || member.email]));
+  const projectEntries = entries.filter((entry) => entry.projectId === projectId);
+  const entriesByTask = new Map<string, TaskTimeEntry[]>();
+  for (const entry of projectEntries) {
+    const list = entriesByTask.get(entry.taskId) ?? [];
+    list.push(entry);
+    entriesByTask.set(entry.taskId, list);
+  }
+
+  const items: SeoTaskReportItem[] = [];
+  const monthKeys = reportMonthKeys(startDate, endDate);
+  const monthChecks = await Promise.all(monthKeys.map((month) => listPageAuditChecks(projectId, month)));
+
+  for (const checks of monthChecks) {
+    for (const check of checks) {
+      const page = pageById.get(check.pageId);
+      if (!page) continue;
+
+      const matchingFallback = tasks.find(
+        (task) =>
+          task.pageId === check.pageId &&
+          task.isFallback &&
+          Boolean(task.fallbackTemplateKey?.includes(check.checkKey)),
+      );
+      const taskEntries = matchingFallback ? entriesByTask.get(matchingFallback.id) ?? [] : [];
+      const startedAt =
+        taskEntries.length > 0
+          ? [...taskEntries].sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0]?.startedAt ?? null
+          : null;
+      const completedInRange = reportDateInRange(check.checkedAt, startDate, endDate);
+
+      if (check.status !== "pending" && !completedInRange) continue;
+
+      items.push({
+        id: `page-check:${check.id}`,
+        source: "page_check",
+        group: `Website Pages · ${page.name}`,
+        pageName: page.name,
+        title: check.label,
+        status:
+          check.status === "not_applicable"
+            ? "not_applicable"
+            : check.status === "done" && completedInRange
+              ? "done"
+              : startedAt && reportDateInRange(startedAt, startDate, endDate)
+                ? "in_progress"
+                : "pending",
+        assignedToName:
+          (check.checkedBy ? memberById.get(check.checkedBy) ?? null : null) ??
+          matchingFallback?.assignedToName ??
+          null,
+        startedAt,
+        completedAt: completedInRange ? check.checkedAt : null,
+        price: null,
+        currency: null,
+        notes: check.notes || check.value || "",
+      });
+    }
+  }
+
+  for (const workflow of workflows) {
+    const completedInRange = reportDateInRange(workflow.completedAt, startDate, endDate);
+    const existedByRangeEnd = workflow.createdAt.slice(0, 10) <= endDate;
+    if (!completedInRange && !(workflow.status === "pending" && existedByRangeEnd)) continue;
+
+    items.push({
+      id: `workflow:${workflow.id}`,
+      source: "workflow",
+      group: SEO_WORKFLOW_LABELS[workflow.module],
+      pageName: null,
+      title: workflow.title,
+      status: completedInRange ? "done" : "pending",
+      assignedToName: null,
+      startedAt: null,
+      completedAt: completedInRange ? workflow.completedAt : null,
+      price: workflow.price,
+      currency: workflow.price === null ? null : workflow.currency,
+      notes: workflow.notes,
+    });
+  }
+
+  for (const task of tasks) {
+    // Automatic page-audit fallback tasks are represented by their individual
+    // checklist rows above, so don't duplicate them as one large task.
+    if (task.isFallback && task.pageId) continue;
+
+    const completedInRange = reportDateInRange(task.completedAt, startDate, endDate);
+    const existedByRangeEnd = task.createdAt.slice(0, 10) <= endDate;
+    if (!completedInRange && !(task.status !== "done" && existedByRangeEnd)) continue;
+
+    const taskEntries = entriesByTask.get(task.id) ?? [];
+    const startedAt =
+      taskEntries.length > 0
+        ? [...taskEntries].sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0]?.startedAt ?? null
+        : null;
+    const activeInRange = taskEntries.some(
+      (entry) =>
+        reportDateInRange(entry.startedAt, startDate, endDate) ||
+        reportDateInRange(entry.endedAt, startDate, endDate),
+    );
+
+    items.push({
+      id: `task:${task.id}`,
+      source: "task",
+      group: task.seoModule ? `Tasks · ${task.seoModule.replaceAll("_", " ")}` : "Project Tasks",
+      pageName: task.pageId ? pageById.get(task.pageId)?.name ?? null : null,
+      title: task.title,
+      status: completedInRange ? "done" : task.status === "in_progress" || activeInRange ? "in_progress" : "pending",
+      assignedToName: task.assignedToName,
+      startedAt,
+      completedAt: completedInRange ? task.completedAt : null,
+      price: null,
+      currency: null,
+      notes: task.notes,
+    });
+  }
+
+  const statusOrder: Record<SeoTaskReportItem["status"], number> = {
+    done: 0,
+    in_progress: 1,
+    pending: 2,
+    not_applicable: 3,
+  };
+
+  items.sort((a, b) => {
+    if (a.group !== b.group) return a.group.localeCompare(b.group);
+    if (statusOrder[a.status] !== statusOrder[b.status]) return statusOrder[a.status] - statusOrder[b.status];
+    return a.title.localeCompare(b.title);
+  });
+
+  return {
+    projectId,
+    startDate,
+    endDate,
+    generatedAt: nowIso(),
+    totals: {
+      total: items.length,
+      done: items.filter((item) => item.status === "done").length,
+      inProgress: items.filter((item) => item.status === "in_progress").length,
+      pending: items.filter((item) => item.status === "pending").length,
+      notApplicable: items.filter((item) => item.status === "not_applicable").length,
+    },
+    items,
+  };
 }
 
 export async function buildSeoReportDraft(
