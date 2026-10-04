@@ -812,35 +812,6 @@ export function AdminDashboardOverview({
           </div>
 
       </div>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  warning = false,
-}: {
-  icon: typeof Banknote;
-  label: string;
-  value: string;
-  sub: string;
-  warning?: boolean;
-}) {
-  return (
-    <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-      <div className="flex items-start gap-3">
-        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${warning ? "bg-amber-500/10 text-amber-300" : "bg-accent-500/10 text-accent-300"}`}>
-          <Icon size={18} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] text-neutral-500">{label}</p>
-          <p className="mt-1 truncate text-2xl font-semibold text-neutral-50">{value}</p>
-          <p className="mt-1 text-[10px] text-neutral-600">{sub}</p>
-        </div>
-      </div>
 
       {dashboardTab === "reports" && (
         <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
@@ -880,6 +851,7 @@ function StatCard({
             <StatCard icon={WalletCards} label="Invoices" value={String(invoices.length)} sub="All invoice records" />
             <StatCard icon={CreditCard} label="Payments" value={String(payments.length)} sub="Recorded payment entries" />
           </section>
+
           <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
             <SectionHead icon={ReceiptText} title="Invoices & Accounts" subtitle="Download invoices, edit billing and manage payments" href="/invoices" action="Open full invoices" />
             <div className="divide-y divide-base-700/50">
@@ -934,4 +906,68 @@ function StatCard({
 
     </div>
   );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  warning = false,
+}: {
+  icon: typeof Banknote;
+  label: string;
+  value: string;
+  sub: string;
+  warning?: boolean;
+}) {
+  return (
+    <div className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
+      <div className="flex items-start gap-3">
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${warning ? "bg-amber-500/10 text-amber-300" : "bg-accent-500/10 text-accent-300"}`}>
+          <Icon size={18} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] text-neutral-500">{label}</p>
+          <p className="mt-1 truncate text-2xl font-semibold text-neutral-50">{value}</p>
+          <p className="mt-1 text-[10px] text-neutral-600">{sub}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionHead({
+  icon: Icon,
+  title,
+  subtitle,
+  href,
+  action,
+}: {
+  icon?: typeof Clock3;
+  title: string;
+  subtitle: string;
+  href?: string;
+  action?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-base-700/50 px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        {Icon && <Icon size={16} className="shrink-0 text-accent-300" />}
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-neutral-100">{title}</h2>
+          <p className="mt-0.5 truncate text-[10px] text-neutral-600">{subtitle}</p>
+        </div>
+      </div>
+      {href && action && (
+        <Link href={href} className="inline-flex shrink-0 items-center gap-1 text-[10px] text-neutral-500 hover:text-accent-300">
+          {action} <ArrowRight size={11} />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <p className="px-4 py-6 text-center text-xs text-neutral-600">{text}</p>;
 }
