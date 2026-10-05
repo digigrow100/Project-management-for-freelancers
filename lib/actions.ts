@@ -500,7 +500,7 @@ export async function completeAdminWorkItemAction(id: string) {
 
 export async function snoozeAdminWorkItemAction(
   id: string,
-  mode: "30m" | "1h" | "after_next_task",
+  mode: "30m" | "1h" | "tomorrow" | "after_next_task",
 ) {
   const profile = await requireAdmin();
   await store.snoozeAdminWorkItem(id, profile.id, mode);
