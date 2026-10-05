@@ -736,7 +736,7 @@ async function buildInvoicePdf(input: InvoicePdfInput) {
   return doc;
 }
 
-function fileName(invoice: Invoice): string {
+function fileName(input: InvoicePdfInput): string {
   const safe = (value: string) =>
     value
       .trim()
@@ -744,16 +744,23 @@ function fileName(invoice: Invoice): string {
       .replace(/^-+|-+$/g, "")
       .toLowerCase();
 
-  const projectName = safe(invoice.projectName || "project");
-  const invoiceNumber = safe(invoice.invoiceNumber || "invoice");
+  const explicitMohsinUkLabel = /\bmohsin-uk\b/i.test(input.invoice.notes) ? "Mohsin-UK" : "";
+  const name = safe(
+    explicitMohsinUkLabel ||
+      input.invoice.projectName ||
+      input.client.company ||
+      input.client.name ||
+      "invoice",
+  );
+  const invoiceNumber = safe(input.invoice.invoiceNumber || "invoice");
   const currentDate = businessDateKey();
 
-  return `${projectName}-${invoiceNumber}-${currentDate}.pdf`;
+  return `${name}-${invoiceNumber}-${currentDate}.pdf`;
 }
 
 export async function downloadInvoicePdf(input: InvoicePdfInput): Promise<void> {
   const doc = await buildInvoicePdf(input);
-  doc.save(fileName(input.invoice));
+  doc.save(fileName(input));
 }
 
 export async function previewInvoicePdf(input: InvoicePdfInput): Promise<void> {
