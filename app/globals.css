@@ -193,3 +193,95 @@ body {
     animation: none;
   }
 }
+
+
+/* Personal accent themes. Layout and dark base stay unchanged. */
+:root,
+[data-theme="dark"] {
+  --accent-50: 233 253 243;
+  --accent-100: 200 250 223;
+  --accent-200: 149 242 193;
+  --accent-300: 95 230 162;
+  --accent-400: 51 212 133;
+  --accent-500: 31 185 110;
+  --accent-600: 22 148 88;
+  --accent-700: 18 116 74;
+  --accent-800: 17 92 61;
+  --accent-900: 15 75 52;
+  --theme-glow: rgba(51, 212, 133, 0.16);
+}
+[data-theme="emerald"] {
+  --accent-50: 236 253 245;
+  --accent-100: 209 250 229;
+  --accent-200: 167 243 208;
+  --accent-300: 110 231 183;
+  --accent-400: 52 211 153;
+  --accent-500: 16 185 129;
+  --accent-600: 5 150 105;
+  --accent-700: 4 120 87;
+  --accent-800: 6 95 70;
+  --accent-900: 6 78 59;
+  --theme-glow: rgba(16, 185, 129, 0.18);
+}
+[data-theme="sky"] {
+  --accent-50: 240 249 255;
+  --accent-100: 224 242 254;
+  --accent-200: 186 230 253;
+  --accent-300: 125 211 252;
+  --accent-400: 56 189 248;
+  --accent-500: 14 165 233;
+  --accent-600: 2 132 199;
+  --accent-700: 3 105 161;
+  --accent-800: 7 89 133;
+  --accent-900: 12 74 110;
+  --theme-glow: rgba(14, 165, 233, 0.18);
+}
+[data-theme="coral"] {
+  --accent-50: 255 247 245;
+  --accent-100: 255 232 226;
+  --accent-200: 255 205 194;
+  --accent-300: 255 167 151;
+  --accent-400: 251 123 103;
+  --accent-500: 244 91 72;
+  --accent-600: 222 63 48;
+  --accent-700: 184 48 39;
+  --accent-800: 151 43 38;
+  --accent-900: 125 40 37;
+  --theme-glow: rgba(244, 91, 72, 0.18);
+}
+.app-theme {
+  background-image:
+    radial-gradient(circle at 15% 0%, var(--theme-glow), transparent 40%),
+    radial-gradient(circle at 85% 20%, rgb(var(--accent-400) / 0.06), transparent 40%);
+}
+.sidebar-themed {
+  position: relative;
+  overflow: hidden;
+}
+.sidebar-themed::before,
+.sidebar-themed::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(2px);
+  opacity: 0.18;
+  background: radial-gradient(circle at 35% 35%, rgb(var(--accent-400) / 0.95), transparent 68%);
+}
+.sidebar-themed::before {
+  width: 18rem;
+  height: 18rem;
+  left: -9rem;
+  bottom: 3rem;
+}
+.sidebar-themed::after {
+  width: 13rem;
+  height: 13rem;
+  right: -7rem;
+  bottom: 14rem;
+  opacity: 0.11;
+}
+.sidebar-themed > * {
+  position: relative;
+  z-index: 1;
+}
