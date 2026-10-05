@@ -1134,6 +1134,8 @@ export async function createInvoiceAction(formData: FormData): Promise<string | 
     dueDate: str(formData, "dueDate") || store.todayDateKey(),
     status: (str(formData, "status") || "draft") as InvoiceStatus,
     notes: str(formData, "notes"),
+    quotationText: str(formData, "quotationText"),
+    termsAndConditions: str(formData, "termsAndConditions"),
     templateKey: (str(formData, "templateKey") || "modern_blue") as import("./types").InvoiceTemplateKey,
     items,
   });
