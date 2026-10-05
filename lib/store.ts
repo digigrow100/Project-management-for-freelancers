@@ -75,6 +75,7 @@ import type {
   RichContent,
   Role,
   JobRole,
+  ThemePreference,
   SearchIntent,
   Service,
   SeoModule,
@@ -3135,6 +3136,7 @@ interface ProfileRow {
   can_access_renewals: boolean | null;
   can_access_backlink_credentials: boolean | null;
   can_access_finance: boolean | null;
+  theme_preference: ThemePreference | null;
   created_at: string;
 }
 
@@ -3148,6 +3150,7 @@ function toProfile(row: ProfileRow): Profile {
     canAccessRenewals: row.can_access_renewals ?? false,
     canAccessBacklinkCredentials: row.can_access_backlink_credentials ?? false,
     canAccessFinance: row.can_access_finance ?? false,
+    themePreference: row.theme_preference ?? "dark",
     createdAt: row.created_at,
   };
 }
@@ -3183,6 +3186,14 @@ export async function listTeamMembers(): Promise<Profile[]> {
     if (isMissingTableError(error)) return [];
     throw error;
   }
+}
+
+export async function updateProfileTheme(userId: string, themePreference: ThemePreference): Promise<void> {
+  const { error } = await getSupabase()
+    .from("freelance_hq_profiles")
+    .update({ theme_preference: themePreference, updated_at: nowIso() })
+    .eq("id", userId);
+  if (error) throw error;
 }
 
 export async function updateMemberRole(userId: string, role: Role): Promise<void> {
