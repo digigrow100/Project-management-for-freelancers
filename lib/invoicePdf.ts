@@ -758,7 +758,7 @@ function drawSupplementPages(doc: PdfDoc, input: InvoicePdfInput) {
       doc.setFontSize(10.5);
       setText(doc, [40, 48, 58]);
       const allLines = doc.splitTextToSize(remaining, CONTENT) as string[];
-      const maxLines = 53;
+      const maxLines = 40;
       const pageLines = allLines.slice(0, maxLines);
       doc.text(pageLines, MARGIN, 128, { lineHeightFactor: 1.45 });
 
