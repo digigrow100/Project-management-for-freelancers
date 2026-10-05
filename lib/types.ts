@@ -236,7 +236,7 @@ export interface Profile {
   canAccessBacklinkCredentials: boolean;
   /** Members (non-admins) can be individually granted access to Finance (Invoices, Services, client balances). Admins always have access. */
   canAccessFinance: boolean;
-  themePreference: ThemePreference;
+  themePreference?: ThemePreference;
   createdAt: string;
 }
 

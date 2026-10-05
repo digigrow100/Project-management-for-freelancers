@@ -55,7 +55,7 @@ export default async function SettingsPage({
       </div>
 
       {activeTab === "theme" ? (
-        <ThemeSettings currentTheme={currentProfile.themePreference} />
+        <ThemeSettings currentTheme={currentProfile.themePreference ?? "dark"} />
       ) : (
         businessProfile && <BusinessProfileForm profile={businessProfile} />
       )}
