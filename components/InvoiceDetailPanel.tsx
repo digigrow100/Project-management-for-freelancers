@@ -322,6 +322,29 @@ export function InvoiceDetailPanel({
           </div>
         )}
 
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Quotation / Agreed Scope (optional)</label>
+            <textarea
+              name="quotationText"
+              rows={8}
+              defaultValue={invoice.quotationText}
+              placeholder="Add the quotation, agreed scope, deliverables, pricing notes, or anything finalized with the client. This will appear on a separate PDF page."
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-400">Terms & Conditions (optional)</label>
+            <textarea
+              name="termsAndConditions"
+              rows={8}
+              defaultValue={invoice.termsAndConditions}
+              placeholder="Add project terms, payment terms, revision policy, ownership, support terms, or other conditions. This will appear on a separate PDF page."
+              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
         <textarea
           name="notes"
           rows={2}

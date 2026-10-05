@@ -721,6 +721,54 @@ async function buildPremiumTeal(doc: PdfDoc, input: InvoicePdfInput, logo: strin
   doc.text("GREAT BUSINESSES BUILD BRIGHTER TOMORROWS", PAGE_WIDTH / 2, PAGE_HEIGHT - 8, { align: "center" });
 }
 
+function drawSupplementPages(doc: PdfDoc, input: InvoicePdfInput) {
+  const sections = [
+    { title: "QUOTATION / AGREED SCOPE", body: input.invoice.quotationText?.trim() ?? "" },
+    { title: "TERMS & CONDITIONS", body: input.invoice.termsAndConditions?.trim() ?? "" },
+  ].filter((section) => section.body);
+
+  for (const section of sections) {
+    let firstPage = true;
+    let remaining = section.body;
+    while (remaining) {
+      doc.addPage();
+      const navy = [12, 39, 76] as const;
+      const blue = [39, 128, 230] as const;
+      const muted = [91, 106, 126] as const;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      setText(doc, navy);
+      doc.text(firstPage ? section.title : `${section.title} — CONTINUED`, MARGIN, 64);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      setText(doc, muted);
+      const meta = [
+        input.invoice.projectName ? `Project: ${input.invoice.projectName}` : "",
+        `Invoice: ${input.invoice.invoiceNumber}`,
+        `Client: ${input.client.company || input.client.name}`,
+      ].filter(Boolean).join("  •  ");
+      doc.text(meta, MARGIN, 84, { maxWidth: CONTENT });
+
+      setDraw(doc, [220, 228, 238]);
+      doc.line(MARGIN, 101, RIGHT, 101);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.5);
+      setText(doc, [40, 48, 58]);
+      const allLines = doc.splitTextToSize(remaining, CONTENT) as string[];
+      const maxLines = 40;
+      const pageLines = allLines.slice(0, maxLines);
+      doc.text(pageLines, MARGIN, 128, { lineHeightFactor: 1.45 });
+
+      remaining = allLines.slice(maxLines).join("\n");
+      drawFooter(doc, input.businessProfile.companyName || "Your Business Name", blue);
+      firstPage = false;
+    }
+  }
+}
+
 async function buildInvoicePdf(input: InvoicePdfInput) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -733,6 +781,7 @@ async function buildInvoicePdf(input: InvoicePdfInput) {
   else if (template === "premium_teal") await buildPremiumTeal(doc, input, logo);
   else await buildModernBlue(doc, input, logo);
 
+  drawSupplementPages(doc, input);
   return doc;
 }
 
