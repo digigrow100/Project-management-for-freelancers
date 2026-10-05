@@ -86,9 +86,29 @@ export function InvoiceDetailPanel({
       const savedItems: InvoiceItem[] = draftItems
         .filter((i) => i.description.trim())
         .map((i, idx) => ({ id: String(idx), invoiceId: invoice.id, description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, order: idx }));
-      const input = { invoice, items: savedItems, client, businessProfile, totalPaid };
-      if (action === "preview") await previewInvoicePdf(input);
-      else await downloadInvoicePdf(input);
+      const project = invoice.projectId ? projects.find((item) => item.id === invoice.projectId) : undefined;
+      const bankDetails =
+        project?.invoiceBankKey === "uk"
+          ? businessProfile.ukBankDetails
+          : project?.invoiceBankKey === "pk"
+            ? businessProfile.pkBankDetails
+            : null;
+
+      const clientReadyInvoice =
+        action === "download" && invoice.status === "draft"
+          ? { ...invoice, status: "sent" as InvoiceStatus }
+          : invoice;
+
+      const input = { invoice: clientReadyInvoice, items: savedItems, client, businessProfile, totalPaid, bankDetails };
+      if (action === "preview") {
+        await previewInvoicePdf(input);
+      } else {
+        if (invoice.status === "draft") {
+          await setInvoiceStatusAction(invoice.id, client.id, "sent");
+        }
+        await downloadInvoicePdf(input);
+        router.refresh();
+      }
     } finally {
       setPdfBusy(null);
     }
