@@ -2635,9 +2635,20 @@ export async function ensureMonthlyInvoiceAdminWorkItems(
     if (monthlyReadError) throw monthlyReadError;
 
     if (existingMonthly) {
+      const { data: existingState, error: stateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .select("status,completed_at")
+        .eq("id", (existingMonthly as { id: string }).id)
+        .single();
+      if (stateError) throw stateError;
+      const manuallyDoneToday =
+        !invoiceExists &&
+        existingState?.status === "done" &&
+        typeof existingState.completed_at === "string" &&
+        existingState.completed_at.slice(0, 10) === today;
       const { error: updateError } = await getSupabase()
         .from("freelance_hq_admin_work_items")
-        .update(monthlyPayload)
+        .update(manuallyDoneToday ? { ...monthlyPayload, status: "done", completed_at: existingState.completed_at } : monthlyPayload)
         .eq("id", (existingMonthly as { id: string }).id);
       if (updateError) throw updateError;
     } else {
@@ -2705,9 +2716,19 @@ export async function ensureMonthlyInvoiceAdminWorkItems(
     if (paymentReadError) throw paymentReadError;
 
     if (existingPayment) {
+      const { data: existingState, error: stateError } = await getSupabase()
+        .from("freelance_hq_admin_work_items")
+        .select("status,completed_at")
+        .eq("id", (existingPayment as { id: string }).id)
+        .single();
+      if (stateError) throw stateError;
+      const manuallyDoneToday =
+        existingState?.status === "done" &&
+        typeof existingState.completed_at === "string" &&
+        existingState.completed_at.slice(0, 10) === today;
       const { error: updateError } = await getSupabase()
         .from("freelance_hq_admin_work_items")
-        .update(payload)
+        .update(manuallyDoneToday ? { ...payload, status: "done", completed_at: existingState.completed_at } : { ...payload, status: "pending", completed_at: null })
         .eq("id", (existingPayment as { id: string }).id);
       if (updateError) throw updateError;
     } else {
@@ -2936,10 +2957,6 @@ export async function completeAdminWorkItem(id: string, ownerId: string): Promis
   if (!data) throw new Error("Admin task not found.");
   const item = data as AdminWorkItemRow;
   if (item.status === "done") return;
-  if (item.source === "invoice_reminder") {
-    throw new Error("Invoice reminders close automatically when the invoice/payment requirement is satisfied.");
-  }
-
   const now = nowIso();
   const { error: doneError } = await getSupabase()
     .from("freelance_hq_admin_work_items")
