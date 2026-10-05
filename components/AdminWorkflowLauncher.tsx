@@ -229,7 +229,7 @@ export function AdminWorkflowLauncher({
             current?.source === "team_request"
               ? "border-rose-500/30"
               : current?.source === "invoice_reminder"
-                ? "border-sky-500/30"
+                ? "border-accent-500/30"
                 : current?.source === "domain_expiry"
                   ? "border-amber-500/30"
                   : "border-base-600",
@@ -251,7 +251,7 @@ export function AdminWorkflowLauncher({
                     current?.source === "team_request"
                       ? "bg-rose-500/15 text-rose-300"
                       : current?.source === "invoice_reminder"
-                        ? "bg-sky-500/15 text-sky-300"
+                        ? "bg-sky-500/15 text-accent-300"
                         : current?.source === "domain_expiry"
                           ? "bg-amber-500/15 text-amber-300"
                           : "bg-accent-500/12 text-accent-300",
@@ -270,7 +270,7 @@ export function AdminWorkflowLauncher({
                       current?.source === "team_request"
                         ? "text-rose-300"
                         : current?.source === "invoice_reminder"
-                          ? "text-sky-300"
+                          ? "text-accent-300"
                           : current?.source === "domain_expiry"
                             ? "text-amber-300"
                             : "text-accent-300",
@@ -321,7 +321,7 @@ export function AdminWorkflowLauncher({
 
                   {current.source === "invoice_reminder" && (
                     <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-accent-300">
                         Monthly Invoice / Payment Reminder
                       </p>
                       <ul className="mt-3 space-y-2 text-sm leading-6 text-neutral-200">
@@ -436,18 +436,21 @@ export function AdminWorkflowLauncher({
                   </div>
                 </div>
 
-                <div className="border-t border-base-700/70 px-5 py-4 sm:px-6">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.35fr)] lg:items-end">
+                <div className="border-t border-accent-500/20 bg-accent-500/[0.03] px-5 py-5 sm:px-6">
+                  <div className="space-y-4">
                     <div>
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
                         Actions
                       </p>
-                      <div className={cn("grid gap-2", current.source === "invoice_reminder" ? "sm:grid-cols-2" : "grid-cols-1")}>
+                      <div className={cn(
+                        "grid gap-2",
+                        current.source === "invoice_reminder" ? "sm:grid-cols-2" : "grid-cols-1",
+                      )}>
                         <button
                           type="button"
                           disabled={isPending}
                           onClick={completeCurrent}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-base-950 shadow-glow transition-colors hover:bg-emerald-400 disabled:opacity-60"
+                          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-accent-400/40 bg-accent-500 px-4 text-sm font-semibold text-base-950 shadow-glow transition-all hover:-translate-y-0.5 hover:bg-accent-400 disabled:translate-y-0 disabled:opacity-60"
                         >
                           <CheckCircle2 size={16} />
                           {current.source === "invoice_reminder"
@@ -461,7 +464,7 @@ export function AdminWorkflowLauncher({
                           <button
                             type="button"
                             onClick={openInvoices}
-                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-base-600 bg-base-800 px-4 text-sm font-semibold text-neutral-100 transition-colors hover:border-base-500 hover:bg-base-700"
+                            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-accent-500/25 bg-accent-500/10 px-4 text-sm font-semibold text-accent-300 transition-all hover:-translate-y-0.5 hover:border-accent-400/40 hover:bg-accent-500/15"
                           >
                             <Banknote size={16} />
                             Open Invoices
@@ -470,7 +473,7 @@ export function AdminWorkflowLauncher({
                       </div>
                     </div>
 
-                    <div className="hidden h-11 w-px bg-base-700/70 lg:block" />
+                    <div className="h-px bg-base-700/60" />
 
                     <div>
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
@@ -481,7 +484,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("30m")}
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-base-700 bg-base-900 px-3 text-xs font-semibold text-neutral-400 transition-colors hover:border-base-500 hover:bg-base-800 hover:text-neutral-100 disabled:opacity-60"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
                         >
                           30 min
                         </button>
@@ -489,7 +492,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("1h")}
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-base-700 bg-base-900 px-3 text-xs font-semibold text-neutral-400 transition-colors hover:border-base-500 hover:bg-base-800 hover:text-neutral-100 disabled:opacity-60"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
                         >
                           1 hour
                         </button>
@@ -497,7 +500,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("tomorrow")}
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-accent-500/35 bg-accent-500/10 px-3 text-xs font-semibold text-accent-300 transition-colors hover:bg-accent-500/15 disabled:opacity-60"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-accent-500/35 bg-accent-500/10 px-3 text-xs font-semibold text-accent-300 transition-all hover:-translate-y-0.5 hover:bg-accent-500/15 disabled:translate-y-0 disabled:opacity-60"
                         >
                           Tomorrow
                         </button>
@@ -505,7 +508,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("after_next_task")}
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-base-700 bg-base-900 px-3 text-xs font-semibold text-neutral-400 transition-colors hover:border-base-500 hover:bg-base-800 hover:text-neutral-100 disabled:opacity-60"
+                          className="inline-flex h-11 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
                         >
                           After next
                         </button>
@@ -518,7 +521,7 @@ export function AdminWorkflowLauncher({
                       {current.projectId && (
                         <Link
                           href={`/projects/${current.projectId}`}
-                          className="text-xs text-sky-400 hover:text-sky-300"
+                          className="text-xs text-accent-400 hover:text-accent-300"
                         >
                           Open project
                         </Link>
