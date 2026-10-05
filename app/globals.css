@@ -362,3 +362,49 @@ body {
   position: relative;
   z-index: 1;
 }
+
+
+/* Stronger colored text in light themes. These intentionally override the
+   pastel dark-theme status shades so percentages, paid/due labels, tabs and
+   badges stay readable on pale surfaces. */
+[data-theme="light"] .theme-main {
+  --accent-300: 20 125 82;
+  --accent-400: 16 105 70;
+}
+[data-theme="light-emerald"] .theme-main {
+  --accent-300: 5 130 92;
+  --accent-400: 4 112 79;
+}
+[data-theme="light-sky"] .theme-main {
+  --accent-300: 2 115 178;
+  --accent-400: 3 96 150;
+}
+[data-theme="light-coral"] .theme-main {
+  --accent-300: 202 64 49;
+  --accent-400: 176 51 40;
+}
+
+[data-theme^="light"] .theme-main .text-emerald-300 {
+  color: rgb(5 150 105) !important;
+}
+[data-theme^="light"] .theme-main .text-emerald-400 {
+  color: rgb(4 120 87) !important;
+}
+[data-theme^="light"] .theme-main .text-amber-300 {
+  color: rgb(180 83 9) !important;
+}
+[data-theme^="light"] .theme-main .text-amber-400 {
+  color: rgb(161 72 7) !important;
+}
+[data-theme^="light"] .theme-main .text-rose-300 {
+  color: rgb(190 24 93) !important;
+}
+[data-theme^="light"] .theme-main .text-rose-400 {
+  color: rgb(159 18 57) !important;
+}
+[data-theme^="light"] .theme-main .text-sky-300 {
+  color: rgb(3 105 161) !important;
+}
+[data-theme^="light"] .theme-main .text-sky-400 {
+  color: rgb(7 89 133) !important;
+}
