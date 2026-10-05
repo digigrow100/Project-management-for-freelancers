@@ -218,6 +218,13 @@ export function AdminMyTasksPanel({
                 >
                   1h
                 </button>
+                <button
+                  type="button"
+                  onClick={() => startTransition(() => snoozeAdminWorkItemAction(item.id, "tomorrow"))}
+                  className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-2.5 py-2 text-[10px] font-medium text-sky-300 hover:bg-sky-500/10"
+                >
+                  Tomorrow
+                </button>
               </div>
             </div>
           ))}
