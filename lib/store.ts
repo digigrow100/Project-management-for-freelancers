@@ -2968,13 +2968,31 @@ export async function completeAdminWorkItem(id: string, ownerId: string): Promis
     if (focusError && !isMissingTableError(focusError)) throw focusError;
   }
 
-  const { error: releaseError } = await getSupabase()
+  // Release only one deferred admin task per completion. Releasing every
+  // after_next_task item at once can make several snoozed tasks bounce back
+  // together and recreate a skip loop.
+  const { data: deferredRows, error: deferredError } = await getSupabase()
     .from("freelance_hq_admin_work_items")
-    .update({ resume_mode: null, snoozed_until: null, updated_at: now })
+    .select("id")
     .eq("owner_id", ownerId)
     .eq("status", "pending")
-    .eq("resume_mode", "after_next_task");
-  if (releaseError) throw releaseError;
+    .eq("resume_mode", "after_next_task")
+    .neq("id", id)
+    .order("updated_at", { ascending: true })
+    .limit(1);
+  if (deferredError) throw deferredError;
+
+  const nextDeferredId = (deferredRows?.[0] as { id: string } | undefined)?.id;
+  if (nextDeferredId) {
+    const { error: releaseError } = await getSupabase()
+      .from("freelance_hq_admin_work_items")
+      .update({ resume_mode: null, snoozed_until: null, updated_at: now })
+      .eq("id", nextDeferredId)
+      .eq("owner_id", ownerId)
+      .eq("status", "pending")
+      .eq("resume_mode", "after_next_task");
+    if (releaseError) throw releaseError;
+  }
 }
 
 export async function setPageChecklistStatusFromAssignedTask(
