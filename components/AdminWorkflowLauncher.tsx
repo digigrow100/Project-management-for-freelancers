@@ -161,7 +161,7 @@ export function AdminWorkflowLauncher({
     completeItem(current);
   }
 
-  function snoozeCurrent(mode: "30m" | "1h" | "after_next_task") {
+  function snoozeCurrent(mode: "30m" | "1h" | "tomorrow" | "after_next_task") {
     if (!current) return;
     startTransition(async () => {
       await snoozeAdminWorkItemAction(current.id, mode);
@@ -178,7 +178,9 @@ export function AdminWorkflowLauncher({
                     ? new Date(now + 30 * 60000).toISOString()
                     : mode === "1h"
                       ? new Date(now + 60 * 60000).toISOString()
-                      : null,
+                      : mode === "tomorrow"
+                        ? new Date(new Date().setHours(24 + 8, 0, 0, 0)).toISOString()
+                        : null,
               },
         ),
       );
@@ -482,6 +484,14 @@ export function AdminWorkflowLauncher({
                       className="rounded-xl border border-base-600 bg-base-850 px-3 py-3 text-xs font-medium text-neutral-300 hover:bg-base-800"
                     >
                       1 hour
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => snoozeCurrent("tomorrow")}
+                      className="rounded-xl border border-sky-500/30 bg-sky-500/8 px-3 py-3 text-xs font-medium text-sky-300 hover:bg-sky-500/12"
+                    >
+                      Tomorrow
                     </button>
                     <button
                       type="button"
