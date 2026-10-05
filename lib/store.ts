@@ -131,6 +131,7 @@ interface ProjectRow {
   website_url: string;
   web_details: WebDevDetails | null;
   share_token: string | null;
+  invoice_bank_key: import("./types").InvoiceBankKey;
   created_at: string;
   updated_at: string;
 }
@@ -240,6 +241,7 @@ function toProject(row: ProjectRow, stages: Stage[]): Project {
     websiteUrl: row.website_url,
     webDetails: row.web_details,
     shareToken: row.share_token,
+    invoiceBankKey: row.invoice_bank_key ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     stages: [...stages].sort((a, b) => a.order - b.order),
@@ -3000,21 +3002,45 @@ export async function setPageChecklistStatusFromAssignedTask(
 export async function getBusinessProfile(): Promise<BusinessProfile> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_business_profile")
-    .select("company_name, logo_url")
+    .select("company_name, logo_url, uk_bank_details, pk_bank_details")
     .eq("id", true)
     .maybeSingle();
   if (error) throw error;
 
+  const row = data as {
+    company_name: string;
+    logo_url: string;
+    uk_bank_details: BusinessProfile["ukBankDetails"] | null;
+    pk_bank_details: BusinessProfile["pkBankDetails"] | null;
+  } | null;
+
   return {
-    companyName: (data as { company_name: string } | null)?.company_name ?? "",
-    logoUrl: (data as { logo_url: string } | null)?.logo_url ?? "",
+    companyName: row?.company_name ?? "",
+    logoUrl: row?.logo_url ?? "",
+    ukBankDetails: row?.uk_bank_details ?? {
+      label: "British Pound",
+      beneficiary: "",
+      bank: "",
+    },
+    pkBankDetails: row?.pk_bank_details ?? {
+      label: "Pakistani Bank",
+      beneficiary: "",
+      bank: "",
+    },
   };
 }
 
 export async function updateBusinessProfile(patch: BusinessProfile): Promise<void> {
   const { error } = await getSupabase()
     .from("freelance_hq_business_profile")
-    .upsert({ id: true, company_name: patch.companyName, logo_url: patch.logoUrl, updated_at: nowIso() });
+    .upsert({
+      id: true,
+      company_name: patch.companyName,
+      logo_url: patch.logoUrl,
+      uk_bank_details: patch.ukBankDetails,
+      pk_bank_details: patch.pkBankDetails,
+      updated_at: nowIso(),
+    });
   if (error) throw error;
 }
 
