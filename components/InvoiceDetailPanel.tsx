@@ -92,20 +92,18 @@ export function InvoiceDetailPanel({
           ? businessProfile.ukBankDetails
           : project?.invoiceBankKey === "pk"
             ? businessProfile.pkBankDetails
-            : null;
+            : invoice.currency === "PKR"
+              ? businessProfile.pkBankDetails
+              : invoice.currency === "GBP"
+                ? businessProfile.ukBankDetails
+                : null;
 
-      const clientReadyInvoice =
-        action === "download" && invoice.status === "draft"
-          ? { ...invoice, status: "sent" as InvoiceStatus }
-          : invoice;
+      const clientReadyInvoice = invoice;
 
       const input = { invoice: clientReadyInvoice, items: savedItems, client, businessProfile, totalPaid, bankDetails };
       if (action === "preview") {
         await previewInvoicePdf(input);
       } else {
-        if (invoice.status === "draft") {
-          await setInvoiceStatusAction(invoice.id, client.id, "sent");
-        }
         await downloadInvoicePdf(input);
         router.refresh();
       }
