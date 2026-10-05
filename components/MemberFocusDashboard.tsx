@@ -186,22 +186,23 @@ export function MemberFocusDashboard({
     .filter((task) => task.id !== activeTask?.id && !pausedIds.has(task.id))
     .sort(sortQueue);
 
-  const fallbackPaused = focusStates
-    .filter((state) => state.state === "paused")
-    .map((state) => taskById.get(state.taskId))
-    .filter((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin)
-    .sort(sortQueue);
+  // A paused/skipped task with resumeAfterCompletions > 0 is deliberately
+  // deferred. Never use it as a fallback current task: doing that makes two
+  // skipped tasks bounce between each other forever when no fresh task exists.
+  const waitingPaused = focusStates
+    .filter((state) => state.state === "paused" && state.resumeAfterCompletions > 0)
+    .map((state) => ({ state, task: taskById.get(state.taskId) }))
+    .filter(
+      (item): item is { state: TaskFocusState; task: Task } =>
+        !!item.task && item.task.status !== "done" && !item.task.waitingForAdmin,
+    )
+    .sort((a, b) => sortQueue(a.task, b.task));
 
-  const naturalCurrent = activeTask ?? readyPaused[0]?.task ?? queuedTasks[0] ?? fallbackPaused[0] ?? null;
+  const naturalCurrent = activeTask ?? readyPaused[0]?.task ?? queuedTasks[0] ?? null;
   const browsePool = [
     ...(naturalCurrent ? [naturalCurrent] : []),
     ...readyPaused.map((item) => item.task).filter((task) => task.id !== naturalCurrent?.id),
     ...queuedTasks.filter((task) => task.id !== naturalCurrent?.id),
-    ...fallbackPaused.filter(
-      (task) =>
-        task.id !== naturalCurrent?.id &&
-        !readyPaused.some((item) => item.task.id === task.id),
-    ),
   ];
   const safeOffset = browsePool.length === 0 ? 0 : Math.min(browseOffset, browsePool.length - 1);
   const currentTask = browsePool[safeOffset] ?? null;
@@ -618,6 +619,15 @@ export function MemberFocusDashboard({
               </div>
             </div>
           </section>
+        ) : waitingPaused.length > 0 ? (
+          <section className="rounded-xl2 border border-dashed border-amber-500/30 bg-amber-500/5 p-10 text-center">
+            <Pause className="mx-auto text-amber-300" size={36} />
+            <h2 className="mt-3 text-lg font-semibold text-neutral-100">Remaining tasks are deferred.</h2>
+            <p className="mx-auto mt-1 max-w-xl text-sm text-neutral-500">
+              No fresh task is available right now. Deferred tasks will return automatically after a different task is completed,
+              or you can resume one manually from Continue Tasks.
+            </p>
+          </section>
         ) : (
           <section className="rounded-xl2 border border-dashed border-base-700 p-10 text-center">
             <CheckCircle2 className="mx-auto text-accent-400" size={36} />
@@ -632,7 +642,7 @@ export function MemberFocusDashboard({
             <div>
               <h3 className="text-sm font-semibold text-neutral-100">Today&apos;s Focus</h3>
               <p className="mt-1 text-sm text-neutral-500">
-                Work one task at a time. Paused work automatically comes back after you finish the next task.
+                Work one task at a time. Paused or skipped work returns after you complete a different task; it never auto-loops when everything else is deferred.
               </p>
             </div>
           </div>
