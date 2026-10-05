@@ -45,6 +45,24 @@ function isEligible(item: AdminWorkItem, now: number) {
   return true;
 }
 
+function detailLines(value: string): string[] {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function detailValue(value: string, label: string): string | null {
+  const prefix = `${label.toLowerCase()}:`;
+  const line = detailLines(value).find((entry) => entry.toLowerCase().startsWith(prefix));
+  return line ? line.slice(line.indexOf(":") + 1).trim() : null;
+}
+
+function adminGroupKey(item: AdminWorkItem, projectById: Map<string, Project>): string {
+  const client = detailValue(item.details, "Client") || detailValue(item.sentNote, "Client");
+  if (client) return `client:${client.toLowerCase()}`;
+  if (item.projectId) return `project:${item.projectId}`;
+  const projectName = item.projectId ? projectById.get(item.projectId)?.name : null;
+  return projectName ? `project-name:${projectName.toLowerCase()}` : `item:${item.id}`;
+}
+
 export function AdminWorkflowLauncher({
   initialItems,
   initialSettings,
@@ -67,6 +85,10 @@ export function AdminWorkflowLauncher({
     [items, clockNow],
   );
   const current = eligible[0] ?? null;
+  const currentGroupKey = current ? adminGroupKey(current, projectById) : null;
+  const relatedReady = current && currentGroupKey
+    ? eligible.filter((item) => adminGroupKey(item, projectById) === currentGroupKey)
+    : [];
   const pendingCount = items.filter((item) => item.status === "pending").length;
   const teamCount = items.filter((item) => item.status === "pending" && item.source === "team_request").length;
   const domainCount = items.filter((item) => item.status === "pending" && item.source === "domain_expiry").length;
@@ -126,13 +148,17 @@ export function AdminWorkflowLauncher({
     router.push("/invoices");
   }
 
-  function completeCurrent() {
-    if (!current) return;
+  function completeItem(item: AdminWorkItem) {
     startTransition(async () => {
-      await completeAdminWorkItemAction(current.id);
-      setItems((list) => list.filter((item) => item.id !== current.id));
+      await completeAdminWorkItemAction(item.id);
+      setItems((list) => list.filter((candidate) => candidate.id !== item.id));
       await refreshQueue();
     });
+  }
+
+  function completeCurrent() {
+    if (!current) return;
+    completeItem(current);
   }
 
   function snoozeCurrent(mode: "30m" | "1h" | "after_next_task") {
@@ -296,9 +322,14 @@ export function AdminWorkflowLauncher({
                       <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">
                         Monthly Invoice / Payment Reminder
                       </p>
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-neutral-200">
-                        {current.details}
-                      </p>
+                      <ul className="mt-3 space-y-2 text-sm leading-6 text-neutral-200">
+                        {detailLines(current.details).map((line) => (
+                          <li key={line} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-300" />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
                       <p className="mt-3 text-xs text-neutral-500">
                         This task closes automatically when its invoice requirement is satisfied.
                       </p>
@@ -310,9 +341,14 @@ export function AdminWorkflowLauncher({
                       <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">
                         Domain Renewal Reminder
                       </p>
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-neutral-200">
-                        {current.details}
-                      </p>
+                      <ul className="mt-3 space-y-2 text-sm leading-6 text-neutral-200">
+                        {detailLines(current.details).map((line) => (
+                          <li key={line} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
@@ -323,7 +359,14 @@ export function AdminWorkflowLauncher({
                       </p>
                       <p className="mt-1 text-xs text-neutral-500">{current.sentReason || "Admin action required"}</p>
                       {current.sentNote && (
-                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-neutral-200">{current.sentNote}</p>
+                        <ul className="mt-3 space-y-2 text-sm leading-6 text-neutral-200">
+                          {detailLines(current.sentNote).map((line) => (
+                            <li key={line} className="flex gap-2">
+                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-300" />
+                              <span>{line}</span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
                   )}
@@ -331,7 +374,55 @@ export function AdminWorkflowLauncher({
                   {current.details && current.source !== "domain_expiry" && current.source !== "invoice_reminder" && (
                     <div className="rounded-2xl border border-base-700 bg-base-950/45 p-4">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">Details</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-300">{current.details}</p>
+                      <ul className="mt-2 space-y-2 text-sm leading-6 text-neutral-300">
+                        {detailLines(current.details).map((line) => (
+                          <li key={line} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-500" />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {relatedReady.length > 1 && (
+                    <div className="rounded-2xl border border-base-700 bg-base-950/45 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Related tasks</p>
+                          <p className="mt-1 text-xs text-neutral-600">Same client/project — review them together.</p>
+                        </div>
+                        <span className="rounded-full bg-base-800 px-2.5 py-1 text-xs font-semibold text-neutral-300">
+                          {relatedReady.length}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {relatedReady.map((item) => (
+                          <div key={item.id} className="flex items-start gap-3 rounded-xl border border-base-700/70 bg-base-900 px-3 py-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-neutral-100">{item.title}</p>
+                              {detailLines(item.details || item.sentNote).slice(0, 3).length > 0 && (
+                                <ul className="mt-2 space-y-1 text-xs leading-5 text-neutral-500">
+                                  {detailLines(item.details || item.sentNote).slice(0, 3).map((line) => (
+                                    <li key={line} className="flex gap-2">
+                                      <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-neutral-600" />
+                                      <span>{line}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => completeItem(item)}
+                              className="shrink-0 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400 disabled:opacity-60"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -346,14 +437,25 @@ export function AdminWorkflowLauncher({
                 <div className="border-t border-base-700/70 px-5 py-4 sm:px-6">
                   <div className="flex flex-col gap-2 sm:flex-row">
                     {current.source === "invoice_reminder" ? (
-                      <button
-                        type="button"
-                        onClick={openInvoices}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-base-950 hover:bg-sky-400"
-                      >
-                        <Banknote size={17} />
-                        Open Invoices
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={completeCurrent}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-base-950 hover:bg-emerald-400 disabled:opacity-60"
+                        >
+                          <CheckCircle2 size={17} />
+                          Done for today
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openInvoices}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-base-950 hover:bg-sky-400"
+                        >
+                          <Banknote size={17} />
+                          Open Invoices
+                        </button>
+                      </>
                     ) : (
                       <button
                         type="button"
