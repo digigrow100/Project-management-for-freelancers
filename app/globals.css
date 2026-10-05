@@ -296,30 +296,30 @@ body {
 [data-theme="light-emerald"] .theme-main,
 [data-theme="light-sky"] .theme-main,
 [data-theme="light-coral"] .theme-main {
-  --base-950: 248 250 252;
-  --base-900: 255 255 255;
-  --base-850: 250 251 252;
-  --base-800: 244 247 250;
-  --base-700: 226 232 240;
-  --base-600: 203 213 225;
-  --base-500: 148 163 184;
+  --base-950: 239 243 247;
+  --base-900: 249 250 251;
+  --base-850: 245 247 249;
+  --base-800: 236 240 244;
+  --base-700: 210 218 227;
+  --base-600: 180 193 207;
+  --base-500: 126 143 160;
 
-  --neutral-50: 23 23 23;
-  --neutral-100: 38 38 38;
-  --neutral-200: 64 64 64;
-  --neutral-300: 82 82 82;
-  --neutral-400: 100 100 100;
-  --neutral-500: 115 115 115;
-  --neutral-600: 148 148 148;
-  --neutral-700: 190 190 190;
-  --neutral-800: 229 229 229;
-  --neutral-900: 245 245 245;
-  --neutral-950: 250 250 250;
+  --neutral-50: 17 24 39;
+  --neutral-100: 31 41 55;
+  --neutral-200: 55 65 81;
+  --neutral-300: 75 85 99;
+  --neutral-400: 95 105 119;
+  --neutral-500: 107 114 128;
+  --neutral-600: 135 145 158;
+  --neutral-700: 170 180 191;
+  --neutral-800: 213 219 226;
+  --neutral-900: 235 239 243;
+  --neutral-950: 247 249 251;
 
   background-color: rgb(var(--base-950));
   background-image:
-    radial-gradient(circle at 8% 0%, rgb(var(--accent-400) / 0.10), transparent 30%),
-    radial-gradient(circle at 92% 12%, rgb(var(--accent-300) / 0.08), transparent 32%);
+    radial-gradient(circle at 8% 0%, rgb(var(--accent-500) / 0.16), transparent 30%),
+    radial-gradient(circle at 92% 12%, rgb(var(--accent-400) / 0.12), transparent 34%);
   color-scheme: light;
 }
 
