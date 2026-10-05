@@ -19,10 +19,12 @@ export function ProjectTypeTabs({
   projects,
   progress,
   paymentByProject,
+  invoiceByProject,
 }: {
   projects: Project[];
   progress: Record<string, { done: number; total: number; openCount: number }>;
   paymentByProject?: Record<string, ProjectPaymentSummary[]>;
+  invoiceByProject?: Record<string, string>;
 }) {
   const counts = TABS.reduce<Record<ProjectType, number>>(
     (acc, tab) => {
@@ -118,6 +120,7 @@ export function ProjectTypeTabs({
                 project={project}
                 progress={progress[project.id] ?? { done: 0, total: 0, openCount: 0 }}
                 payments={paymentByProject?.[project.id] ?? []}
+                invoiceId={invoiceByProject?.[project.id] ?? null}
               />
             </div>
           ))}
