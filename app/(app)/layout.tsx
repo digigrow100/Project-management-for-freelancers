@@ -71,7 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       />
       <div className="flex-1 md:h-screen md:overflow-y-auto">
         <MobileTopBar />
-        <main className="pb-24 md:pb-0">
+        <main className="theme-main min-h-full pb-24 md:pb-0">
           <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">{children}</div>
         </main>
       </div>

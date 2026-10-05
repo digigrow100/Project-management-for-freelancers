@@ -63,7 +63,7 @@ import type {
 
 export async function updateThemePreferenceAction(theme: ThemePreference) {
   const profile = await requireProfile();
-  const allowed: ThemePreference[] = ["dark", "emerald", "sky", "coral"];
+  const allowed: ThemePreference[] = ["dark", "emerald", "sky", "coral", "light", "light-emerald", "light-sky", "light-coral"];
   if (!allowed.includes(theme)) throw new Error("Invalid theme.");
   await store.updateProfileTheme(profile.id, theme);
   revalidatePath("/", "layout");

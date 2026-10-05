@@ -221,7 +221,7 @@ export interface Project {
 
 export type Role = "admin" | "member";
 export type JobRole = "general" | "seo_expert" | "web_developer";
-export type ThemePreference = "dark" | "emerald" | "sky" | "coral";
+export type ThemePreference = "dark" | "emerald" | "sky" | "coral" | "light" | "light-emerald" | "light-sky" | "light-coral";
 
 export interface Profile {
   id: string;

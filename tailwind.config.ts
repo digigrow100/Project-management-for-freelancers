@@ -7,13 +7,26 @@ const config: Config = {
     extend: {
       colors: {
         base: {
-          950: "#030a07",
-          900: "#060e0b",
-          850: "#08120e",
-          800: "#0b1914",
-          700: "#10231c",
-          600: "#162e25",
-          500: "#1f3a2e",
+          950: "rgb(var(--base-950) / <alpha-value>)",
+          900: "rgb(var(--base-900) / <alpha-value>)",
+          850: "rgb(var(--base-850) / <alpha-value>)",
+          800: "rgb(var(--base-800) / <alpha-value>)",
+          700: "rgb(var(--base-700) / <alpha-value>)",
+          600: "rgb(var(--base-600) / <alpha-value>)",
+          500: "rgb(var(--base-500) / <alpha-value>)",
+        },
+        neutral: {
+          50: "rgb(var(--neutral-50) / <alpha-value>)",
+          100: "rgb(var(--neutral-100) / <alpha-value>)",
+          200: "rgb(var(--neutral-200) / <alpha-value>)",
+          300: "rgb(var(--neutral-300) / <alpha-value>)",
+          400: "rgb(var(--neutral-400) / <alpha-value>)",
+          500: "rgb(var(--neutral-500) / <alpha-value>)",
+          600: "rgb(var(--neutral-600) / <alpha-value>)",
+          700: "rgb(var(--neutral-700) / <alpha-value>)",
+          800: "rgb(var(--neutral-800) / <alpha-value>)",
+          900: "rgb(var(--neutral-900) / <alpha-value>)",
+          950: "rgb(var(--neutral-950) / <alpha-value>)",
         },
         accent: {
           50: "rgb(var(--accent-50) / <alpha-value>)",

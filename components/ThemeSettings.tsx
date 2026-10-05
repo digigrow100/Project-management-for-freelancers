@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Moon, Palette } from "lucide-react";
+import { Check, Moon, Palette, Sun } from "lucide-react";
 import type { ThemePreference } from "@/lib/types";
 import { updateThemePreferenceAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
@@ -11,11 +11,16 @@ const THEMES: Array<{
   name: string;
   description: string;
   dots: string[];
+  mode: "Dark" | "Light";
 }> = [
-  { id: "dark", name: "Dark (Default)", description: "Existing dark theme with the original green accent.", dots: ["#33d485", "#1fb96e"] },
-  { id: "emerald", name: "Emerald", description: "Fresh mint and emerald accents.", dots: ["#34d399", "#10b981"] },
-  { id: "sky", name: "Sky Blue", description: "Clean blue and cyan accents.", dots: ["#38bdf8", "#0ea5e9"] },
-  { id: "coral", name: "Coral", description: "Warm coral and peach accents.", dots: ["#fb7b67", "#f45b48"] },
+  { id: "dark", name: "Dark (Default)", description: "Original dark theme with green accents.", dots: ["#33d485", "#1fb96e"], mode: "Dark" },
+  { id: "emerald", name: "Emerald Dark", description: "Dark workspace with mint and emerald accents.", dots: ["#34d399", "#10b981"], mode: "Dark" },
+  { id: "sky", name: "Sky Blue Dark", description: "Dark workspace with blue and cyan accents.", dots: ["#38bdf8", "#0ea5e9"], mode: "Dark" },
+  { id: "coral", name: "Coral Dark", description: "Dark workspace with coral and peach accents.", dots: ["#fb7b67", "#f45b48"], mode: "Dark" },
+  { id: "light", name: "Green Light", description: "Light workspace with the original green accent.", dots: ["#33d485", "#1fb96e"], mode: "Light" },
+  { id: "light-emerald", name: "Emerald Light", description: "Light workspace with mint and emerald accents.", dots: ["#34d399", "#10b981"], mode: "Light" },
+  { id: "light-sky", name: "Sky Blue Light", description: "Light workspace with blue and cyan accents.", dots: ["#38bdf8", "#0ea5e9"], mode: "Light" },
+  { id: "light-coral", name: "Coral Light", description: "Light workspace with coral and peach accents.", dots: ["#fb7b67", "#f45b48"], mode: "Light" },
 ];
 
 export function ThemeSettings({ currentTheme }: { currentTheme: ThemePreference }) {
@@ -48,11 +53,13 @@ export function ThemeSettings({ currentTheme }: { currentTheme: ThemePreference 
         <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Current theme</p>
         <div className="mt-3 flex items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-base-800 text-accent-400">
-            <Moon size={17} />
+            {selected.startsWith("light") ? <Sun size={17} /> : <Moon size={17} />}
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-neutral-100">{THEMES.find((theme) => theme.id === selected)?.name}</p>
-            <p className="text-xs text-neutral-500">{selected === "dark" ? "Original app theme." : "Personal accent theme."}</p>
+            <p className="text-xs text-neutral-500">
+              {THEMES.find((theme) => theme.id === selected)?.mode} mode · personal theme
+            </p>
           </div>
           {isPending && <span className="text-xs text-neutral-500">Saving...</span>}
         </div>
@@ -86,7 +93,12 @@ export function ThemeSettings({ currentTheme }: { currentTheme: ThemePreference 
                   <Check size={14} />
                 </span>
               </div>
-              <h3 className="mt-4 text-sm font-semibold text-neutral-100">{theme.name}</h3>
+              <div className="mt-4 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-neutral-100">{theme.name}</h3>
+                <span className="rounded-full border border-base-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                  {theme.mode}
+                </span>
+              </div>
               <p className="mt-1 text-xs leading-5 text-neutral-500">{theme.description}</p>
               <div className="mt-4 space-y-2 rounded-lg border border-base-700/50 bg-base-950/50 p-3">
                 <div className="h-2 w-2/3 rounded-full bg-accent-500" />
