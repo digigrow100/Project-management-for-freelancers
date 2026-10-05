@@ -2911,13 +2911,16 @@ export async function sendTaskToAdmin(
 export async function snoozeAdminWorkItem(
   id: string,
   ownerId: string,
-  mode: "30m" | "1h" | "after_next_task",
+  mode: "30m" | "1h" | "tomorrow" | "after_next_task",
 ): Promise<void> {
   const now = new Date();
   const update: Record<string, unknown> = { updated_at: now.toISOString() };
   if (mode === "after_next_task") {
     update.resume_mode = "after_next_task";
     update.snoozed_until = null;
+  } else if (mode === "tomorrow") {
+    update.resume_mode = null;
+    update.snoozed_until = businessTomorrowMorningIso(now);
   } else {
     update.resume_mode = null;
     update.snoozed_until = new Date(now.getTime() + (mode === "30m" ? 30 : 60) * 60000).toISOString();
