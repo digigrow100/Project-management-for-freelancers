@@ -23,3 +23,15 @@ export function businessMonthKey(date = new Date()): string {
 export function businessYearKey(date = new Date()): string {
   return businessDateKey(date).slice(0, 4);
 }
+
+
+export function businessTomorrowMorningIso(date = new Date()): string {
+  const parts = partMap(date);
+  const base = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+  base.setUTCDate(base.getUTCDate() + 1);
+  const year = base.getUTCFullYear();
+  const month = String(base.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(base.getUTCDate()).padStart(2, "0");
+  // 08:00 in Asia/Karachi is 03:00 UTC (Pakistan does not observe DST).
+  return `${year}-${month}-${day}T03:00:00.000Z`;
+}
