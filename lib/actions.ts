@@ -57,8 +57,18 @@ import type {
   TaskPriority,
   TaskStatus,
   TechnicalIssueStatus,
+  ThemePreference,
   WebDevDetails,
 } from "./types";
+
+export async function updateThemePreferenceAction(theme: ThemePreference) {
+  const profile = await requireProfile();
+  const allowed: ThemePreference[] = ["dark", "emerald", "sky", "coral"];
+  if (!allowed.includes(theme)) throw new Error("Invalid theme.");
+  await store.updateProfileTheme(profile.id, theme);
+  revalidatePath("/", "layout");
+  revalidatePath("/settings");
+}
 
 function refresh(projectId?: string) {
   revalidatePath("/");
