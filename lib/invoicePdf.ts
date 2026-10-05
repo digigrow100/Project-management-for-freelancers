@@ -8,6 +8,7 @@ import type {
   InvoiceBankDetails,
 } from "./types";
 import { currencySymbol } from "./utils";
+import { businessDateKey } from "./date";
 
 export interface InvoicePdfInput {
   invoice: Invoice;
@@ -736,7 +737,18 @@ async function buildInvoicePdf(input: InvoicePdfInput) {
 }
 
 function fileName(invoice: Invoice): string {
-  return `${invoice.invoiceNumber.replace(/[^a-z0-9-]+/gi, "-").toLowerCase()}.pdf`;
+  const safe = (value: string) =>
+    value
+      .trim()
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
+
+  const projectName = safe(invoice.projectName || "project");
+  const invoiceNumber = safe(invoice.invoiceNumber || "invoice");
+  const currentDate = businessDateKey();
+
+  return `${projectName}-${invoiceNumber}-${currentDate}.pdf`;
 }
 
 export async function downloadInvoicePdf(input: InvoicePdfInput): Promise<void> {
