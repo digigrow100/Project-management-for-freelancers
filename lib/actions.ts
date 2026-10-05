@@ -562,6 +562,20 @@ export async function updateBusinessProfileAction(formData: FormData) {
   await store.updateBusinessProfile({
     companyName: str(formData, "companyName"),
     logoUrl: uploadedLogoUrl ?? str(formData, "existingLogoUrl"),
+    ukBankDetails: {
+      label: "British Pound",
+      beneficiary: str(formData, "ukBeneficiary"),
+      bank: str(formData, "ukBank"),
+      sortCode: str(formData, "ukSortCode"),
+      account: str(formData, "ukAccount"),
+      address: str(formData, "ukAddress"),
+    },
+    pkBankDetails: {
+      label: "Pakistani Bank",
+      beneficiary: str(formData, "pkBeneficiary"),
+      bank: str(formData, "pkBank"),
+      iban: str(formData, "pkIban"),
+    },
   });
   revalidatePath("/settings");
 }
