@@ -221,6 +221,7 @@ export interface Project {
 
 export type Role = "admin" | "member";
 export type JobRole = "general" | "seo_expert" | "web_developer";
+export type ThemePreference = "dark" | "emerald" | "sky" | "coral";
 
 export interface Profile {
   id: string;
@@ -235,6 +236,7 @@ export interface Profile {
   canAccessBacklinkCredentials: boolean;
   /** Members (non-admins) can be individually granted access to Finance (Invoices, Services, client balances). Admins always have access. */
   canAccessFinance: boolean;
+  themePreference: ThemePreference;
   createdAt: string;
 }
 
