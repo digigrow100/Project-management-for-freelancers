@@ -304,17 +304,17 @@ body {
   --base-600: 180 193 207;
   --base-500: 126 143 160;
 
-  --neutral-50: 17 24 39;
-  --neutral-100: 31 41 55;
-  --neutral-200: 55 65 81;
-  --neutral-300: 75 85 99;
-  --neutral-400: 95 105 119;
-  --neutral-500: 107 114 128;
-  --neutral-600: 135 145 158;
-  --neutral-700: 170 180 191;
-  --neutral-800: 213 219 226;
-  --neutral-900: 235 239 243;
-  --neutral-950: 247 249 251;
+  --neutral-50: 10 18 28;
+  --neutral-100: 20 30 42;
+  --neutral-200: 35 47 61;
+  --neutral-300: 52 65 80;
+  --neutral-400: 70 84 99;
+  --neutral-500: 84 98 114;
+  --neutral-600: 110 124 140;
+  --neutral-700: 145 157 170;
+  --neutral-800: 195 203 212;
+  --neutral-900: 226 231 236;
+  --neutral-950: 244 247 249;
 
   background-color: rgb(var(--base-950));
   background-image:
