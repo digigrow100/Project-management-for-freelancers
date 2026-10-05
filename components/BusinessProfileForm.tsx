@@ -42,6 +42,24 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
             </p>
           </div>
         </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-base-700 bg-base-900/45 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">UK Bank</p>
+            <p className="mt-2 text-sm font-medium text-neutral-200">{profile.ukBankDetails.beneficiary || "Not set"}</p>
+            <p className="mt-1 text-xs text-neutral-500">{profile.ukBankDetails.bank}</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              {profile.ukBankDetails.sortCode ? `Sort ${profile.ukBankDetails.sortCode}` : ""}
+              {profile.ukBankDetails.account ? ` · A/C ${profile.ukBankDetails.account}` : ""}
+            </p>
+          </div>
+          <div className="rounded-lg border border-base-700 bg-base-900/45 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Pakistan Bank</p>
+            <p className="mt-2 text-sm font-medium text-neutral-200">{profile.pkBankDetails.beneficiary || "Not set"}</p>
+            <p className="mt-1 text-xs text-neutral-500">{profile.pkBankDetails.bank}</p>
+            <p className="mt-1 break-all text-xs text-neutral-500">{profile.pkBankDetails.iban}</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -104,6 +122,27 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
           />
         </div>
         <p className="mt-1 text-xs text-neutral-500">PNG or JPG, up to 5MB. Leave empty to keep your current logo.</p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border border-base-700 bg-base-900/45 p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">UK Bank Details</h3>
+          <div className="mt-3 space-y-3">
+            <input name="ukBeneficiary" defaultValue={profile.ukBankDetails.beneficiary} placeholder="Beneficiary" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+            <input name="ukBank" defaultValue={profile.ukBankDetails.bank} placeholder="Bank" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+            <input name="ukSortCode" defaultValue={profile.ukBankDetails.sortCode ?? ""} placeholder="Sort code" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+            <input name="ukAccount" defaultValue={profile.ukBankDetails.account ?? ""} placeholder="Account number" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+            <textarea name="ukAddress" defaultValue={profile.ukBankDetails.address ?? ""} placeholder="Bank address" rows={3} className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+          </div>
+        </div>
+        <div className="rounded-lg border border-base-700 bg-base-900/45 p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Pakistan Bank Details</h3>
+          <div className="mt-3 space-y-3">
+            <input name="pkBeneficiary" defaultValue={profile.pkBankDetails.beneficiary} placeholder="Beneficiary" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+            <input name="pkBank" defaultValue={profile.pkBankDetails.bank} placeholder="Bank" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+            <input name="pkIban" defaultValue={profile.pkBankDetails.iban ?? ""} placeholder="IBAN" className="w-full rounded-md border border-base-600 bg-base-950 px-3 py-2 text-sm text-neutral-100" />
+          </div>
+        </div>
       </div>
 
       <button type="submit" className="mt-1 rounded-md bg-accent-500 py-2 text-sm font-medium text-base-950 hover:bg-accent-400">
