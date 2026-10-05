@@ -59,7 +59,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     isAdmin && profile ? await listAdminWorkItems(profile.id) : [];
 
   return (
-    <div className="flex min-h-screen md:h-screen md:overflow-hidden">
+    <div
+      data-theme={profile?.themePreference ?? "dark"}
+      className="app-theme flex min-h-screen md:h-screen md:overflow-hidden"
+    >
       <Sidebar
         profile={profile}
         unseenProjects={unseenProjects}
