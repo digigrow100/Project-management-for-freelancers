@@ -408,9 +408,24 @@ export function AdminDashboardOverview({
                       const percent = progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0);
                       const remainingTasks = Math.max(0, progress.total - progress.done);
                       const assignees = assigneesByProject[project.id] ?? [];
-                      const projectInvoices = invoicesByProject.get(project.id) ?? [];
+                      const expectedInvoiceCurrency =
+                        project.invoiceBankKey === "uk"
+                          ? "GBP"
+                          : project.invoiceBankKey === "pk"
+                            ? "PKR"
+                            : null;
+                      const projectInvoices = (invoicesByProject.get(project.id) ?? []).filter(
+                        (currentInvoice) =>
+                          !expectedInvoiceCurrency || currentInvoice.currency === expectedInvoiceCurrency,
+                      );
                       const invoice = projectInvoices[0];
-                      const projectPlans = paymentPlans.filter((plan) => plan.projectId === project.id);
+                      const projectPlans = paymentPlans.filter(
+                        (plan) =>
+                          plan.projectId === project.id &&
+                          (!expectedInvoiceCurrency || plan.currency === expectedInvoiceCurrency),
+                      );
+                      const invoiceActionsEnabled =
+                        Boolean(expectedInvoiceCurrency) && projectPlans.some((plan) => plan.amount > 0);
                       const projectPaymentsAll = payments.filter((payment) => payment.projectId === project.id);
                       const ageDays = projectAgeDays(project.createdAt);
 
@@ -524,6 +539,7 @@ export function AdminDashboardOverview({
                             )}
                           </div>
 
+                          {project.invoiceBankKey !== "none" && project.invoiceBankKey !== null && (
                           <div className="mt-3 border-t border-base-700/40 pt-3">
                             {projectInvoices.length > 0 ? (
                               <div className="space-y-2">
@@ -573,17 +589,18 @@ export function AdminDashboardOverview({
                                   </div>
                                 ))}
                               </div>
+                            ) : invoiceActionsEnabled ? (
+                              <div className="rounded-lg border border-dashed border-base-700 bg-base-950/25 px-3 py-2.5">
+                                <p className="text-[10px] font-medium text-neutral-400">Invoice is being prepared automatically</p>
+                                <p className="mt-0.5 text-[9px] text-neutral-700">Refresh shortly if the invoice was just configured.</p>
+                              </div>
                             ) : (
                               <div className="rounded-lg border border-dashed border-base-700 bg-base-950/25 px-3 py-2.5">
-                                <p className="text-[10px] font-medium text-neutral-400">Invoice is generated automatically</p>
-                                <p className="mt-0.5 text-[9px] text-neutral-700">
-                                  {project.clientId || project.clientDetails.name || project.clientDetails.company
-                                    ? "Current month invoice is being prepared from the monthly billing plan."
-                                    : "Add/link client details so the automatic invoice can be issued."}
-                                </p>
+                                <p className="text-[10px] font-medium text-neutral-500">Billing amount not set</p>
                               </div>
                             )}
                           </div>
+                          )}
 
                           <div className="mt-3 flex items-end justify-between gap-3 border-t border-base-700/40 pt-3">
                             <div>
