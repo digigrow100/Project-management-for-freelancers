@@ -5,6 +5,7 @@ import type {
   InvoiceItem,
   InvoiceStatus,
   InvoiceTemplateKey,
+  InvoiceBankDetails,
 } from "./types";
 import { currencySymbol } from "./utils";
 
@@ -14,6 +15,7 @@ export interface InvoicePdfInput {
   client: Client;
   businessProfile: BusinessProfile;
   totalPaid: number;
+  bankDetails?: InvoiceBankDetails | null;
 }
 
 const PAGE_WIDTH = 595.28;
@@ -281,6 +283,55 @@ function drawTotals(
   return balanceY + 58;
 }
 
+function drawPaymentDetails(
+  doc: PdfDoc,
+  input: InvoicePdfInput,
+  y: number,
+  accent: readonly [number, number, number],
+) {
+  const bank = input.bankDetails;
+  if (!bank || !bank.beneficiary || !bank.bank) return y;
+
+  const lines = [
+    bank.beneficiary ? `Beneficiary: ${bank.beneficiary}` : "",
+    bank.bank ? `Bank: ${bank.bank}` : "",
+    bank.sortCode ? `Sort code: ${bank.sortCode}` : "",
+    bank.account ? `Account: ${bank.account}` : "",
+    bank.iban ? `IBAN: ${bank.iban}` : "",
+    bank.address ? `Address: ${bank.address}` : "",
+  ].filter(Boolean);
+
+  const estimated = 34 + lines.length * 11;
+  if (y + estimated > PAGE_HEIGHT - 66) {
+    doc.addPage();
+    y = MARGIN;
+  }
+
+  setDraw(doc, [225, 225, 225]);
+  doc.line(MARGIN, y, RIGHT, y);
+  y += 16;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  setText(doc, accent);
+  doc.text("PAYMENT DETAILS", MARGIN, y);
+  y += 15;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  setText(doc, [70, 70, 70]);
+  for (const line of lines) {
+    const wrapped = doc.splitTextToSize(line, CONTENT * 0.72) as string[];
+    doc.text(wrapped, MARGIN, y);
+    y += wrapped.length * 10.5;
+  }
+
+  doc.setFontSize(7.5);
+  setText(doc, [115, 115, 115]);
+  doc.text("Please use the invoice number as your payment reference.", MARGIN, y + 3);
+  return y + 15;
+}
+
 function drawNotes(doc: PdfDoc, input: InvoicePdfInput, y: number, accent: readonly [number, number, number]) {
   if (!input.invoice.notes.trim()) return y;
   setDraw(doc, [225, 225, 225]);
@@ -443,21 +494,7 @@ async function buildModernBlue(doc: PdfDoc, input: InvoicePdfInput, logo: string
   });
 
   y = drawNotes(doc, input, y + 8, blue);
-
-  // Footer kept visually separate from financial content.
-  if (y < PAGE_HEIGHT - 118) {
-    setDraw(doc, line);
-    doc.line(MARGIN, PAGE_HEIGHT - 94, RIGHT, PAGE_HEIGHT - 94);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    setText(doc, navy);
-    doc.text("PAYMENT", MARGIN, PAGE_HEIGHT - 73);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.3);
-    setText(doc, muted);
-    doc.text("Please use the invoice number as your payment reference.", MARGIN, PAGE_HEIGHT - 58);
-  }
-
+  y = drawPaymentDetails(doc, input, y + 8, blue);
   drawFooter(doc, company, blue);
 }
 
@@ -521,7 +558,8 @@ async function buildCorporateNavy(doc: PdfDoc, input: InvoicePdfInput, logo: str
     border: [224, 229, 235],
   });
   y = drawTotals(doc, input, y + 8, { accent: navy, text: navy, muted: [90, 100, 112] });
-  drawNotes(doc, input, y + 10, navy);
+  y = drawNotes(doc, input, y + 10, navy);
+  y = drawPaymentDetails(doc, input, y + 8, navy);
   drawFooter(doc, company, navy);
 }
 
@@ -589,7 +627,8 @@ async function buildMinimalClean(doc: PdfDoc, input: InvoicePdfInput, logo: stri
     border: [225, 225, 225],
   });
   y = drawTotals(doc, input, y + 10, { accent: [40, 40, 40], text: black, muted: grey, boxFill: [243, 243, 243], label: "Total Due" });
-  drawNotes(doc, input, y + 14, grey);
+  y = drawNotes(doc, input, y + 14, grey);
+  y = drawPaymentDetails(doc, input, y + 8, grey);
   drawFooter(doc, company, grey);
 }
 
@@ -670,7 +709,8 @@ async function buildPremiumTeal(doc: PdfDoc, input: InvoicePdfInput, logo: strin
     headerRounded: true,
   });
   y = drawTotals(doc, input, y + 8, { accent: teal, text: deep, muted: [85, 100, 98], boxFill: [224, 244, 241], label: "Balance Due" });
-  drawNotes(doc, input, y + 10, teal);
+  y = drawNotes(doc, input, y + 10, teal);
+  y = drawPaymentDetails(doc, input, y + 8, teal);
 
   setFill(doc, deep);
   doc.rect(0, PAGE_HEIGHT - 22, PAGE_WIDTH, 22, "F");
