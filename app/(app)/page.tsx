@@ -5,7 +5,6 @@ import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
 import { AdminTaskCommandCenter } from "@/components/AdminTaskCommandCenter";
 import {
   ensureIdleSeoTaskForMember,
-  ensureMonthlyProjectInvoices,
   getAllTaskFocusStates,
   getRecentCompletedTasks,
   getMyTasks,
@@ -15,7 +14,6 @@ import {
   getTaskFocusStates,
   getTaskTimeTotals,
   listAllPayments,
-  listInvoices,
   listPaymentPlans,
 } from "@/lib/store";
 import { StatCard } from "@/components/StatCard";
@@ -28,7 +26,6 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({ searchParams }: { searchParams: { currency?: string } }) {
   const profile = await getCurrentProfile();
   const isAdmin = profile?.role === "admin";
-  const thisMonth = currentMonthKey();
 
   if (profile && profile.role === "member") {
     await ensureIdleSeoTaskForMember(profile.id);
@@ -44,22 +41,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     return <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} timeTotals={timeTotals} />;
   }
 
-  if (isAdmin) {
-    try {
-      await ensureMonthlyProjectInvoices(thisMonth);
-    } catch (error) {
-      console.error("dashboard invoice sync failed", error);
-    }
-  }
-
-  const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, invoices, focusStates] = await Promise.all([
+  const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, focusStates] = await Promise.all([
     getOpenTasks(),
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     getRecentCompletedTasks(50),
     getProjectProgressMap(),
     isAdmin ? listPaymentPlans() : Promise.resolve([]),
     isAdmin ? listAllPayments() : Promise.resolve([]),
-    isAdmin ? listInvoices() : Promise.resolve([]),
     isAdmin ? getAllTaskFocusStates() : Promise.resolve([]),
   ]);
 
@@ -76,17 +64,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     paymentsByProject.set(payment.projectId, list);
   }
 
-  const invoiceByProject: Record<string, string> = {};
-  const invoiceRankByProject: Record<string, string> = {};
-  for (const invoice of invoices) {
-    if (!invoice.projectId || invoice.status === "cancelled") continue;
-    const rank = `${invoice.billingPeriod === thisMonth ? "1" : "0"}|${invoice.issueDate}|${invoice.createdAt}`;
-    if (!invoiceRankByProject[invoice.projectId] || rank > invoiceRankByProject[invoice.projectId]) {
-      invoiceRankByProject[invoice.projectId] = rank;
-      invoiceByProject[invoice.projectId] = invoice.id;
-    }
-  }
-
+  const thisMonth = currentMonthKey();
   const summaryForPlan = (plan: (typeof plans)[number]): ProjectPaymentSummary => {
     const projectPayments = (paymentsByProject.get(plan.projectId) ?? []).filter(
       (payment) => payment.currency === plan.currency,
@@ -152,12 +130,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
             </Link>
           )}
         </div>
-        <ProjectTypeTabs
-          projects={activeProjects}
-          progress={progress}
-          paymentByProject={paymentByProject}
-          invoiceByProject={invoiceByProject}
-        />
+        <ProjectTypeTabs projects={activeProjects} progress={progress} paymentByProject={paymentByProject} />
       </section>
 
       {isAdmin && (
