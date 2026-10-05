@@ -36,7 +36,7 @@ export function Sidebar({
     "/my-tasks": unseenTasks,
   };
   return (
-    <aside className="hidden md:flex md:h-screen md:w-64 md:flex-col border-r border-base-700/60 bg-base-900/60 backdrop-blur-sm pl-[calc(1rem+env(safe-area-inset-left))] pr-4 py-6 gap-6">
+    <aside className="sidebar-themed hidden md:flex md:h-screen md:w-64 md:flex-col border-r border-base-700/60 bg-base-900/80 backdrop-blur-sm pl-[calc(1rem+env(safe-area-inset-left))] pr-4 py-6 gap-6">
       <div className="flex items-center gap-2 px-2">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/15 text-accent-400">
           <Leaf size={18} />
@@ -85,7 +85,16 @@ export function Sidebar({
             Invoices
           </Link>
         )}
-        {isAdmin && (
+        {!isAdmin && (
+          <Link
+            href="/settings"
+            className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
+          >
+            <Settings size={17} className="text-neutral-500 group-hover:text-accent-400" />
+            Settings
+          </Link>
+        )}
+                {isAdmin && (
           <>
             <Link
               href="/clients"
