@@ -166,9 +166,23 @@ export interface Client {
   createdAt: string;
 }
 
+export type InvoiceBankKey = "uk" | "pk" | "none" | null;
+
+export interface InvoiceBankDetails {
+  label: string;
+  beneficiary: string;
+  bank: string;
+  sortCode?: string;
+  account?: string;
+  iban?: string;
+  address?: string;
+}
+
 export interface BusinessProfile {
   companyName: string;
   logoUrl: string;
+  ukBankDetails: InvoiceBankDetails;
+  pkBankDetails: InvoiceBankDetails;
 }
 
 export interface WebDevDetails {
@@ -199,6 +213,7 @@ export interface Project {
   websiteUrl: string;
   webDetails: WebDevDetails | null;
   shareToken: string | null;
+  invoiceBankKey: InvoiceBankKey;
   createdAt: string;
   updatedAt: string;
   stages: Stage[];
