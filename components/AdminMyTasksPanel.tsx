@@ -21,6 +21,10 @@ import {
 } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
+function adminDetailLines(value: string): string[] {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
 const priorityClass: Record<TaskPriority, string> = {
   high: "bg-rose-500/12 text-rose-300",
   medium: "bg-amber-500/12 text-amber-300",
@@ -154,11 +158,18 @@ export function AdminMyTasksPanel({
                   )}
                 </div>
 
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-neutral-500">
-                  {item.source === "team_request"
-                    ? item.sentNote || item.details || "Admin action required."
-                    : item.details || "No extra details."}
-                </p>
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-neutral-500">
+                  {adminDetailLines(
+                    item.source === "team_request"
+                      ? item.sentNote || item.details || "Admin action required."
+                      : item.details || "No extra details.",
+                  ).slice(0, 4).map((line) => (
+                    <li key={line} className="flex gap-2">
+                      <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-neutral-600" />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
 
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-neutral-600">
                   {item.projectId && <span>{projectById.get(item.projectId)?.name ?? "Project"}</span>}
@@ -175,7 +186,16 @@ export function AdminMyTasksPanel({
               </div>
 
               <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                {item.source === "invoice_reminder" ? (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => startTransition(() => completeAdminWorkItemAction(item.id))}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400 disabled:opacity-60"
+                >
+                  <CheckCircle2 size={14} />
+                  {item.source === "team_request" ? "Done & Return" : item.source === "invoice_reminder" ? "Done Today" : "Done"}
+                </button>
+                {item.source === "invoice_reminder" && (
                   <Link
                     href="/invoices"
                     className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-sky-400"
@@ -183,16 +203,6 @@ export function AdminMyTasksPanel({
                     <Banknote size={14} />
                     Open Invoices
                   </Link>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => startTransition(() => completeAdminWorkItemAction(item.id))}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400"
-                  >
-                    <CheckCircle2 size={14} />
-                    {item.source === "team_request" ? "Done & Return" : "Done"}
-                  </button>
                 )}
                 <button
                   type="button"
