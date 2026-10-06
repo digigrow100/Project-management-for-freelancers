@@ -75,10 +75,10 @@ export interface TaskFocusState {
   resumeAfterCompletions: number;
   /** Why a member temporarily moved past this task. Cleared when they resume it. */
   skipReason: TaskSkipReason | null;
-  /** Pakistan-date when this paused task may re-enter the normal queue. */
-  availableOn: string | null;
-  /** When true, this task stays only in Pending until the member explicitly continues it. */
-  keepPending: boolean;
+  /** Pakistan-date when this paused task may re-enter the normal queue. Optional for legacy/manual focus objects. */
+  availableOn?: string | null;
+  /** When true, this task stays only in Pending until the member explicitly continues it. Optional for legacy/manual focus objects. */
+  keepPending?: boolean;
   updatedAt: string;
 }
 

@@ -1149,7 +1149,8 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       .maybeSingle();
     if (focusError && !isMissingTableError(focusError)) throw focusError;
 
-    const taskDate = existingFallback.fallback_template_key?.split(":").at(-1) ?? null;
+    const templateParts = (existingFallback.fallback_template_key ?? "").split(":");
+    const taskDate = templateParts.length > 0 ? templateParts[templateParts.length - 1] ?? null : null;
     const isPausedUnavailable =
       focusRow?.state === "paused" &&
       (focusRow.keep_pending === true || Boolean(focusRow.available_on && focusRow.available_on > today));
