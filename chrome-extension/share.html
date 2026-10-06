@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Freelance HQ Screen Share</title>
+  <link rel="stylesheet" href="share.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">Freelance HQ</p>
+        <h1>Optional Screen Sharing</h1>
+        <p class="muted">Screen sharing never starts automatically and is not recorded by the app.</p>
+      </div>
+      <div id="sharingBadge" class="badge off">Not sharing</div>
+    </header>
+
+    <section class="card">
+      <label class="toggle">
+        <input id="micToggle" type="checkbox">
+        <span>Include microphone (optional, off by default)</span>
+      </label>
+      <p class="muted small">Chrome will let you choose a full screen, window, or browser tab. You can stop at any time.</p>
+      <div class="actions">
+        <button id="startButton" class="primary">Share Screen</button>
+        <button id="stopButton" class="danger" disabled>Stop Sharing</button>
+      </div>
+      <p id="status" class="status">Ready.</p>
+      <video id="preview" autoplay muted playsinline></video>
+    </section>
+  </main>
+  <script src="share.js"></script>
+</body>
+</html>

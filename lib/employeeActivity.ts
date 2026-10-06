@@ -24,6 +24,7 @@ type DeviceRow = {
   device_id: string;
   extension_install_id: string;
   device_label: string;
+  paired_at: string;
   last_seen_at: string;
   last_status: BrowserDeviceStatus;
   current_domain: string;
@@ -258,6 +259,7 @@ async function loadProjectMatchers() {
 export async function matchProjectForUrl(rawUrl: string, promptText = ""): Promise<{ id: string; name: string } | null> {
   const { url, domain } = sanitizeActivityUrl(rawUrl);
   const source = (url + "\n" + promptText).toLowerCase();
+  const sourceNoProtocol = source.replace(/^https?:\/\//, "");
   const { mappings, projects } = await loadProjectMatchers();
 
   for (const mapping of mappings) {
@@ -267,7 +269,7 @@ export async function matchProjectForUrl(rawUrl: string, promptText = ""): Promi
       const project = projects.find((item) => item.id === mapping.project_id);
       if (project) return { id: project.id, name: project.name };
     }
-    if (mapping.match_type === "url_prefix" && source.startsWith(pattern)) {
+    if (mapping.match_type === "url_prefix" && (source.startsWith(pattern) || sourceNoProtocol.startsWith(pattern.replace(/^https?:\/\//, "")))) {
       const project = projects.find((item) => item.id === mapping.project_id);
       if (project) return { id: project.id, name: project.name };
     }
@@ -449,7 +451,7 @@ function toDevice(row: DeviceRow): EmployeeDevice {
     deviceId: row.device_id,
     extensionInstallId: row.extension_install_id,
     deviceLabel: row.device_label,
-    pairedAt: "",
+    pairedAt: row.paired_at,
     lastSeenAt: row.last_seen_at,
     lastStatus: row.last_status,
     currentDomain: row.current_domain,
@@ -642,7 +644,7 @@ export async function queryEmployeeActivity(input: {
 export async function listEmployeeDevices(): Promise<EmployeeDevice[]> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_employee_devices")
-    .select("id,employee_id,device_id,extension_install_id,device_label,last_seen_at,last_status,current_domain,current_url,current_title,current_project_id,revoked_at")
+    .select("id,employee_id,device_id,extension_install_id,device_label,paired_at,last_seen_at,last_status,current_domain,current_url,current_title,current_project_id,revoked_at")
     .order("last_seen_at", { ascending: false });
   if (error) throw error;
   return ((data ?? []) as DeviceRow[]).map(toDevice);
@@ -789,6 +791,17 @@ export async function endScreenShare(device: AuthenticatedDevice, sessionId: str
   if (error) throw error;
 }
 
+export async function touchScreenShare(device: AuthenticatedDevice, sessionId: string) {
+  const { error } = await getSupabase()
+    .from("freelance_hq_screen_share_sessions")
+    .update({ status: "active", last_seen_at: nowIso() })
+    .eq("id", sessionId)
+    .eq("employee_id", device.employeeId)
+    .eq("device_id", device.id)
+    .neq("status", "ended");
+  if (error) throw error;
+}
+
 export async function addScreenShareSignal(input: {
   sessionId: string;
   sender: "employee" | "admin";
@@ -861,6 +874,7 @@ export async function listLiveScreenShares(): Promise<ScreenShareSession[]> {
       .from("freelance_hq_screen_share_sessions")
       .select("*")
       .neq("status", "ended")
+      .gte("last_seen_at", new Date(Date.now() - 2 * 60 * 1000).toISOString())
       .order("started_at", { ascending: false }),
     supabase.from("freelance_hq_profiles").select("id,name,email"),
     supabase.from("freelance_hq_employee_devices").select("id,device_label,device_id"),

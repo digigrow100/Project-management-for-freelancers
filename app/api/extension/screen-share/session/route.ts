@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticateExtensionRequest, endScreenShare, startScreenShare } from "@/lib/employeeActivity";
+import { authenticateExtensionRequest, endScreenShare, startScreenShare, touchScreenShare } from "@/lib/employeeActivity";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,10 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { action?: string; sessionId?: string; microphoneEnabled?: boolean };
     if (body.action === "end" && body.sessionId) {
       await endScreenShare(device, body.sessionId);
+      return NextResponse.json({ ok: true });
+    }
+    if (body.action === "heartbeat" && body.sessionId) {
+      await touchScreenShare(device, body.sessionId);
       return NextResponse.json({ ok: true });
     }
     const sessionId = await startScreenShare(device, body.microphoneEnabled === true);

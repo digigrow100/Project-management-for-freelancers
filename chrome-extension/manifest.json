@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Freelance HQ Employee Activity",
+  "version": "1.0.0",
+  "description": "Secure employee browser activity integration for the existing Freelance HQ project-management app.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "idle",
+    "alarms"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Freelance HQ"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "content-ai.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

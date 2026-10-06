@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { deleteEmployeeActivity, queryEmployeeActivity } from "@/lib/employeeActivity";
+import { deleteEmployeeActivity, getEmployeeActivitySummaries, queryEmployeeActivity } from "@/lib/employeeActivity";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,9 @@ export async function GET(request: Request) {
   try {
     await requireAdmin();
     const url = new URL(request.url);
+    if (url.searchParams.get("summary") === "1") {
+      return NextResponse.json({ summaries: await getEmployeeActivitySummaries() });
+    }
     const fallback = defaultRange();
     const from = url.searchParams.get("from") || fallback.from;
     const to = url.searchParams.get("to") || fallback.to;

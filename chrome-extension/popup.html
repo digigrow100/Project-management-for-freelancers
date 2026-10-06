@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Freelance HQ</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <div class="dot"></div>
+      <div>
+        <h1>Freelance HQ</h1>
+        <p>Employee browser activity</p>
+      </div>
+    </div>
+
+    <section id="pairView" hidden>
+      <p class="help">Log in to the Project Management App, click <strong>Connect Chrome Extension</strong>, then paste the one-time code here.</p>
+      <textarea id="pairingCode" rows="4" placeholder="FHQ1.…"></textarea>
+      <button id="pairButton" class="primary">Pair this Chrome</button>
+      <p id="pairError" class="error"></p>
+    </section>
+
+    <section id="pairedView" hidden>
+      <div class="statusRow">
+        <span class="online"></span>
+        <div>
+          <strong id="employeeName">Employee</strong>
+          <p id="statusText">Connected</p>
+        </div>
+      </div>
+      <div class="panel">
+        <span>Current activity</span>
+        <strong id="currentSite">Waiting for activity…</strong>
+      </div>
+      <button id="shareButton" class="primary">Share Screen</button>
+      <button id="openAppButton">Open Project Management App</button>
+      <button id="disconnectButton" class="danger">Disconnect this installation</button>
+    </section>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
