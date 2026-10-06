@@ -391,6 +391,18 @@ export async function pauseFocusTaskAction(taskId: string) {
   revalidatePath("/admin/time-tracking");
 }
 
+export async function setPausedTaskPendingModeAction(
+  taskId: string,
+  mode: "tomorrow" | "keep_pending",
+) {
+  const profile = await requireProfile();
+  await store.setPausedTaskPendingMode(taskId, profile.id, mode);
+  revalidatePath("/my-tasks");
+  revalidatePath("/");
+  revalidatePath("/today");
+  revalidatePath("/admin/time-tracking");
+}
+
 export async function skipFocusTaskAction(
   taskId: string,
   reason: import("./types").TaskSkipReason,

@@ -1132,18 +1132,32 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     .order("created_at", { ascending: true });
   if (existingFallbackError) throw existingFallbackError;
 
+  const openWorkflowRefs = new Set<string>();
+  for (const row of (existingFallbackRows ?? []) as TaskRow[]) {
+    const parts = (row.fallback_template_key ?? "").split(":");
+    if (parts[0] === "workflow" && parts[1] && parts[2]) {
+      openWorkflowRefs.add(`${row.project_id}:${parts[1]}:${parts[2]}`);
+    }
+  }
+
   for (const existingFallback of (existingFallbackRows ?? []) as TaskRow[]) {
     const { data: focusRow, error: focusError } = await getSupabase()
       .from("freelance_hq_task_focus")
-      .select("state,resume_after_completions")
+      .select("state,resume_after_completions,available_on,keep_pending")
       .eq("task_id", existingFallback.id)
       .eq("user_id", userId)
       .maybeSingle();
     if (focusError && !isMissingTableError(focusError)) throw focusError;
 
-    const waitingForAnotherCompletion =
-      focusRow?.state === "paused" && (focusRow.resume_after_completions ?? 0) > 0;
-    if (waitingForAnotherCompletion) continue;
+    const taskDate = existingFallback.fallback_template_key?.split(":").at(-1) ?? null;
+    const isPausedUnavailable =
+      focusRow?.state === "paused" &&
+      (focusRow.keep_pending === true || Boolean(focusRow.available_on && focusRow.available_on > today));
+    if (isPausedUnavailable) continue;
+
+    // Older unfinished workflow tasks are carryovers. Keep them in the member's
+    // queue, but do not let them block creation of today's new workflow task.
+    if (taskDate && taskDate < today) continue;
 
     if (existingFallback.fallback_template_key?.startsWith("workflow:website_pages:")) {
       const [, , pageId] = existingFallback.fallback_template_key.split(":");
@@ -1226,6 +1240,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         }
 
         const page = pages.find((candidate) => {
+          if (openWorkflowRefs.has(`${project.id}:website_pages:${candidate.id}`)) return false;
           const checks = checksByPage.get(candidate.id) ?? [];
           return checks.length === 0 || checks.some((check) => check.status !== "done" && check.status !== "not_applicable");
         });
@@ -1255,6 +1270,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       const items = (await listSeoWorkflowItems(project.id))
         .filter((item) => {
           if (item.module !== workflowModule) return false;
+          if (openWorkflowRefs.has(`${project.id}:${workflowModule}:${item.id}`)) return false;
           if (workflowModule !== "recurring") return item.status !== "done";
           if (!item.completedAt) return true;
           const last = new Date(item.completedAt);
@@ -1314,6 +1330,8 @@ interface TaskFocusRow {
   paused_at: string | null;
   resume_after_completions: number;
   skip_reason: import("./types").TaskSkipReason | null;
+  available_on: string | null;
+  keep_pending: boolean;
   updated_at: string;
 }
 
@@ -1326,6 +1344,8 @@ function toTaskFocusState(row: TaskFocusRow): TaskFocusState {
     pausedAt: row.paused_at,
     resumeAfterCompletions: row.resume_after_completions ?? 0,
     skipReason: row.skip_reason ?? null,
+    availableOn: row.available_on ?? null,
+    keepPending: row.keep_pending ?? false,
     updatedAt: row.updated_at,
   };
 }
@@ -1704,8 +1724,10 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
         .update({
           state: "paused",
           paused_at: now,
-          resume_after_completions: 1,
+          resume_after_completions: 0,
           skip_reason: null,
+          available_on: businessTomorrowMorningIso().slice(0, 10),
+          keep_pending: false,
           updated_at: now,
         })
         .eq("user_id", userId)
@@ -1725,6 +1747,8 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
             paused_at: null,
             resume_after_completions: 0,
             skip_reason: null,
+            available_on: null,
+            keep_pending: false,
             updated_at: now,
           },
           { onConflict: "task_id" },
@@ -1774,7 +1798,9 @@ export async function pauseTaskFocus(taskId: string, userId: string): Promise<vo
           state: "paused",
           started_at: now,
           paused_at: now,
-          resume_after_completions: 1,
+          resume_after_completions: 0,
+          available_on: businessTomorrowMorningIso().slice(0, 10),
+          keep_pending: false,
           updated_at: now,
         },
         { onConflict: "task_id" },
@@ -1814,8 +1840,10 @@ export async function skipTaskFocus(
         state: "paused",
         started_at: now,
         paused_at: now,
-        resume_after_completions: 1,
+        resume_after_completions: 0,
         skip_reason: reason,
+        available_on: businessTomorrowMorningIso().slice(0, 10),
+        keep_pending: false,
         updated_at: now,
       },
       { onConflict: "task_id" },
@@ -1829,6 +1857,45 @@ export async function skipTaskFocus(
     .eq("id", taskId)
     .eq("assigned_to", userId);
   if (taskError) throw taskError;
+  await touchProject(task.projectId);
+}
+
+export async function setPausedTaskPendingMode(
+  taskId: string,
+  userId: string,
+  mode: "tomorrow" | "keep_pending",
+): Promise<void> {
+  const task = await requireAssignedTask(taskId, userId);
+  if (task.status === "done") return;
+
+  const now = nowIso();
+  const update =
+    mode === "keep_pending"
+      ? {
+          state: "paused" as const,
+          paused_at: now,
+          available_on: null,
+          keep_pending: true,
+          resume_after_completions: 0,
+          updated_at: now,
+        }
+      : {
+          state: "paused" as const,
+          paused_at: now,
+          available_on: businessTomorrowMorningIso().slice(0, 10),
+          keep_pending: false,
+          resume_after_completions: 0,
+          updated_at: now,
+        };
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_task_focus")
+    .update(update)
+    .eq("task_id", taskId)
+    .eq("user_id", userId);
+  if (error && !isMissingTableError(error)) throw error;
+
+  await closeOpenTimeEntries(userId, now, "paused", mode);
   await touchProject(task.projectId);
 }
 

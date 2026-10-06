@@ -16,6 +16,7 @@ import {
   Pause,
   Play,
   ShieldAlert,
+  X,
   Target,
 } from "lucide-react";
 import type { Project, Task, TaskFocusState, TaskSkipReason } from "@/lib/types";
@@ -24,6 +25,7 @@ import {
   pauseFocusTaskAction,
   sendTaskToAdminAction,
   setAssignedPageChecklistStatusAction,
+  setPausedTaskPendingModeAction,
   skipFocusTaskAction,
   startFocusTaskAction,
   toggleChecklistItemAction,
@@ -126,6 +128,7 @@ export function MemberFocusDashboard({
   const [skipReason, setSkipReason] = useState<TaskSkipReason>("waiting_for_client");
   const [adminRequestOpen, setAdminRequestOpen] = useState(false);
   const [adminNote, setAdminNote] = useState("");
+  const [pendingPanelOpen, setPendingPanelOpen] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -170,7 +173,14 @@ export function MemberFocusDashboard({
     .find((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin);
 
   const readyPaused = focusStates
-    .filter((state) => state.state === "paused" && state.resumeAfterCompletions === 0)
+    .filter(
+      (state) =>
+        state.state === "paused" &&
+        !state.keepPending &&
+        (
+          (state.availableOn ? state.availableOn <= today : state.resumeAfterCompletions === 0)
+        ),
+    )
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
     .filter(
       (item): item is { state: TaskFocusState; task: Task } =>
@@ -190,7 +200,14 @@ export function MemberFocusDashboard({
   // deferred. Never use it as a fallback current task: doing that makes two
   // skipped tasks bounce between each other forever when no fresh task exists.
   const waitingPaused = focusStates
-    .filter((state) => state.state === "paused" && state.resumeAfterCompletions > 0)
+    .filter(
+      (state) =>
+        state.state === "paused" &&
+        (
+          state.keepPending ||
+          (state.availableOn ? state.availableOn > today : state.resumeAfterCompletions > 0)
+        ),
+    )
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
     .filter(
       (item): item is { state: TaskFocusState; task: Task } =>
@@ -219,11 +236,14 @@ export function MemberFocusDashboard({
   const todayTotal = todayCompletedCount + todayOpenCount;
   const todayPercent = todayTotal === 0 ? 100 : Math.round((todayCompletedCount / todayTotal) * 100);
 
-  const pausedTasks = focusStates
+  const pendingItems = focusStates
     .filter((state) => state.state === "paused")
-    .map((state) => taskById.get(state.taskId))
-    .filter((task): task is Task => !!task && task.status !== "done" && !task.waitingForAdmin)
-    .sort(sortQueue);
+    .map((state) => ({ state, task: taskById.get(state.taskId) }))
+    .filter(
+      (item): item is { state: TaskFocusState; task: Task } =>
+        !!item.task && item.task.status !== "done" && !item.task.waitingForAdmin,
+    )
+    .sort((a, b) => sortQueue(a.task, b.task));
 
   const upcomingTasks = openTasks
     .filter((task) => task.id !== activeTask?.id && !pausedIds.has(task.id))
@@ -239,6 +259,14 @@ export function MemberFocusDashboard({
   function pauseTask(task: Task) {
     startTransition(async () => {
       await pauseFocusTaskAction(task.id);
+      setBrowseOffset(0);
+    });
+  }
+
+  function setPendingMode(task: Task, mode: "tomorrow" | "keep_pending") {
+    startTransition(async () => {
+      await setPausedTaskPendingModeAction(task.id, mode);
+      router.refresh();
       setBrowseOffset(0);
     });
   }
@@ -283,6 +311,10 @@ export function MemberFocusDashboard({
   const currentProject = currentTask ? projectById.get(currentTask.projectId) : undefined;
   const currentIsActive = currentFocus?.state === "active";
   const currentIsPaused = currentFocus?.state === "paused";
+  const currentIsCarryover =
+    currentIsPaused &&
+    !currentFocus?.keepPending &&
+    Boolean(currentFocus?.availableOn && currentFocus.availableOn <= today);
 
   const currentClosedSeconds = currentTask ? (timeTotals[currentTask.id] ?? 0) : 0;
   const currentLiveSeconds =
@@ -377,7 +409,7 @@ export function MemberFocusDashboard({
                   )}
                 >
                   <Circle size={8} fill="currentColor" />
-                  {currentIsActive ? "In Progress" : currentIsPaused ? "Paused" : "Ready"}
+                  {currentIsActive ? "In Progress" : currentIsCarryover ? "Carryover" : currentIsPaused ? "Paused" : "Ready"}
                 </span>
               </div>
 
@@ -624,8 +656,8 @@ export function MemberFocusDashboard({
             <Pause className="mx-auto text-amber-300" size={36} />
             <h2 className="mt-3 text-lg font-semibold text-neutral-100">Remaining tasks are deferred.</h2>
             <p className="mx-auto mt-1 max-w-xl text-sm text-neutral-500">
-              No fresh task is available right now. Deferred tasks will return automatically after a different task is completed,
-              or you can resume one manually from Continue Tasks.
+              No fresh task is available right now. Paused work is safely stored in Pending Tasks and will return on its selected day,
+              unless it is marked Keep Pending.
             </p>
           </section>
         ) : (
@@ -642,7 +674,7 @@ export function MemberFocusDashboard({
             <div>
               <h3 className="text-sm font-semibold text-neutral-100">Today&apos;s Focus</h3>
               <p className="mt-1 text-sm text-neutral-500">
-                Work one task at a time. Paused or skipped work returns after you complete a different task; it never auto-loops when everything else is deferred.
+                Work one task at a time. Paused work leaves today's rotation, stays in Pending Tasks, and can return as carryover on the next work day.
               </p>
             </div>
           </div>
@@ -692,43 +724,6 @@ export function MemberFocusDashboard({
         <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold text-neutral-100">Continue Tasks</h2>
-              <p className="mt-0.5 text-xs text-neutral-500">Started tasks that are paused for now.</p>
-            </div>
-            <span className="grid h-7 min-w-7 place-items-center rounded-full bg-amber-500/10 px-2 text-xs font-semibold text-amber-300">
-              {pausedTasks.length}
-            </span>
-          </div>
-
-          <div className="mt-3 space-y-2">
-            {pausedTasks.slice(0, 6).map((task, index) => (
-              <button
-                key={task.id}
-                type="button"
-                onClick={() => startTask(task)}
-                className="flex w-full items-center gap-3 rounded-lg border border-amber-500/15 bg-amber-500/5 px-3 py-2.5 text-left hover:bg-amber-500/10"
-              >
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-500/10 text-xs font-semibold text-amber-300">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium text-neutral-100">{task.title}</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
-                    {projectById.get(task.projectId)?.name ?? "Project"}
-                  </span>
-                </span>
-                <span className="text-[11px] font-medium text-amber-300">Continue</span>
-              </button>
-            ))}
-            {pausedTasks.length === 0 && (
-              <p className="py-4 text-center text-xs text-neutral-600">No paused tasks.</p>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
-          <div className="flex items-center justify-between gap-3">
-            <div>
               <h2 className="font-semibold text-neutral-100">Done Tasks</h2>
               <p className="mt-0.5 text-xs text-neutral-500">Recently completed assigned work.</p>
             </div>
@@ -763,6 +758,93 @@ export function MemberFocusDashboard({
           </div>
         </section>
       </aside>
+      {pendingItems.length > 0 && (
+        <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-2xl md:left-auto md:right-5 md:mx-0 md:w-[460px]">
+          {pendingPanelOpen && (
+            <div className="mb-2 max-h-[52vh] overflow-y-auto rounded-xl2 border border-amber-500/25 bg-base-900/95 p-3 shadow-2xl backdrop-blur">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-100">Pending Tasks</p>
+                  <p className="text-[11px] text-neutral-500">Paused work stays here without interrupting the normal queue.</p>
+                </div>
+                <button type="button" onClick={() => setPendingPanelOpen(false)} className="rounded-lg p-2 text-neutral-500 hover:bg-base-800 hover:text-neutral-200">
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {pendingItems.map(({ task, state }) => (
+                  <div key={task.id} className="rounded-xl border border-base-700 bg-base-850 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <button type="button" onClick={() => setDetailTask(task)} className="min-w-0 flex-1 text-left">
+                        <p className="truncate text-sm font-semibold text-neutral-100">{task.title}</p>
+                        <p className="mt-1 truncate text-[11px] text-neutral-500">{projectById.get(task.projectId)?.name ?? "Project"}</p>
+                      </button>
+                      <span className={cn(
+                        "shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold",
+                        state.keepPending
+                          ? "bg-rose-500/10 text-rose-300"
+                          : state.availableOn && state.availableOn <= today
+                            ? "bg-sky-500/10 text-sky-300"
+                            : "bg-amber-500/10 text-amber-300",
+                      )}>
+                        {state.keepPending ? "Keep Pending" : state.availableOn && state.availableOn <= today ? "Carryover" : "Tomorrow"}
+                      </span>
+                    </div>
+                    {state.skipReason && (
+                      <p className="mt-2 text-[11px] text-neutral-500">Reason: {state.skipReason.replaceAll("_", " ")}</p>
+                    )}
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => startTask(task)}
+                        className="rounded-lg bg-accent-400 px-2 py-2 text-[11px] font-semibold text-base-950 hover:bg-accent-300 disabled:opacity-60"
+                      >
+                        Continue
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => setPendingMode(task, "tomorrow")}
+                        className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-2 text-[11px] font-semibold text-amber-300 disabled:opacity-60"
+                      >
+                        Return Tomorrow
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => setPendingMode(task, "keep_pending")}
+                        className="rounded-lg border border-base-600 bg-base-800 px-2 py-2 text-[11px] font-semibold text-neutral-300 disabled:opacity-60"
+                      >
+                        Keep Pending
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setPendingPanelOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-base-900/95 px-4 py-3 text-left shadow-xl backdrop-blur hover:bg-base-850"
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-500/10 text-amber-300">
+                <Pause size={15} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold text-neutral-100">Pending Tasks · {pendingItems.length}</span>
+                <span className="block truncate text-[11px] text-neutral-500">
+                  {pendingItems[0]?.task.title ?? "Paused work"}
+                </span>
+              </span>
+            </span>
+            <span className="text-[11px] font-semibold text-amber-300">{pendingPanelOpen ? "Hide" : "View"}</span>
+          </button>
+        </div>
+      )}
+
       {detailTask && (
         <MemberTaskDetailModal
           task={detailTask}

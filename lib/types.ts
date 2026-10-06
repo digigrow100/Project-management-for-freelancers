@@ -71,10 +71,14 @@ export interface TaskFocusState {
   state: "active" | "paused";
   startedAt: string | null;
   pausedAt: string | null;
-  /** A paused task becomes eligible to resurface after this many other task completions. */
+  /** Legacy counter retained for older paused rows. New pause flow uses availableOn. */
   resumeAfterCompletions: number;
   /** Why a member temporarily moved past this task. Cleared when they resume it. */
   skipReason: TaskSkipReason | null;
+  /** Pakistan-date when this paused task may re-enter the normal queue. */
+  availableOn: string | null;
+  /** When true, this task stays only in Pending until the member explicitly continues it. */
+  keepPending: boolean;
   updatedAt: string;
 }
 
