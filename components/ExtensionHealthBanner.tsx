@@ -58,7 +58,7 @@ export function ExtensionHealthBanner() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {missing && (
-            <a href="/api/extension/download" className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-400">
+            <a href="/downloads/freelance-hq-chrome-extension.zip" download className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-400">
               <Download size={13} />
               Download Chrome Extension
             </a>
