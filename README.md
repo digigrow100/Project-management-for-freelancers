@@ -585,3 +585,4 @@ npx capacitor-assets generate
 |---|---|---|
 | Download directly from your website | ✅ Yes — host a signed `.apk`, users sideload it | ❌ Not possible for a public app |
 | App/Play Store listing | Optional — Google Play Console, $25 one-time | Effectively required — Apple Developer Program, $99/year |
+
