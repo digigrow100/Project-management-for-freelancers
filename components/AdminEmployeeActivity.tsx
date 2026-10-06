@@ -515,36 +515,80 @@ export function AdminEmployeeActivity({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr key={item.kind + "-" + item.id} className="border-t border-base-700/50 align-top">
-                  <td className="px-3 py-3"><input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleSelected(item.id)} /></td>
-                  <td className="whitespace-nowrap px-3 py-3 text-xs text-neutral-500">{timeLabel(item.startedAt)}</td>
-                  <td className="px-3 py-3 text-xs font-medium text-neutral-300">{item.employeeName}</td>
-                  <td className="px-3 py-3">
-                    <span className={item.kind === "ai_prompt" ? "rounded-full bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-300" : "rounded-full bg-base-700 px-2 py-1 text-[10px] font-semibold text-neutral-400"}>
-                      {item.kind === "ai_prompt" ? (item.platform === "claude" ? "Claude prompt" : "ChatGPT prompt") : item.activityType.replaceAll("_", " ")}
-                    </span>
-                  </td>
-                  <td className="max-w-[460px] px-3 py-3">
-                    {item.kind === "ai_prompt" ? (
-                      <div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-300"><Bot size={11} /> Submitted prompt</div>
-                        <p className="mt-1 whitespace-pre-wrap break-words text-xs text-neutral-300">{item.promptText}</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="truncate text-xs font-medium text-neutral-300">{item.domain || "Browser"}</p>
-                        <p className="mt-1 truncate text-[10px] text-neutral-600" title={item.pageTitle}>{item.pageTitle || item.url || "—"}</p>
-                        {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[10px] text-sky-300 hover:text-sky-200">Open URL <ExternalLink size={10} /></a>}
-                      </div>
+              {groupedItems.map((item) => {
+                const canExpand = item.kind !== "ai_prompt" && item.sessions.length > 0;
+                const isExpanded = expanded.has(item.id);
+                return (
+                  <Fragment key={item.id}>
+                    <tr className="border-t border-base-700/50 align-top">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleSelected(item.id)} />
+                          {canExpand && (
+                            <button type="button" onClick={() => toggleExpanded(item.id)} className="rounded p-0.5 text-neutral-500 hover:bg-base-700 hover:text-neutral-200" aria-label={isExpanded ? "Collapse visits" : "Expand visits"}>
+                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-neutral-500">{timeLabel(item.lastSeenAt)}</td>
+                      <td className="px-3 py-3 text-xs font-medium text-neutral-300">{item.employeeName}</td>
+                      <td className="px-3 py-3">
+                        <span className={item.kind === "ai_prompt" ? "rounded-full bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-300" : item.kind === "idle_group" ? "rounded-full bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-300" : "rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-300"}>
+                          {item.kind === "ai_prompt" ? (item.platform === "claude" ? "Claude prompt" : "ChatGPT prompt") : item.kind === "idle_group" ? "idle" : "page activity"}
+                        </span>
+                      </td>
+                      <td className="max-w-[460px] px-3 py-3">
+                        {item.kind === "ai_prompt" ? (
+                          <div>
+                            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-300"><Bot size={11} /> Submitted prompt</div>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-xs text-neutral-300">{item.promptText}</p>
+                          </div>
+                        ) : item.kind === "idle_group" ? (
+                          <div>
+                            <p className="text-xs font-medium text-neutral-300">Browser idle</p>
+                            <p className="mt-1 text-[10px] text-neutral-600">{item.sessions.length} idle period{item.sessions.length === 1 ? "" : "s"}</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="truncate text-xs font-semibold text-neutral-200">{item.domain || "Browser"}</p>
+                            <p className="mt-1 truncate text-[10px] text-neutral-600" title={item.pageTitle}>{item.pageTitle || item.url || "—"}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-3">
+                              {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] text-sky-300 hover:text-sky-200">Open URL <ExternalLink size={10} /></a>}
+                              <span className="text-[10px] text-neutral-600">{item.sessions.length} visit{item.sessions.length === 1 ? "" : "s"}</span>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-accent-300">{item.projectName || "—"}</td>
+                      <td className="px-3 py-3 text-xs text-neutral-500">{item.deviceLabel}</td>
+                      <td className="px-3 py-3 font-mono text-xs font-semibold text-neutral-200">{item.kind === "ai_prompt" ? "—" : duration(item.totalDurationSeconds)}</td>
+                    </tr>
+                    {canExpand && isExpanded && (
+                      <tr className="border-t border-base-700/30 bg-base-900/35">
+                        <td colSpan={8} className="px-4 py-3">
+                          <div className="ml-8 overflow-hidden rounded-xl border border-base-700/60 bg-base-950/35">
+                            <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-base-700/50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-neutral-600">
+                              <span>Visit/session</span><span>Started</span><span>Duration</span>
+                            </div>
+                            {item.sessions.map((session, index) => (
+                              <div key={session.id} className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-base-700/30 px-3 py-2 last:border-b-0">
+                                <div className="min-w-0">
+                                  <p className="truncate text-[11px] font-medium text-neutral-300">{item.kind === "idle_group" ? "Idle period " + (item.sessions.length - index) : "Visit " + (item.sessions.length - index)}</p>
+                                  {item.kind === "page_group" && <p className="mt-0.5 truncate text-[9px] text-neutral-600">{session.pageTitle || session.url}</p>}
+                                </div>
+                                <span className="whitespace-nowrap text-[10px] text-neutral-500">{timeLabel(session.startedAt)}</span>
+                                <span className="min-w-[72px] text-right font-mono text-[10px] font-semibold text-neutral-300">{duration(session.durationSeconds)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="px-3 py-3 text-xs text-accent-300">{item.projectName || "—"}</td>
-                  <td className="px-3 py-3 text-xs text-neutral-500">{item.deviceLabel}</td>
-                  <td className="px-3 py-3 font-mono text-xs text-neutral-300">{item.kind === "ai_prompt" ? "—" : duration(item.durationSeconds)}</td>
-                </tr>
-              ))}
-              {items.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-neutral-600">No activity matches these filters.</td></tr>}
+                  </Fragment>
+                );
+              })}
+              {groupedItems.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-neutral-600">No activity matches these filters.</td></tr>}
             </tbody>
           </table>
         </div>
