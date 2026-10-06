@@ -83,30 +83,85 @@ function timeLabel(value: string) {
 }
 
 
-type GroupedActivityRow = {
+type PageActivityGroup = {
   id: string;
-  kind: "page_group" | "idle_group" | "ai_prompt";
-  employeeId: string;
-  employeeName: string;
-  deviceId: string;
-  deviceLabel: string;
+  url: string;
+  pathLabel: string;
+  pageTitle: string;
   projectId: string | null;
   projectName: string | null;
-  domain: string;
-  url: string;
-  pageTitle: string;
   startedAt: string;
   lastSeenAt: string;
   totalDurationSeconds: number;
-  platform: "chatgpt" | "claude" | null;
-  promptText: string | null;
   sessions: EmployeeActivityTimelineItem[];
   rawIds: string[];
 };
 
+type GroupedActivityRow =
+  | {
+      id: string;
+      kind: "domain_group";
+      employeeId: string;
+      employeeName: string;
+      deviceId: string;
+      deviceLabel: string;
+      projectId: string | null;
+      projectName: string | null;
+      domain: string;
+      startedAt: string;
+      lastSeenAt: string;
+      totalDurationSeconds: number;
+      pages: PageActivityGroup[];
+      rawIds: string[];
+    }
+  | {
+      id: string;
+      kind: "idle_group";
+      employeeId: string;
+      employeeName: string;
+      deviceId: string;
+      deviceLabel: string;
+      projectId: null;
+      projectName: null;
+      domain: string;
+      startedAt: string;
+      lastSeenAt: string;
+      totalDurationSeconds: number;
+      sessions: EmployeeActivityTimelineItem[];
+      rawIds: string[];
+    }
+  | {
+      id: string;
+      kind: "ai_prompt";
+      employeeId: string;
+      employeeName: string;
+      deviceId: string;
+      deviceLabel: string;
+      projectId: string | null;
+      projectName: string | null;
+      domain: string;
+      startedAt: string;
+      lastSeenAt: string;
+      totalDurationSeconds: 0;
+      platform: "chatgpt" | "claude" | null;
+      promptText: string | null;
+      rawIds: string[];
+    };
+
+function pagePathLabel(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    const path = parsed.pathname || "/";
+    return path + parsed.search;
+  } catch {
+    return rawUrl || "/";
+  }
+}
+
 function groupTimelineItems(items: EmployeeActivityTimelineItem[]): GroupedActivityRow[] {
-  const groups = new Map<string, GroupedActivityRow>();
-  const standalone: GroupedActivityRow[] = [];
+  const domainGroups = new Map<string, Extract<GroupedActivityRow, { kind: "domain_group" }>>();
+  const idleGroups = new Map<string, Extract<GroupedActivityRow, { kind: "idle_group" }>>();
+  const standalone: Array<Extract<GroupedActivityRow, { kind: "ai_prompt" }>> = [];
 
   for (const item of items) {
     if (item.kind === "ai_prompt") {
@@ -120,68 +175,126 @@ function groupTimelineItems(items: EmployeeActivityTimelineItem[]): GroupedActiv
         projectId: item.projectId,
         projectName: item.projectName,
         domain: item.domain,
-        url: item.url,
-        pageTitle: item.pageTitle,
         startedAt: item.startedAt,
         lastSeenAt: item.startedAt,
         totalDurationSeconds: 0,
         platform: item.platform,
         promptText: item.promptText,
-        sessions: [item],
         rawIds: [item.id],
       });
       continue;
     }
 
     if (["heartbeat", "tab_switch", "session_start", "session_end", "offline"].includes(item.activityType)) continue;
-
-    const isIdle = item.activityType === "idle";
     if (item.durationSeconds <= 0) continue;
-    if (!isIdle && !item.url) continue;
 
-    const key = isIdle
-      ? ["idle", item.employeeId, item.deviceId].join("|")
-      : ["page", item.employeeId, item.deviceId, item.url].join("|");
-
-    const existing = groups.get(key);
-    if (existing) {
-      existing.sessions.push(item);
-      existing.rawIds.push(item.id);
-      existing.totalDurationSeconds += item.durationSeconds;
-      if (item.startedAt < existing.startedAt) existing.startedAt = item.startedAt;
-      if (item.startedAt > existing.lastSeenAt) {
-        existing.lastSeenAt = item.startedAt;
-        existing.pageTitle = item.pageTitle || existing.pageTitle;
-        existing.projectId = item.projectId ?? existing.projectId;
-        existing.projectName = item.projectName ?? existing.projectName;
+    if (item.activityType === "idle") {
+      const key = ["idle", item.employeeId, item.deviceId].join("|");
+      const existing = idleGroups.get(key);
+      if (existing) {
+        existing.sessions.push(item);
+        existing.rawIds.push(item.id);
+        existing.totalDurationSeconds += item.durationSeconds;
+        if (item.startedAt < existing.startedAt) existing.startedAt = item.startedAt;
+        if (item.startedAt > existing.lastSeenAt) existing.lastSeenAt = item.startedAt;
+      } else {
+        idleGroups.set(key, {
+          id: key,
+          kind: "idle_group",
+          employeeId: item.employeeId,
+          employeeName: item.employeeName,
+          deviceId: item.deviceId,
+          deviceLabel: item.deviceLabel,
+          projectId: null,
+          projectName: null,
+          domain: "",
+          startedAt: item.startedAt,
+          lastSeenAt: item.startedAt,
+          totalDurationSeconds: item.durationSeconds,
+          sessions: [item],
+          rawIds: [item.id],
+        });
       }
       continue;
     }
 
-    groups.set(key, {
-      id: key,
-      kind: isIdle ? "idle_group" : "page_group",
-      employeeId: item.employeeId,
-      employeeName: item.employeeName,
-      deviceId: item.deviceId,
-      deviceLabel: item.deviceLabel,
-      projectId: item.projectId,
-      projectName: item.projectName,
-      domain: item.domain,
-      url: item.url,
-      pageTitle: item.pageTitle,
-      startedAt: item.startedAt,
-      lastSeenAt: item.startedAt,
-      totalDurationSeconds: item.durationSeconds,
-      platform: null,
-      promptText: null,
-      sessions: [item],
-      rawIds: [item.id],
-    });
+    if (!item.url || !item.domain) continue;
+
+    const domainKey = ["domain", item.employeeId, item.deviceId, item.domain].join("|");
+    let domainGroup = domainGroups.get(domainKey);
+    if (!domainGroup) {
+      domainGroup = {
+        id: domainKey,
+        kind: "domain_group",
+        employeeId: item.employeeId,
+        employeeName: item.employeeName,
+        deviceId: item.deviceId,
+        deviceLabel: item.deviceLabel,
+        projectId: item.projectId,
+        projectName: item.projectName,
+        domain: item.domain,
+        startedAt: item.startedAt,
+        lastSeenAt: item.startedAt,
+        totalDurationSeconds: 0,
+        pages: [],
+        rawIds: [],
+      };
+      domainGroups.set(domainKey, domainGroup);
+    }
+
+    domainGroup.totalDurationSeconds += item.durationSeconds;
+    domainGroup.rawIds.push(item.id);
+    if (item.startedAt < domainGroup.startedAt) domainGroup.startedAt = item.startedAt;
+    if (item.startedAt > domainGroup.lastSeenAt) {
+      domainGroup.lastSeenAt = item.startedAt;
+      domainGroup.projectId = item.projectId ?? domainGroup.projectId;
+      domainGroup.projectName = item.projectName ?? domainGroup.projectName;
+    }
+
+    let page = domainGroup.pages.find((entry) => entry.url === item.url);
+    if (!page) {
+      page = {
+        id: domainKey + "|page|" + item.url,
+        url: item.url,
+        pathLabel: pagePathLabel(item.url),
+        pageTitle: item.pageTitle,
+        projectId: item.projectId,
+        projectName: item.projectName,
+        startedAt: item.startedAt,
+        lastSeenAt: item.startedAt,
+        totalDurationSeconds: 0,
+        sessions: [],
+        rawIds: [],
+      };
+      domainGroup.pages.push(page);
+    }
+
+    page.totalDurationSeconds += item.durationSeconds;
+    page.sessions.push(item);
+    page.rawIds.push(item.id);
+    if (item.startedAt < page.startedAt) page.startedAt = item.startedAt;
+    if (item.startedAt > page.lastSeenAt) {
+      page.lastSeenAt = item.startedAt;
+      page.pageTitle = item.pageTitle || page.pageTitle;
+      page.projectId = item.projectId ?? page.projectId;
+      page.projectName = item.projectName ?? page.projectName;
+    }
   }
 
-  return [...groups.values(), ...standalone]
-    .map((group) => ({ ...group, sessions: [...group.sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt)) }))
+  for (const domain of domainGroups.values()) {
+    domain.pages = domain.pages
+      .map((page) => ({
+        ...page,
+        sessions: [...page.sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+      }))
+      .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  for (const idle of idleGroups.values()) {
+    idle.sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  }
+
+  return [...domainGroups.values(), ...idleGroups.values(), ...standalone]
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
 }
 
