@@ -22,8 +22,10 @@ import {
   listWebsitesByDomainIds,
   listAdminWorkItems,
 } from "@/lib/store";
+import { getEmployeeActivitySummaries } from "@/lib/employeeActivity";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
 import { AdminTeamPanel } from "@/components/AdminTeamPanel";
+import { EmployeeActivityOverview } from "@/components/EmployeeActivityOverview";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,7 @@ export default async function AdminPage() {
     renewals,
     adminWorkItems,
     memberPresence,
+    employeeActivity,
   ] = await Promise.all([
     listTeamMembers(),
     getProjects(),
@@ -63,6 +66,7 @@ export default async function AdminPage() {
     listRenewals(),
     listAdminWorkItems(currentProfile.id),
     listMemberPresence(),
+    getEmployeeActivitySummaries(),
   ]);
 
   const [invoiceItems, domainSettings, websitesByDomainId] = await Promise.all([
@@ -116,6 +120,8 @@ export default async function AdminPage() {
         personalTasks={adminWorkItems.filter((task) => task.status !== "done")}
         assigneesByProject={assigneesByProject}
       />
+
+      <EmployeeActivityOverview initialRows={employeeActivity} />
 
       <section id="team-access" className="scroll-mt-6">
         <div className="mb-3 flex items-center gap-2">
