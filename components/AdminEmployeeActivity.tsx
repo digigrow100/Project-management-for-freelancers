@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import {
   Bot,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Filter,
   Link2,
@@ -80,6 +82,109 @@ function timeLabel(value: string) {
   }).format(new Date(value));
 }
 
+
+type GroupedActivityRow = {
+  id: string;
+  kind: "page_group" | "idle_group" | "ai_prompt";
+  employeeId: string;
+  employeeName: string;
+  deviceId: string;
+  deviceLabel: string;
+  projectId: string | null;
+  projectName: string | null;
+  domain: string;
+  url: string;
+  pageTitle: string;
+  startedAt: string;
+  lastSeenAt: string;
+  totalDurationSeconds: number;
+  platform: "chatgpt" | "claude" | null;
+  promptText: string | null;
+  sessions: EmployeeActivityTimelineItem[];
+  rawIds: string[];
+};
+
+function groupTimelineItems(items: EmployeeActivityTimelineItem[]): GroupedActivityRow[] {
+  const groups = new Map<string, GroupedActivityRow>();
+  const standalone: GroupedActivityRow[] = [];
+
+  for (const item of items) {
+    if (item.kind === "ai_prompt") {
+      standalone.push({
+        id: "prompt:" + item.id,
+        kind: "ai_prompt",
+        employeeId: item.employeeId,
+        employeeName: item.employeeName,
+        deviceId: item.deviceId,
+        deviceLabel: item.deviceLabel,
+        projectId: item.projectId,
+        projectName: item.projectName,
+        domain: item.domain,
+        url: item.url,
+        pageTitle: item.pageTitle,
+        startedAt: item.startedAt,
+        lastSeenAt: item.startedAt,
+        totalDurationSeconds: 0,
+        platform: item.platform,
+        promptText: item.promptText,
+        sessions: [item],
+        rawIds: [item.id],
+      });
+      continue;
+    }
+
+    if (["heartbeat", "tab_switch", "session_start", "session_end", "offline"].includes(item.activityType)) continue;
+
+    const isIdle = item.activityType === "idle";
+    if (item.durationSeconds <= 0) continue;
+    if (!isIdle && !item.url) continue;
+
+    const key = isIdle
+      ? ["idle", item.employeeId, item.deviceId].join("|")
+      : ["page", item.employeeId, item.deviceId, item.url].join("|");
+
+    const existing = groups.get(key);
+    if (existing) {
+      existing.sessions.push(item);
+      existing.rawIds.push(item.id);
+      existing.totalDurationSeconds += item.durationSeconds;
+      if (item.startedAt < existing.startedAt) existing.startedAt = item.startedAt;
+      if (item.startedAt > existing.lastSeenAt) {
+        existing.lastSeenAt = item.startedAt;
+        existing.pageTitle = item.pageTitle || existing.pageTitle;
+        existing.projectId = item.projectId ?? existing.projectId;
+        existing.projectName = item.projectName ?? existing.projectName;
+      }
+      continue;
+    }
+
+    groups.set(key, {
+      id: key,
+      kind: isIdle ? "idle_group" : "page_group",
+      employeeId: item.employeeId,
+      employeeName: item.employeeName,
+      deviceId: item.deviceId,
+      deviceLabel: item.deviceLabel,
+      projectId: item.projectId,
+      projectName: item.projectName,
+      domain: item.domain,
+      url: item.url,
+      pageTitle: item.pageTitle,
+      startedAt: item.startedAt,
+      lastSeenAt: item.startedAt,
+      totalDurationSeconds: item.durationSeconds,
+      platform: null,
+      promptText: null,
+      sessions: [item],
+      rawIds: [item.id],
+    });
+  }
+
+  return [...groups.values(), ...standalone]
+    .map((group) => ({ ...group, sessions: [...group.sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt)) }))
+    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+}
+
 export function AdminEmployeeActivity({
   members,
   projects,
@@ -109,6 +214,7 @@ export function AdminEmployeeActivity({
   const [aiOnly, setAiOnly] = useState(false);
   const [items, setItems] = useState(initialItems);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [retentionDays, setRetentionDays] = useState(initialSettings.retentionDays);
   const [mappings, setMappings] = useState(initialMappings);
   const [liveShares, setLiveShares] = useState(initialLiveShares);
@@ -119,6 +225,8 @@ export function AdminEmployeeActivity({
     () => devices.filter((device) => !employeeId || device.employeeId === employeeId),
     [devices, employeeId],
   );
+
+  const groupedItems = useMemo(() => groupTimelineItems(items), [items]);
 
   async function refresh() {
     setMessage("");
@@ -166,6 +274,15 @@ export function AdminEmployeeActivity({
     });
   }
 
+  function toggleExpanded(id: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function deleteRequest(payload: Record<string, unknown>) {
     const response = await fetch("/api/admin/employee-activity", {
       method: "DELETE",
@@ -182,7 +299,8 @@ export function AdminEmployeeActivity({
     if (!confirm("Delete the selected activity records permanently?")) return;
     startTransition(async () => {
       try {
-        await deleteRequest({ mode: "selected", ids: Array.from(selected) });
+        const rawIds = groupedItems.filter((item) => selected.has(item.id)).flatMap((item) => item.rawIds);
+        await deleteRequest({ mode: "selected", ids: rawIds });
         setMessage("Selected logs deleted.");
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Delete failed.");
@@ -374,7 +492,7 @@ export function AdminEmployeeActivity({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-700/50 px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold text-neutral-100">Activity Timeline</h2>
-            <p className="mt-1 text-xs text-neutral-500">{items.length} records loaded.</p>
+            <p className="mt-1 text-xs text-neutral-500">{groupedItems.length} grouped activities · {items.length} raw events</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={deleteSelected} disabled={selected.size === 0 || busy} className="rounded-lg border border-rose-500/25 px-3 py-2 text-xs text-rose-300 disabled:opacity-40">Delete selected</button>
