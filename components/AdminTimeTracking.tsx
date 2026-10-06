@@ -208,7 +208,10 @@ export function AdminTimeTracking({ entries }: { entries: AdminTimeTrackingEntry
       if (rows.length < 2) continue;
       const sorted = [...rows].sort((a, b) => a.reportStart - b.reportStart);
       for (let i = 1; i < sorted.length; i += 1) {
-        total += Math.max(0, Math.floor((sorted[i].reportStart - sorted[i - 1].reportEnd) / 1000));
+        const current = sorted[i];
+        const previous = sorted[i - 1];
+        if (!current || !previous) continue;
+        total += Math.max(0, Math.floor((current.reportStart - previous.reportEnd) / 1000));
       }
     }
     return total;
