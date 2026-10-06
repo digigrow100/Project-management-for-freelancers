@@ -169,6 +169,100 @@ export interface TaskTimeSummary {
 }
 
 
+
+export type BrowserActivityType =
+  | "active"
+  | "idle"
+  | "tab_switch"
+  | "session_start"
+  | "session_end"
+  | "heartbeat"
+  | "offline";
+export type BrowserDeviceStatus = "active" | "idle" | "offline";
+
+export interface EmployeeDevice {
+  id: string;
+  employeeId: string;
+  deviceId: string;
+  extensionInstallId: string;
+  deviceLabel: string;
+  pairedAt: string;
+  lastSeenAt: string;
+  lastStatus: BrowserDeviceStatus;
+  currentDomain: string;
+  currentUrl: string;
+  currentTitle: string;
+  currentProjectId: string | null;
+  revokedAt: string | null;
+}
+
+export interface EmployeeActivitySummary {
+  employeeId: string;
+  employeeName: string;
+  employeeEmail: string;
+  status: BrowserDeviceStatus;
+  currentWebsite: string;
+  currentPageTitle: string;
+  currentUrl: string;
+  currentProjectId: string | null;
+  currentProjectName: string | null;
+  currentSessionStartedAt: string | null;
+  currentSessionDurationSeconds: number;
+  todayActiveSeconds: number;
+  todayIdleSeconds: number;
+  lastSeenAt: string | null;
+  aiPromptsToday: number;
+  deviceCount: number;
+}
+
+export interface EmployeeActivityTimelineItem {
+  id: string;
+  kind: "activity" | "ai_prompt";
+  employeeId: string;
+  employeeName: string;
+  deviceId: string;
+  deviceLabel: string;
+  projectId: string | null;
+  projectName: string | null;
+  activityType: string;
+  domain: string;
+  url: string;
+  pageTitle: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number;
+  platform: "chatgpt" | "claude" | null;
+  promptText: string | null;
+}
+
+export interface ProjectDomainMapping {
+  id: string;
+  projectId: string;
+  projectName: string;
+  matchType: "domain" | "url_prefix" | "github_repo";
+  pattern: string;
+  label: string;
+  isActive: boolean;
+}
+
+export interface ActivitySettings {
+  retentionDays: number;
+  updatedAt: string;
+}
+
+export interface ScreenShareSession {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  deviceId: string;
+  deviceLabel: string;
+  status: "waiting" | "active" | "ended";
+  microphoneEnabled: boolean;
+  startedAt: string;
+  endedAt: string | null;
+  lastSeenAt: string;
+}
+
 export type SeoModule = "on_page" | "technical" | "off_page" | "content" | "reporting";
 
 export interface ClientDetails {
