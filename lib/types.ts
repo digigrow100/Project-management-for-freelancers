@@ -112,6 +112,15 @@ export interface AdminWorkflowSettings {
   updatedAt: string;
 }
 
+export type TaskTimeStopReason =
+  | "paused"
+  | "skipped"
+  | "completed"
+  | "task_switched"
+  | "admin_action"
+  | "admin_completed"
+  | "auto_reconciled";
+
 export interface TaskTimeEntry {
   id: string;
   taskId: string;
@@ -120,7 +129,17 @@ export interface TaskTimeEntry {
   startedAt: string;
   endedAt: string | null;
   durationSeconds: number;
+  stopReason: TaskTimeStopReason | null;
+  stopDetail: string | null;
   createdAt: string;
+}
+
+export interface AdminTimeTrackingEntry extends TaskTimeEntry {
+  taskTitle: string;
+  taskStatus: TaskStatus;
+  projectName: string;
+  userName: string;
+  completedAt: string | null;
 }
 
 export interface TaskTimeSummary {

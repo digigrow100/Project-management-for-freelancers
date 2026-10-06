@@ -11,6 +11,7 @@ import type {
   AiPendingAction,
   AiPendingActionStatus,
   AiToolCallRecord,
+  AdminTimeTrackingEntry,
   AdminWorkItem,
   AdminWorkflowSettings,
   BacklinkCategory,
@@ -94,6 +95,7 @@ import type {
   Task,
   TaskFocusState,
   TaskTimeEntry,
+  TaskTimeStopReason,
   TaskTimeSummary,
   TaskFile,
   TaskNote,
@@ -1112,26 +1114,9 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   });
 
   if (hasActionableNormalTask) {
-    const { data: fallbackRows, error: fallbackError } = await getSupabase()
-      .from("freelance_hq_tasks")
-      .select("id")
-      .eq("assigned_to", userId)
-      .neq("status", "done")
-      .eq("is_fallback", true);
-    if (fallbackError) throw fallbackError;
-
-    const fallbackIds = ((fallbackRows ?? []) as Array<{ id: string }>).map((row) => row.id);
-    if (fallbackIds.length > 0) {
-      const now = nowIso();
-      const { error: focusError } = await getSupabase()
-        .from("freelance_hq_task_focus")
-        .update({ state: "paused", paused_at: now, updated_at: now })
-        .eq("user_id", userId)
-        .eq("state", "active")
-        .in("task_id", fallbackIds);
-      if (focusError && !isMissingTableError(focusError)) throw focusError;
-      for (const fallbackId of fallbackIds) await closeOpenTimeEntriesForTask(fallbackId, now);
-    }
+    // Do not auto-pause or auto-close an active fallback task during a dashboard
+    // refresh. Work sessions must end only through an explicit action or a
+    // deliberate task switch, otherwise refreshes create fake 5-15 second logs.
     return null;
   }
 
@@ -1369,6 +1354,8 @@ interface TaskTimeEntryRow {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number;
+  stop_reason: TaskTimeStopReason | null;
+  stop_detail: string | null;
   created_at: string;
 }
 
@@ -1381,11 +1368,18 @@ function toTaskTimeEntry(row: TaskTimeEntryRow): TaskTimeEntry {
     startedAt: row.started_at,
     endedAt: row.ended_at,
     durationSeconds: row.duration_seconds ?? 0,
+    stopReason: row.stop_reason ?? null,
+    stopDetail: row.stop_detail ?? null,
     createdAt: row.created_at,
   };
 }
 
-async function closeOpenTimeEntries(userId: string, endedAt: string): Promise<void> {
+async function closeOpenTimeEntries(
+  userId: string,
+  endedAt: string,
+  stopReason: TaskTimeStopReason,
+  stopDetail: string | null = null,
+): Promise<void> {
   try {
     const { data, error } = await getSupabase()
       .from("freelance_hq_task_time_entries")
@@ -1401,7 +1395,12 @@ async function closeOpenTimeEntries(userId: string, endedAt: string): Promise<vo
       );
       const { error: updateError } = await getSupabase()
         .from("freelance_hq_task_time_entries")
-        .update({ ended_at: endedAt, duration_seconds: seconds })
+        .update({
+          ended_at: endedAt,
+          duration_seconds: seconds,
+          stop_reason: stopReason,
+          stop_detail: stopDetail,
+        })
         .eq("id", row.id)
         .is("ended_at", null);
       if (updateError) throw updateError;
@@ -1413,7 +1412,7 @@ async function closeOpenTimeEntries(userId: string, endedAt: string): Promise<vo
 
 async function startTaskTimeEntry(taskId: string, projectId: string, userId: string, startedAt: string): Promise<void> {
   try {
-    await closeOpenTimeEntries(userId, startedAt);
+    await closeOpenTimeEntries(userId, startedAt, "task_switched", "Started another task");
     const { error } = await getSupabase().from("freelance_hq_task_time_entries").insert({
       task_id: taskId,
       project_id: projectId,
@@ -1427,7 +1426,12 @@ async function startTaskTimeEntry(taskId: string, projectId: string, userId: str
   }
 }
 
-async function closeOpenTimeEntriesForTask(taskId: string, endedAt: string): Promise<void> {
+async function closeOpenTimeEntriesForTask(
+  taskId: string,
+  endedAt: string,
+  stopReason: TaskTimeStopReason,
+  stopDetail: string | null = null,
+): Promise<void> {
   try {
     const { data, error } = await getSupabase()
       .from("freelance_hq_task_time_entries")
@@ -1443,7 +1447,12 @@ async function closeOpenTimeEntriesForTask(taskId: string, endedAt: string): Pro
       );
       const { error: updateError } = await getSupabase()
         .from("freelance_hq_task_time_entries")
-        .update({ ended_at: endedAt, duration_seconds: seconds })
+        .update({
+          ended_at: endedAt,
+          duration_seconds: seconds,
+          stop_reason: stopReason,
+          stop_detail: stopDetail,
+        })
         .eq("id", row.id)
         .is("ended_at", null);
       if (updateError) throw updateError;
@@ -1482,13 +1491,59 @@ export async function listTaskTimeEntries(): Promise<TaskTimeEntry[]> {
       .from("freelance_hq_task_time_entries")
       .select("*")
       .order("started_at", { ascending: false })
-      .limit(2000);
+      .limit(10000);
     if (error) throw error;
     return ((data ?? []) as TaskTimeEntryRow[]).map(toTaskTimeEntry);
   } catch (error) {
     if (isMissingTableError(error)) return [];
     throw error;
   }
+}
+
+export async function getAdminTimeTrackingEntries(): Promise<AdminTimeTrackingEntry[]> {
+  const entries = await listTaskTimeEntries();
+  if (entries.length === 0) return [];
+
+  const taskIds = Array.from(new Set(entries.map((entry) => entry.taskId)));
+  const projectIds = Array.from(new Set(entries.map((entry) => entry.projectId)));
+  const userIds = Array.from(new Set(entries.map((entry) => entry.userId)));
+
+  const [{ data: taskRows, error: taskError }, projects, members] = await Promise.all([
+    getSupabase()
+      .from("freelance_hq_tasks")
+      .select("id, title, status, completed_at")
+      .in("id", taskIds),
+    getProjectsByIds(projectIds),
+    listTeamMembers(),
+  ]);
+  if (taskError) throw taskError;
+
+  const tasks = new Map(
+    ((taskRows ?? []) as Array<{ id: string; title: string; status: TaskStatus; completed_at: string | null }>).map((row) => [
+      row.id,
+      row,
+    ]),
+  );
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const memberById = new Map(members.filter((member) => userIds.includes(member.id)).map((member) => [member.id, member]));
+
+  return entries
+    .map((entry) => {
+      const task = tasks.get(entry.taskId);
+      if (!task) return null;
+      const project = projectById.get(entry.projectId);
+      const member = memberById.get(entry.userId);
+      const enriched: AdminTimeTrackingEntry = {
+        ...entry,
+        taskTitle: task.title,
+        taskStatus: task.status,
+        projectName: project?.name ?? "Unknown project",
+        userName: member?.name || member?.email || "Unknown member",
+        completedAt: task.completed_at,
+      };
+      return enriched;
+    })
+    .filter((entry): entry is AdminTimeTrackingEntry => entry !== null);
 }
 
 export async function getAdminTaskTimeSummaries(): Promise<TaskTimeSummary[]> {
@@ -1687,8 +1742,7 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
         .maybeSingle();
       if (openTimerError && !isMissingTableError(openTimerError)) throw openTimerError;
       if (!openTimer && !isMissingTableError(openTimerError)) {
-        const existingStartedAt = activeFocusRows.find((row) => row.task_id === taskId)?.started_at ?? now;
-        await startTaskTimeEntry(taskId, task.projectId, userId, existingStartedAt);
+        await startTaskTimeEntry(taskId, task.projectId, userId, now);
       }
     }
   } catch (error) {
@@ -1730,7 +1784,7 @@ export async function pauseTaskFocus(taskId: string, userId: string): Promise<vo
     if (!isMissingTableError(error)) throw error;
   }
 
-  await closeOpenTimeEntries(userId, now);
+  await closeOpenTimeEntries(userId, now, "paused");
 
   const { error: taskError } = await getSupabase()
     .from("freelance_hq_tasks")
@@ -1768,7 +1822,7 @@ export async function skipTaskFocus(
     );
   if (error && !isMissingTableError(error)) throw error;
 
-  await closeOpenTimeEntries(userId, now);
+  await closeOpenTimeEntries(userId, now, "skipped", reason);
   const { error: taskError } = await getSupabase()
     .from("freelance_hq_tasks")
     .update({ status: "in_progress", updated_at: now })
@@ -1828,7 +1882,7 @@ export async function completeTaskFromFocus(taskId: string, userId: string): Pro
     .eq("assigned_to", userId);
   if (error) throw error;
 
-  await closeOpenTimeEntriesForTask(taskId, now);
+  await closeOpenTimeEntriesForTask(taskId, now, "completed");
 
   try {
     const { error: focusError } = await getSupabase()
@@ -1997,7 +2051,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
     .maybeSingle();
   if (error) throw error;
 
-  if (resolvedStatus === "done") await closeOpenTimeEntriesForTask(taskId, nowIso());
+  if (resolvedStatus === "done") await closeOpenTimeEntriesForTask(taskId, nowIso(), "admin_completed");
   if (data) await touchProject((data as { project_id: string }).project_id);
 }
 
@@ -2067,7 +2121,7 @@ export async function updateTaskDetails(
     .maybeSingle();
   if (error) throw error;
 
-  if (status === "done") await closeOpenTimeEntriesForTask(taskId, nowIso());
+  if (status === "done") await closeOpenTimeEntriesForTask(taskId, nowIso(), "admin_completed");
   if (data) await touchProject((data as { project_id: string }).project_id);
 }
 
@@ -2860,7 +2914,7 @@ export async function sendTaskToAdmin(
       updated_at: now,
     }, { onConflict: "task_id" });
   if (focusError && !isMissingTableError(focusError)) throw focusError;
-  await closeOpenTimeEntries(userId, now);
+  await closeOpenTimeEntries(userId, now, "admin_action", "Sent to admin");
 
   const { data: taskRow, error: readError } = await getSupabase()
     .from("freelance_hq_tasks")
