@@ -674,7 +674,7 @@ export function MemberFocusDashboard({
             <div>
               <h3 className="text-sm font-semibold text-neutral-100">Today&apos;s Focus</h3>
               <p className="mt-1 text-sm text-neutral-500">
-                Work one task at a time. Paused work leaves today's rotation, stays in Pending Tasks, and can return as carryover on the next work day.
+                Work one task at a time. Paused work leaves today&apos;s rotation, stays in Pending Tasks, and can return as carryover on the next work day.
               </p>
             </div>
           </div>
