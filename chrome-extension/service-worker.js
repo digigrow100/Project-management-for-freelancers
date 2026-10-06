@@ -1,5 +1,6 @@
 const FLUSH_ALARM = "fhq-flush";
 const HEARTBEAT_ALARM = "fhq-heartbeat";
+const SECURITY_HEALTH_ALARM = "fhq-security-health";
 const IDLE_SECONDS = 60;
 const OFFLINE_GAP_MS = 3 * 60 * 1000;
 const MAX_QUEUE = 50;
@@ -29,10 +30,12 @@ async function authState() {
 
 async function apiFetch(path, options = {}) {
   const state = await authState();
-  if (!state.appOrigin || !state.deviceToken) throw new Error("Extension is not paired.");
+  if (!state.appOrigin || !state.deviceToken || !state.extensionInstallId || !state.deviceId) throw new Error("Extension is not paired.");
   const headers = new Headers(options.headers || {});
   headers.set("content-type", "application/json");
   headers.set("authorization", "Bearer " + state.deviceToken);
+  headers.set("x-extension-install-id", state.extensionInstallId);
+  headers.set("x-device-id", state.deviceId);
   return fetch(state.appOrigin + path, { ...options, headers });
 }
 
@@ -300,13 +303,41 @@ async function disconnect() {
   });
 }
 
+async function lockExtensionStorage() {
+  try {
+    await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  } catch {
+    // Older Chromium builds may not support this; extension still remains isolated by origin.
+  }
+}
+
+async function securityHealthCheck() {
+  const current = await authState();
+  if (!current.deviceToken) return;
+  try {
+    const response = await apiFetch("/api/extension/health", { method: "POST", body: "{}" });
+    if (response.status === 401) {
+      await storageSet({ deviceToken: null, employee: null });
+      return;
+    }
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.deviceToken) await storageSet({ deviceToken: data.deviceToken });
+  } catch {
+    // Retry on next scheduled health check.
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
+  void lockExtensionStorage();
   void ensureIdentity();
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 1 });
+  chrome.alarms.create(SECURITY_HEALTH_ALARM, { periodInMinutes: 360 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  void lockExtensionStorage();
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 1 });
   void transition("browser_start");
@@ -315,6 +346,7 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === FLUSH_ALARM) void flushQueues();
   if (alarm.name === HEARTBEAT_ALARM) void heartbeat();
+  if (alarm.name === SECURITY_HEALTH_ALARM) void securityHealthCheck();
 });
 
 chrome.tabs.onActivated.addListener(() => void transition("tab_switch", true));
@@ -371,5 +403,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
+void lockExtensionStorage();
 void ensureIdentity();
+void securityHealthCheck();
 void transition("service_worker_awake");

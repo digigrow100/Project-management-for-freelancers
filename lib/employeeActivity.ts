@@ -12,6 +12,11 @@ import type {
 } from "./types";
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
+const DEVICE_TOKEN_TTL_MS = 45 * 24 * 60 * 60 * 1000;
+const DEVICE_TOKEN_ROTATE_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
+const PAIR_RATE_WINDOW_MS = 10 * 60 * 1000;
+const PAIR_RATE_LIMIT = 20;
+const CREATE_PAIR_RATE_LIMIT = 5;
 const MAX_ACTIVITY_BATCH = 100;
 const MAX_PROMPT_BATCH = 20;
 const MAX_PROMPT_LENGTH = 8000;
@@ -115,11 +120,21 @@ function parsePairingCode(code: string): { origin: string; rawToken: string } | 
 }
 
 export async function createExtensionPairingCode(userId: string, origin: string) {
+  const supabase = getSupabase();
+  const recentSince = new Date(Date.now() - PAIR_RATE_WINDOW_MS).toISOString();
+  const { count, error: countError } = await supabase
+    .from("freelance_hq_extension_pairing_tokens")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", recentSince);
+  if (countError) throw countError;
+  if ((count ?? 0) >= CREATE_PAIR_RATE_LIMIT) {
+    throw new Error("Too many pairing codes created. Wait a few minutes and try again.");
+  }
+
   const rawToken = randomBytes(24).toString("base64url");
   const tokenHash = sha256(rawToken);
   const expiresAt = new Date(Date.now() + PAIRING_TTL_MS).toISOString();
-  const supabase = getSupabase();
-
   await supabase
     .from("freelance_hq_extension_pairing_tokens")
     .delete()
@@ -146,13 +161,32 @@ export async function pairExtension(input: {
   extensionInstallId: string;
   userAgent?: string;
   deviceLabel?: string;
+  ipAddress?: string;
 }) {
   const parsed = parsePairingCode(input.pairingCode);
+  const supabase = getSupabase();
+  const ipHash = sha256("fhq-extension-pair:" + String(input.ipAddress || "unknown").slice(0, 200));
+  const recentSince = new Date(Date.now() - PAIR_RATE_WINDOW_MS).toISOString();
+  const { count: recentAttempts, error: attemptCountError } = await supabase
+    .from("freelance_hq_extension_pair_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("ip_hash", ipHash)
+    .gte("created_at", recentSince);
+  if (attemptCountError) throw attemptCountError;
+  if ((recentAttempts ?? 0) >= PAIR_RATE_LIMIT) {
+    throw new Error("Too many pairing attempts. Wait a few minutes and try again.");
+  }
+  const { data: attemptRow, error: attemptInsertError } = await supabase
+    .from("freelance_hq_extension_pair_attempts")
+    .insert({ ip_hash: ipHash, success: false })
+    .select("id")
+    .single();
+  if (attemptInsertError) throw attemptInsertError;
+
   if (!parsed) throw new Error("Invalid pairing code.");
   if (!input.deviceId || input.deviceId.length > 160) throw new Error("Invalid device ID.");
   if (!input.extensionInstallId || input.extensionInstallId.length > 160) throw new Error("Invalid install ID.");
 
-  const supabase = getSupabase();
   const usedAt = nowIso();
   const { data: consumed, error: consumeError } = await supabase
     .from("freelance_hq_extension_pairing_tokens")
@@ -178,6 +212,9 @@ export async function pairExtension(input: {
         device_label: String(input.deviceLabel ?? "").slice(0, 120),
         user_agent: String(input.userAgent ?? "").slice(0, 500),
         paired_at: usedAt,
+        token_expires_at: new Date(Date.now() + DEVICE_TOKEN_TTL_MS).toISOString(),
+        token_rotated_at: usedAt,
+        last_health_at: usedAt,
         last_seen_at: usedAt,
         last_status: "active",
         revoked_at: null,
@@ -196,6 +233,11 @@ export async function pairExtension(input: {
     .single();
   if (profileError) throw profileError;
 
+  await supabase
+    .from("freelance_hq_extension_pair_attempts")
+    .update({ success: true })
+    .eq("id", attemptRow.id);
+
   return {
     deviceToken: rawDeviceToken,
     employee: {
@@ -211,12 +253,17 @@ export async function pairExtension(input: {
 export async function authenticateExtensionRequest(request: Request): Promise<AuthenticatedDevice> {
   const authorization = request.headers.get("authorization") ?? "";
   const rawToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  if (!rawToken || rawToken.length < 20) throw new Error("Unauthorized.");
+  const installId = (request.headers.get("x-extension-install-id") ?? "").trim();
+  const deviceId = (request.headers.get("x-device-id") ?? "").trim();
+  if (!rawToken || rawToken.length < 20 || !installId || !deviceId) throw new Error("Unauthorized.");
 
   const { data, error } = await getSupabase()
     .from("freelance_hq_employee_devices")
-    .select("id,employee_id,device_id,extension_install_id,device_label")
+    .select("id,employee_id,device_id,extension_install_id,device_label,token_expires_at")
     .eq("token_hash", sha256(rawToken))
+    .eq("extension_install_id", installId)
+    .eq("device_id", deviceId)
+    .gt("token_expires_at", nowIso())
     .is("revoked_at", null)
     .maybeSingle();
   if (error) throw error;
@@ -228,6 +275,81 @@ export async function authenticateExtensionRequest(request: Request): Promise<Au
     deviceId: String(data.device_id),
     extensionInstallId: String(data.extension_install_id),
     deviceLabel: String(data.device_label ?? ""),
+  };
+}
+
+
+export async function refreshExtensionDeviceToken(device: AuthenticatedDevice) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("freelance_hq_employee_devices")
+    .select("token_expires_at")
+    .eq("id", device.id)
+    .eq("employee_id", device.employeeId)
+    .is("revoked_at", null)
+    .single();
+  if (error) throw error;
+
+  const now = Date.now();
+  const expiresAt = new Date(String(data.token_expires_at)).getTime();
+  const update: Record<string, unknown> = { last_health_at: nowIso(), updated_at: nowIso() };
+  let deviceToken: string | null = null;
+  let tokenExpiresAt = String(data.token_expires_at);
+
+  if (!Number.isFinite(expiresAt) || expiresAt - now <= DEVICE_TOKEN_ROTATE_BEFORE_MS) {
+    deviceToken = randomBytes(32).toString("base64url");
+    tokenExpiresAt = new Date(now + DEVICE_TOKEN_TTL_MS).toISOString();
+    update.token_hash = sha256(deviceToken);
+    update.token_expires_at = tokenExpiresAt;
+    update.token_rotated_at = nowIso();
+  }
+
+  const { error: updateError } = await supabase
+    .from("freelance_hq_employee_devices")
+    .update(update)
+    .eq("id", device.id)
+    .eq("employee_id", device.employeeId)
+    .is("revoked_at", null);
+  if (updateError) throw updateError;
+
+  return { deviceToken, tokenExpiresAt };
+}
+
+export async function getEmployeeExtensionHealth(userId: string) {
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_employee_devices")
+    .select("last_seen_at,last_health_at,token_expires_at,revoked_at")
+    .eq("employee_id", userId)
+    .is("revoked_at", null)
+    .order("last_seen_at", { ascending: false });
+  if (error) throw error;
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return { state: "not_linked" as const, deviceCount: 0, lastSeenAt: null, problem: null };
+  }
+
+  const now = Date.now();
+  const healthy = rows.find((row) => {
+    const seen = new Date(String(row.last_seen_at || row.last_health_at)).getTime();
+    const expires = new Date(String(row.token_expires_at)).getTime();
+    return Number.isFinite(seen) && now - seen <= 3 * 60 * 1000 && Number.isFinite(expires) && expires > now;
+  });
+  if (healthy) {
+    return {
+      state: "online" as const,
+      deviceCount: rows.length,
+      lastSeenAt: String(healthy.last_seen_at || healthy.last_health_at),
+      problem: null,
+    };
+  }
+
+  const freshest = rows[0];
+  const expired = rows.every((row) => new Date(String(row.token_expires_at)).getTime() <= now);
+  return {
+    state: "problem" as const,
+    deviceCount: rows.length,
+    lastSeenAt: freshest?.last_seen_at ? String(freshest.last_seen_at) : null,
+    problem: expired ? "Device authentication expired. Reconnect the extension." : "Extension is linked but is not reporting. Open Chrome and check the extension.",
   };
 }
 

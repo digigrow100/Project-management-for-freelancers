@@ -4,6 +4,7 @@ import { MobileTopBar } from "@/components/MobileTopBar";
 import { AiAssistant } from "@/components/AiAssistant";
 import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
 import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
+import { ExtensionHealthBanner } from "@/components/ExtensionHealthBanner";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
@@ -73,7 +74,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex-1 md:h-screen md:overflow-y-auto">
         <MobileTopBar />
         <main className="theme-main min-h-full pb-24 md:pb-0">
-          <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">{children}</div>
+          <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">
+            {profile?.role === "member" && <ExtensionHealthBanner />}
+            {children}
+          </div>
         </main>
       </div>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />

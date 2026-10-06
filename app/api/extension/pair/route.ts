@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       extensionInstallId: String(body.extensionInstallId ?? ""),
       userAgent: String(body.userAgent ?? ""),
       deviceLabel: String(body.deviceLabel ?? ""),
+      ipAddress: (request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "unknown").split(",")[0]?.trim(),
     });
     return NextResponse.json(result);
   } catch (error) {

@@ -263,6 +263,14 @@ export interface ScreenShareSession {
   lastSeenAt: string;
 }
 
+
+export interface ExtensionHealth {
+  state: "online" | "problem" | "not_linked";
+  deviceCount: number;
+  lastSeenAt: string | null;
+  problem: string | null;
+}
+
 export type SeoModule = "on_page" | "technical" | "off_page" | "content" | "reporting";
 
 export interface ClientDetails {

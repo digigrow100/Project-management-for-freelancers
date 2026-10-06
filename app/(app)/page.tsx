@@ -2,7 +2,6 @@ import Link from "next/link";
 import { AlertCircle, ArrowRight, Hourglass, PiggyBank, Plus, TrendingUp, Wallet } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
-import { ExtensionConnectCard } from "@/components/ExtensionConnectCard";
 import { AdminTaskCommandCenter } from "@/components/AdminTaskCommandCenter";
 import {
   ensureIdleSeoTaskForMember,
@@ -39,12 +38,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       getProjectsForProfile(profile).then((items) => items.filter((project) => taskProjectIds.has(project.id))),
       getTaskTimeTotals(profile.id, tasks.map((task) => task.id)),
     ]);
-    return (
-      <div className="space-y-4">
-        <ExtensionConnectCard />
-        <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} timeTotals={timeTotals} />
-      </div>
-    );
+    return <MemberFocusDashboard tasks={tasks} projects={memberProjects} focusStates={focusStates} timeTotals={timeTotals} />;
   }
 
   const [allOpenTasks, projects, allCompletedTasks, progress, plans, payments, focusStates] = await Promise.all([
