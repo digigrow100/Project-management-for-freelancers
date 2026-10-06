@@ -5,6 +5,7 @@ import { AiAssistant } from "@/components/AiAssistant";
 import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
 import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
 import { ExtensionHealthBanner } from "@/components/ExtensionHealthBanner";
+import { UserRound } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
@@ -75,6 +76,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MobileTopBar />
         <main className="theme-main min-h-full pb-24 md:pb-0">
           <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">
+            {profile?.role === "member" && (
+              <div className="mb-4 flex items-center gap-3 rounded-xl border border-base-700/60 bg-base-850 px-3 py-2.5 shadow-card">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-500/10 text-accent-300">
+                  <UserRound size={16} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">Logged in as</p>
+                  <p className="truncate text-sm font-semibold text-neutral-100">
+                    {profile.name || profile.email}
+                  </p>
+                  <p className="truncate text-[10px] text-neutral-600">{profile.email}</p>
+                </div>
+              </div>
+            )}
             {profile?.role === "member" && <ExtensionHealthBanner />}
             {children}
           </div>

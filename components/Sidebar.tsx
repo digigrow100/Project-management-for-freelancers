@@ -155,6 +155,13 @@ export function Sidebar({
       <div className="min-h-0 flex-1" />
 
       <div className="flex flex-col gap-3">
+        {profile && (
+          <div className="rounded-xl border border-base-700/60 bg-base-850/70 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">Logged in as</p>
+            <p className="mt-1 truncate text-sm font-semibold text-neutral-100">{profile.name || profile.email}</p>
+            <p className="mt-0.5 truncate text-[10px] text-neutral-600">{profile.email}</p>
+          </div>
+        )}
         <InstallAppButton />
         <form action={logoutAction}>
           <button
