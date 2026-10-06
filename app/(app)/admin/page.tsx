@@ -16,6 +16,7 @@ import {
   listInvoiceItemsForInvoices,
   listInvoices,
   listPaymentPlans,
+  listMemberPresence,
   listRenewals,
   listTeamMembers,
   listWebsitesByDomainIds,
@@ -45,6 +46,7 @@ export default async function AdminPage() {
     domainClients,
     renewals,
     adminWorkItems,
+    memberPresence,
   ] = await Promise.all([
     listTeamMembers(),
     getProjects(),
@@ -60,6 +62,7 @@ export default async function AdminPage() {
     listDomainClients(),
     listRenewals(),
     listAdminWorkItems(currentProfile.id),
+    listMemberPresence(),
   ]);
 
   const [invoiceItems, domainSettings, websitesByDomainId] = await Promise.all([
@@ -97,6 +100,7 @@ export default async function AdminPage() {
         openTasks={openTasks}
         completedTasks={completedTasks}
         members={members}
+        initialPresence={memberPresence}
         timeSummaries={timeSummaries}
         timeEntries={timeEntries}
         memberProjectIds={Object.fromEntries(assignmentsByMember)}

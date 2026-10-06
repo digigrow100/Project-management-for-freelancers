@@ -3,6 +3,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
 import { AiAssistant } from "@/components/AiAssistant";
 import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
+import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
@@ -83,6 +84,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           projects={projects}
         />
       )}
+      {profile && <PresenceHeartbeat />}
       {profile && <AiAssistant projects={projects} clients={clients} hasTicker={false} />}
     </div>
   );

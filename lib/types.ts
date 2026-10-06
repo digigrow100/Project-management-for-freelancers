@@ -146,6 +146,12 @@ export interface AdminTimeTrackingEntry extends TaskTimeEntry {
   completedAt: string | null;
 }
 
+export interface MemberPresence {
+  userId: string;
+  lastSeenAt: string;
+  lastActiveAt: string;
+}
+
 export interface TaskTimeSummary {
   taskId: string;
   projectId: string;

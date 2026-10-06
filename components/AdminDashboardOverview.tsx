@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -19,8 +19,9 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary, Website } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, MemberPresence, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary, Website } from "@/lib/types";
 import { businessMonthKey } from "@/lib/date";
+import { cn } from "@/lib/utils";
 import { DomainsPanel } from "@/components/DomainsPanel";
 
 type ProgressMap = Record<string, { done: number; total: number; openCount: number; percent?: number }>;
@@ -124,6 +125,7 @@ export function AdminDashboardOverview({
   openTasks,
   completedTasks,
   members,
+  initialPresence,
   timeSummaries,
   timeEntries,
   memberProjectIds,
@@ -144,6 +146,7 @@ export function AdminDashboardOverview({
   openTasks: Task[];
   completedTasks: Task[];
   members: Profile[];
+  initialPresence: MemberPresence[];
   timeSummaries: TaskTimeSummary[];
   timeEntries: TaskTimeEntry[];
   memberProjectIds: Record<string, string[]>;
@@ -160,6 +163,34 @@ export function AdminDashboardOverview({
   hasDynadotApiKey: boolean;
 }) {
   const [dashboardTab, setDashboardTab] = useState<"overview" | "reports" | "accounts" | "domains">("overview");
+  const [presence, setPresence] = useState<MemberPresence[]>(initialPresence);
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshPresence() {
+      try {
+        const response = await fetch("/api/presence/team", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as { presence?: MemberPresence[] };
+        if (!cancelled && Array.isArray(data.presence)) {
+          setPresence(data.presence);
+          setPresenceNow(Date.now());
+        }
+      } catch {
+        // Presence is a convenience signal; keep the last known state if polling fails.
+      }
+    }
+
+    const id = window.setInterval(refreshPresence, 30000);
+    const clockId = window.setInterval(() => setPresenceNow(Date.now()), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.clearInterval(clockId);
+    };
+  }, []);
   const activeProjects = projects.filter((project) => !project.archived);
   const availableProjectTypes = PROJECT_TABS.filter((tab) =>
     activeProjects.some((project) => project.type === tab.key),
@@ -225,6 +256,24 @@ export function AdminDashboardOverview({
 
   const nowMs = Date.now();
   const todayKey = businessDayKey(nowMs);
+  const presenceByMember = new Map(presence.map((item) => [item.userId, item]));
+
+  function memberPresenceState(userId: string) {
+    const current = presenceByMember.get(userId);
+    if (!current) {
+      return { status: "offline" as const, label: "Offline", lastSeen: null as string | null };
+    }
+
+    const seenAgeMs = Math.max(0, presenceNow - new Date(current.lastSeenAt).getTime());
+    const activeAgeMs = Math.max(0, presenceNow - new Date(current.lastActiveAt).getTime());
+    if (seenAgeMs > 3 * 60 * 1000) {
+      return { status: "offline" as const, label: "Offline", lastSeen: current.lastSeenAt };
+    }
+    if (activeAgeMs > 10 * 60 * 1000) {
+      return { status: "away" as const, label: "Away", lastSeen: current.lastSeenAt };
+    }
+    return { status: "online" as const, label: "Online", lastSeen: current.lastSeenAt };
+  }
   const memberPerformance = members
     .filter((member) => member.role !== "admin")
     .map((member) => {
@@ -282,6 +331,7 @@ export function AdminDashboardOverview({
 
       return {
         member,
+        presence: memberPresenceState(member.id),
         projectProgress,
         overallPercent,
         allTimeSeconds,
@@ -633,10 +683,36 @@ export function AdminDashboardOverview({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${row.isActive ? "animate-pulse bg-emerald-400" : "bg-neutral-600"}`} />
+                      <span
+                        className={cn(
+                          "h-2.5 w-2.5 shrink-0 rounded-full",
+                          row.presence.status === "online"
+                            ? "animate-pulse bg-emerald-400"
+                            : row.presence.status === "away"
+                              ? "bg-amber-400"
+                              : "bg-neutral-600",
+                        )}
+                      />
                       <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
                     </div>
-                    <p className="mt-1 text-[10px] text-neutral-600">{jobRoleLabel(row.member.jobRole)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
+                      <span className="text-neutral-600">{jobRoleLabel(row.member.jobRole)}</span>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 font-semibold",
+                          row.presence.status === "online"
+                            ? "bg-emerald-500/10 text-emerald-300"
+                            : row.presence.status === "away"
+                              ? "bg-amber-500/10 text-amber-300"
+                              : "bg-base-700 text-neutral-500",
+                        )}
+                      >
+                        {row.presence.label}
+                      </span>
+                      {row.presence.status === "offline" && row.presence.lastSeen && (
+                        <span className="text-neutral-700">Last seen {timeLabel(row.presence.lastSeen)}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
@@ -732,8 +808,22 @@ export function AdminDashboardOverview({
                     <div key={member.id} className="px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-neutral-200">{member.name || member.email}</p>
-                          <p className="mt-0.5 text-[10px] text-neutral-600">{jobRoleLabel(member.jobRole)}</p>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "h-2 w-2 shrink-0 rounded-full",
+                                memberPresenceState(member.id).status === "online"
+                                  ? "bg-emerald-400"
+                                  : memberPresenceState(member.id).status === "away"
+                                    ? "bg-amber-400"
+                                    : "bg-neutral-600",
+                              )}
+                            />
+                            <p className="truncate text-xs font-semibold text-neutral-200">{member.name || member.email}</p>
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-neutral-600">
+                            {jobRoleLabel(member.jobRole)} · {memberPresenceState(member.id).label}
+                          </p>
                         </div>
                         <div className="text-right">
                           <p className="text-[11px] text-neutral-300">{tasks} tasks</p>

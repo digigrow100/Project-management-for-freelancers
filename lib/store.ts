@@ -50,6 +50,7 @@ import type {
   KeywordRankHistoryEntry,
   KeywordStatus,
   LoginMethod,
+  MemberPresence,
   Note,
   NoteFolder,
   OnPageStatus,
@@ -1362,6 +1363,49 @@ export async function getTaskFocusStates(userId: string): Promise<TaskFocusState
     return ((data ?? []) as TaskFocusRow[]).map(toTaskFocusState);
   } catch (error) {
     // Keep the member dashboard usable before migration 064 is applied.
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+interface MemberPresenceRow {
+  user_id: string;
+  last_seen_at: string;
+  last_active_at: string;
+}
+
+function toMemberPresence(row: MemberPresenceRow): MemberPresence {
+  return {
+    userId: row.user_id,
+    lastSeenAt: row.last_seen_at,
+    lastActiveAt: row.last_active_at,
+  };
+}
+
+export async function upsertMemberPresence(userId: string, active: boolean): Promise<void> {
+  const now = nowIso();
+  const payload: Record<string, string> = {
+    user_id: userId,
+    last_seen_at: now,
+    updated_at: now,
+  };
+  if (active) payload.last_active_at = now;
+
+  const { error } = await getSupabase()
+    .from("freelance_hq_member_presence")
+    .upsert(payload, { onConflict: "user_id" });
+  if (error && !isMissingTableError(error)) throw error;
+}
+
+export async function listMemberPresence(): Promise<MemberPresence[]> {
+  try {
+    const { data, error } = await getSupabase()
+      .from("freelance_hq_member_presence")
+      .select("user_id,last_seen_at,last_active_at")
+      .order("last_seen_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as MemberPresenceRow[]).map(toMemberPresence);
+  } catch (error) {
     if (isMissingTableError(error)) return [];
     throw error;
   }
