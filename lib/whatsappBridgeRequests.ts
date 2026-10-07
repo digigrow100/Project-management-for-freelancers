@@ -129,6 +129,7 @@ export async function claimWhatsAppBridgeRequest(device: AuthenticatedWhatsAppBr
       updated_at: nowIso(),
     })
     .eq("status", "processing")
+    .eq("created_by", device.ownerUserId)
     .lt("claimed_at", staleBefore)
     .gt("expires_at", nowIso());
 
@@ -136,6 +137,7 @@ export async function claimWhatsAppBridgeRequest(device: AuthenticatedWhatsAppBr
     .from("freelance_hq_whatsapp_bridge_requests")
     .select("*")
     .eq("status", "queued")
+    .eq("created_by", device.ownerUserId)
     .gt("expires_at", nowIso())
     .order("created_at", { ascending: true })
     .limit(1)
@@ -154,6 +156,7 @@ export async function claimWhatsAppBridgeRequest(device: AuthenticatedWhatsAppBr
     })
     .eq("id", row.id)
     .eq("status", "queued")
+    .eq("created_by", device.ownerUserId)
     .select("*")
     .maybeSingle();
   if (claimError) throw claimError;
