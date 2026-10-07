@@ -52,8 +52,8 @@ export function WhatsAppBridgeAdminCard({ initialHealth }: { initialHealth: What
         </span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href="/downloads/freelance-hq-whatsapp-bridge.zip" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400">
-          <Download size={13} /> Download WhatsApp Extension
+        <a href="https://github.com/digigrow100/Project-management-for-freelancers/archive/refs/heads/main.zip" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400">
+          <Download size={13} /> Download Updated Source
         </a>
         <Link href="/admin/whatsapp-bridge" className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300 hover:border-base-600">
           Manage Bridge <ExternalLink size={12} />
