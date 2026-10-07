@@ -151,30 +151,55 @@
     );
   }
 
+  function looksLikeMessagePreview(value) {
+    const text = String(value || "").trim();
+    const normalized = text.toLowerCase();
+    if (!text) return true;
+    if (/^https?:\/\//i.test(text)) return true;
+    if (/^www\./i.test(text)) return true;
+    if (/^\+?\d[\d\s()-]{7,}\d$/.test(text)) return true;
+    if (/^\d{1,2}:\d{2}(?:\s*[ap]m)?$/i.test(text)) return true;
+    if (/^(yesterday|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i.test(text)) return true;
+    if (/unread|message|delivered|read|typing|online/.test(normalized)) return true;
+    return false;
+  }
+
   function rowLabel(row) {
     const titleCandidates = Array.from(row.querySelectorAll("span[title], div[title]"))
       .map((node) => String(node.getAttribute("title") || "").trim())
-      .filter((value) => value && !looksLikeIconLabel(value));
+      .filter((value) =>
+        value &&
+        value.length <= 120 &&
+        !looksLikeIconLabel(value) &&
+        !looksLikeMessagePreview(value)
+      );
 
     if (titleCandidates.length) {
-      return titleCandidates
-        .sort((a, b) => b.length - a.length)
-        .find((value) => value.length <= 120) || titleCandidates[0];
+      return titleCandidates[0];
     }
 
     const ariaCandidates = [
       String(row.getAttribute("aria-label") || "").trim(),
       ...Array.from(row.querySelectorAll("[aria-label]"))
         .map((node) => String(node.getAttribute("aria-label") || "").trim()),
-    ].filter((value) => value && !looksLikeIconLabel(value) && !/unread|message|delivered|read/i.test(value));
-    if (ariaCandidates.length) return ariaCandidates[0].slice(0, 120);
+    ].filter((value) =>
+      value &&
+      value.length <= 120 &&
+      !looksLikeIconLabel(value) &&
+      !looksLikeMessagePreview(value)
+    );
+    if (ariaCandidates.length) return ariaCandidates[0];
 
     const text = String(row.textContent || "").replace(/\s+/g, " ").trim();
-    return text
+    const cleaned = text
+      .replace(/^\d+\s+unread\s+messages?/i, "")
+      .replace(/^\d+\s+unread\s+message/i, "")
       .replace(/^wds-[^\s]+/i, "")
       .replace(/^ic-[^\s]+/i, "")
-      .trim()
-      .slice(0, 120);
+      .trim();
+
+    const firstChunk = cleaned.split(/\d{1,2}:\d{2}(?:\s*[AP]M)?/i)[0]?.trim() || cleaned;
+    return firstChunk.slice(0, 120);
   }
 
   function rowPhone(row) {
@@ -313,12 +338,17 @@
       const wanted = decodeURIComponent(chatKey.slice("wa-label:".length));
       const exact = rows.filter((item) => normalize(rowLabel(item)) === wanted);
       if (exact.length === 1) row = exact[0];
-      else if (exact.length > 1) throw new Error("More than one WhatsApp chat now has this name. Re-scan and map a stable result.");
+      else if (exact.length > 1) throw new Error("More than one WhatsApp chat now has this name. Re-scan and add the exact result again.");
+    }
+
+    if (!row && target.chatLabel) {
+      const exactLabel = rows.filter((item) => normalize(rowLabel(item)) === normalize(target.chatLabel));
+      if (exactLabel.length === 1) row = exactLabel[0];
     }
 
     if (!row) {
       setEditableText(search, "");
-      throw new Error("The exact mapped WhatsApp chat could not be found. Re-scan it before sending.");
+      throw new Error("The exact WhatsApp chat could not be found. Re-scan and add the chat again.");
     }
 
     row.click();
