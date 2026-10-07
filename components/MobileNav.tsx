@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X, Receipt, Package, Clock3, PanelsTopLeft } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Shield, Wallet, Building2, Globe, FileText, MoreHorizontal, X, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -20,6 +20,7 @@ const COMMON_MORE_NAV = [
   { href: "/seo/pages", label: "SEO Pages", icon: PanelsTopLeft },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
+  { href: "/client-chat", label: "Client Chat", icon: MessageCircleMore },
 ];
 
 const MORE_NAV = [
@@ -28,6 +29,7 @@ const MORE_NAV = [
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/services", label: "Services", icon: Package },
+  { href: "/admin/whatsapp-bridge", label: "WhatsApp Bridge", icon: MessageCircleMore },
   { href: "/admin/time-tracking", label: "Time Tracking", icon: Clock3 },
   { href: "/domains", label: "Domains", icon: Globe },
   { href: "/settings", label: "Settings", icon: Settings },
