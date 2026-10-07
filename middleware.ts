@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/extension", "/auth"];
+const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/extension", "/api/whatsapp-bridge", "/auth"];
 
 export async function middleware(request: NextRequest) {
   // Supabase can fall back to the configured Site URL and append a PKCE
