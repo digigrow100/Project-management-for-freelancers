@@ -2,6 +2,8 @@
   const platform = location.hostname.includes("claude.ai") ? "claude" : "chatgpt";
   let lastSubmitted = "";
   let lastSubmittedAt = 0;
+  let lastGenerationState = null;
+  let generationTimer = null;
 
   function readComposer() {
     const selectors = platform === "chatgpt"
@@ -41,6 +43,51 @@
     });
   }
 
+  function buttonLooksLikeStop(button) {
+    const label = [
+      button.getAttribute("aria-label"),
+      button.getAttribute("title"),
+      button.getAttribute("data-testid"),
+      button.textContent,
+    ].filter(Boolean).join(" ").trim().toLowerCase();
+
+    if (platform === "chatgpt") {
+      return button.matches('[data-testid="stop-button"]') ||
+        /stop streaming|stop generating|stop response/.test(label);
+    }
+
+    return /stop generating|stop response|^stop$|^stop\b/.test(label);
+  }
+
+  function isGenerating() {
+    return Array.from(document.querySelectorAll("button")).some((button) => buttonLooksLikeStop(button));
+  }
+
+  function publishGenerationState(force = false) {
+    const next = isGenerating();
+    if (!force && next === lastGenerationState) return;
+    lastGenerationState = next;
+    chrome.runtime.sendMessage({
+      type: "AI_GENERATION_STATE",
+      platform,
+      generating: next,
+      at: new Date().toISOString(),
+    });
+  }
+
+  function scheduleGenerationCheck() {
+    if (generationTimer) window.clearTimeout(generationTimer);
+    generationTimer = window.setTimeout(() => publishGenerationState(false), 250);
+  }
+
+  const observer = new MutationObserver(scheduleGenerationCheck);
+  observer.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["aria-label", "title", "data-testid", "disabled"],
+  });
+
   document.addEventListener("submit", () => submitPrompt(), true);
 
   document.addEventListener("keydown", (event) => {
@@ -60,7 +107,9 @@
       button.getAttribute("data-testid"),
       button.textContent,
     ].filter(Boolean).join(" ").toLowerCase();
-    if (!/(send|submit|send message|send prompt)/.test(label)) return;
-    submitPrompt();
+    if (/(send|submit|send message|send prompt)/.test(label)) submitPrompt();
+    scheduleGenerationCheck();
   }, true);
+
+  window.setTimeout(() => publishGenerationState(true), 600);
 })();
