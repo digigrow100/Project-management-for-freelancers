@@ -1,3 +1,4 @@
 Production deployment trigger
-Date: 2026-09-30
-Base: 1a50613c5f1bfdcc34692c9369dc077eaafc3233
+Date: 2026-10-07
+Base: 8368d5d9708f5353a1053bca65dbc18b06b40483
+Reason: deploy latest WhatsApp live-refresh and v1.1.8 integration
