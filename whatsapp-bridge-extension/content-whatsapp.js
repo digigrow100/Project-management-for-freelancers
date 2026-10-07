@@ -4,6 +4,7 @@
   let busy = false;
   let lastSyncAt = 0;
   let lastOpenedChatKey = "";
+  let activeTarget = null;
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -388,6 +389,7 @@
         // the strongest signal that the click successfully opened a conversation.
         if (matches || !search) {
           lastOpenedChatKey = String(target.chatKey || "");
+          activeTarget = { ...target };
           return true;
         }
       }
@@ -404,6 +406,7 @@
     const existingComposer = composerBox();
     if (existingComposer && (lastOpenedChatKey === chatKey || activeChatMatches(target))) {
       lastOpenedChatKey = chatKey;
+      activeTarget = { ...target };
       return true;
     }
 
@@ -455,6 +458,7 @@
 
     // Keep the search state untouched after opening. Clearing it immediately
     // can make current WhatsApp Web builds jump back to the normal chat list.
+    activeTarget = { ...target };
     return true;
   }
 
@@ -721,12 +725,21 @@
 
   async function syncOneClient() {
     if (busy || !whatsappReady() || !clients.length) return;
-    if (Date.now() - lastSyncAt < 10000) return;
+    if (Date.now() - lastSyncAt < 3000) return;
     busy = true;
     try {
-      const target = clients[cycleIndex % clients.length];
-      cycleIndex = (cycleIndex + 1) % clients.length;
-      await openClient(target);
+      let target = null;
+
+      if (activeTarget?.clientId) {
+        target = clients.find((item) => String(item.clientId) === String(activeTarget.clientId)) || null;
+      }
+
+      if (!target) {
+        target = clients[cycleIndex % clients.length];
+        cycleIndex = (cycleIndex + 1) % clients.length;
+        await openClient(target);
+      }
+
       const messages = extractRecentInbound(target);
       if (messages.length) {
         await chrome.runtime.sendMessage({ type: "WA_INBOUND_BATCH", messages });
@@ -801,6 +814,6 @@
     if (ready) void syncOneClient();
   }
 
-  window.setInterval(tick, 5000);
+  window.setInterval(tick, 3000);
   window.setTimeout(tick, 1000);
 })();
