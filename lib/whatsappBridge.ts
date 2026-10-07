@@ -659,7 +659,7 @@ export async function queueWhatsAppMessage(profile: Profile, clientId: string, b
 export async function getBridgeClientConfig(device: AuthenticatedWhatsAppBridge) {
   const { data, error } = await getSupabase()
     .from("freelance_hq_whatsapp_client_links")
-    .select("client_id,chat_key,chat_label,phone")
+    .select("client_id,chat_key,chat_label,phone,sync_from")
     .eq("is_enabled", true)
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -668,6 +668,7 @@ export async function getBridgeClientConfig(device: AuthenticatedWhatsAppBridge)
     chatKey: String(row.chat_key || ""),
     chatLabel: String(row.chat_label || ""),
     phone: String(row.phone || ""),
+    syncFrom: row.sync_from ? String(row.sync_from) : nowIso(),
   }));
 }
 
