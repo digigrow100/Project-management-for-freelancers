@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WhatsApp Bridge</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main>
+    <div class="brand">
+      <div class="logo">W</div>
+      <div>
+        <h1>WhatsApp Bridge</h1>
+        <p>Freelance HQ</p>
+      </div>
+    </div>
+
+    <section id="pairedView" class="card hidden">
+      <div class="status-row"><span class="dot"></span><strong>Bridge connected</strong></div>
+      <p id="pairedDetails" class="muted"></p>
+      <button id="openWhatsapp" class="primary">Open WhatsApp Web</button>
+      <button id="disconnect" class="secondary">Disconnect bridge</button>
+    </section>
+
+    <section id="pairView" class="card">
+      <label for="pairCode">Pairing code</label>
+      <textarea id="pairCode" rows="4" placeholder="Paste the full FHQW1... code from Admin → WhatsApp Bridge"></textarea>
+      <label for="deviceLabel">Device label</label>
+      <input id="deviceLabel" value="WhatsApp Bridge Chrome" />
+      <p id="message" class="message"></p>
+      <button id="pairButton" class="primary">Connect Bridge</button>
+    </section>
+
+    <p class="foot">Keep WhatsApp Web logged in on this Chrome profile. Only admin-approved client chats are synced.</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
