@@ -22,3 +22,11 @@ The pairing code contains the current app origin, so the extension requests perm
 - optional host permission: requested only for the paired Project Management App origin
 
 The extension does not capture keystrokes, passwords, form fields, screenshots, AI responses, uploaded file contents, or background-tab time.
+
+
+## Work-time behavior (v1.1.0)
+- Opening Chrome by itself does not start work time.
+- Before the first meaningful browser action, extension-online time is recorded as paused/idle.
+- The work session starts on a real tab switch, URL navigation, or submitted ChatGPT/Claude prompt.
+- After work has started, Chrome idle/locked time is recorded separately as paused time.
+- Activity is checkpointed about once per minute so admin and employee timers stay current without per-second network requests.
