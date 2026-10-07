@@ -30,3 +30,10 @@ The extension does not capture keystrokes, passwords, form fields, screenshots, 
 - The work session starts on a real tab switch, URL navigation, or submitted ChatGPT/Claude prompt.
 - After work has started, Chrome idle/locked time is recorded separately as paused time.
 - Activity is checkpointed about once per minute so admin and employee timers stay current without per-second network requests.
+
+
+## AI processing state (v1.2.0)
+- ChatGPT and Claude generation is treated as active work while a visible Stop/Stop generating control is present.
+- AI processing overrides the normal Chrome idle state, so long-running AI tasks keep counting as Working.
+- When generation finishes, a 60-second grace period starts.
+- If no new meaningful work starts during that grace period, the extension sends Offline and ends the current work session.
