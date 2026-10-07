@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Freelance HQ Employee Activity",
-  "version": "1.1.0",
-  "description": "Secure employee work-time and browser activity integration for the existing Freelance HQ project-management app.",
+  "version": "1.2.0",
+  "description": "Secure employee work-time, AI processing state, and browser activity integration for Freelance HQ.",
   "permissions": [
     "tabs",
     "storage",
