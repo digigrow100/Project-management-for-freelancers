@@ -4,6 +4,7 @@
   let busy = false;
   let lastSyncAt = 0;
   let lastOpenedChatKey = "";
+  let activeTarget = null;
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -388,6 +389,7 @@
         // the strongest signal that the click successfully opened a conversation.
         if (matches || !search) {
           lastOpenedChatKey = String(target.chatKey || "");
+          activeTarget = { ...target };
           return true;
         }
       }
@@ -404,6 +406,7 @@
     const existingComposer = composerBox();
     if (existingComposer && (lastOpenedChatKey === chatKey || activeChatMatches(target))) {
       lastOpenedChatKey = chatKey;
+      activeTarget = { ...target };
       return true;
     }
 
@@ -455,6 +458,7 @@
 
     // Keep the search state untouched after opening. Clearing it immediately
     // can make current WhatsApp Web builds jump back to the normal chat list.
+    activeTarget = { ...target };
     return true;
   }
 
@@ -542,7 +546,31 @@
     if (!body) return null;
     const prePlain = messagePrePlain(node);
     const remoteTimestamp = parseWhatsAppTimestamp(prePlain);
-    const outbound = String(node.className || "").includes("message-out") || Boolean(node.closest(".message-out"));
+    const classText = [
+      String(node.className || ""),
+      ...Array.from(node.parentElement ? [node.parentElement, node.parentElement.parentElement].filter(Boolean) : [])
+        .map((item) => String(item.className || "")),
+    ].join(" ");
+    let outbound =
+      /message-out|outgoing|from-me|sent/i.test(classText) ||
+      Boolean(node.closest(".message-out, [data-testid*='outgoing'], [data-testid*='sent']"));
+
+    if (!outbound) {
+      const pre = prePlain.toLowerCase();
+      if (/\]\s*(you|me)\s*:/i.test(prePlain) || /\byou\s*:/.test(pre)) outbound = true;
+    }
+
+    if (!outbound) {
+      const panel = document.querySelector("#main");
+      if (panel) {
+        const panelRect = panel.getBoundingClientRect();
+        const nodeRect = node.getBoundingClientRect();
+        if (nodeRect.width > 0 && panelRect.width > 0) {
+          outbound = nodeRect.left + nodeRect.width / 2 > panelRect.left + panelRect.width * 0.58;
+        }
+      }
+    }
+
     const rawId =
       node.getAttribute("data-id") ||
       node.querySelector("[data-id]")?.getAttribute("data-id") ||
@@ -636,27 +664,7 @@
 
       const text = String(body || "");
       setEditableText(composer, text);
-      await sleep(250);
-
-      const currentComposerText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
-      if (!currentComposerText && text) {
-        composer.focus();
-        try {
-          document.execCommand("insertText", false, text);
-        } catch {}
-        composer.dispatchEvent(new InputEvent("beforeinput", {
-          bubbles: true,
-          cancelable: true,
-          inputType: "insertText",
-          data: text,
-        }));
-        composer.dispatchEvent(new InputEvent("input", {
-          bubbles: true,
-          inputType: "insertText",
-          data: text,
-        }));
-        await sleep(200);
-      }
+      await sleep(300);
 
       const verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
       if (!verifiedText && text) {
@@ -717,12 +725,21 @@
 
   async function syncOneClient() {
     if (busy || !whatsappReady() || !clients.length) return;
-    if (Date.now() - lastSyncAt < 10000) return;
+    if (Date.now() - lastSyncAt < 3000) return;
     busy = true;
     try {
-      const target = clients[cycleIndex % clients.length];
-      cycleIndex = (cycleIndex + 1) % clients.length;
-      await openClient(target);
+      let target = null;
+
+      if (activeTarget?.clientId) {
+        target = clients.find((item) => String(item.clientId) === String(activeTarget.clientId)) || null;
+      }
+
+      if (!target) {
+        target = clients[cycleIndex % clients.length];
+        cycleIndex = (cycleIndex + 1) % clients.length;
+        await openClient(target);
+      }
+
       const messages = extractRecentInbound(target);
       if (messages.length) {
         await chrome.runtime.sendMessage({ type: "WA_INBOUND_BATCH", messages });
@@ -735,11 +752,21 @@
     }
   }
 
+  async function peekChat(request) {
+    await openClient(request);
+    const messages = allMessageContainers()
+      .slice(-120)
+      .map((node) => extractMessage(node, request))
+      .filter(Boolean);
+    return { messages };
+  }
+
   async function processBridgeRequest(request) {
     if (!request || !request.requestType) throw new Error("Invalid bridge request.");
     if (request.requestType === "scan") return scanChats(request.query);
     if (request.requestType === "list_chats") return listChats();
     if (request.requestType === "history") return fetchHistory(request);
+    if (request.requestType === "peek_chat") return peekChat(request);
     if (request.requestType === "open_chat") {
       await openClient(request);
       return { opened: true };
@@ -787,6 +814,6 @@
     if (ready) void syncOneClient();
   }
 
-  window.setInterval(tick, 5000);
+  window.setInterval(tick, 3000);
   window.setTimeout(tick, 1000);
 })();

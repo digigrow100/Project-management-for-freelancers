@@ -31,7 +31,7 @@ async function requireAdmin(userId: string) {
   if (!data || data.role !== "admin") throw new Error("Admin access required.");
 }
 
-export type BridgeRequestType = "scan" | "list_chats" | "history" | "direct_send" | "open_chat";
+export type BridgeRequestType = "scan" | "list_chats" | "history" | "direct_send" | "open_chat" | "peek_chat";
 
 export async function createAdminWhatsAppRequest(
   adminUserId: string,
@@ -58,7 +58,7 @@ export async function createAdminWhatsAppRequest(
   const dateTo = validDate(input.dateTo);
 
   if (requestType === "scan" && !query) throw new Error("Enter a WhatsApp name to scan.");
-  if ((requestType === "history" || requestType === "direct_send" || requestType === "open_chat") && !chatKey && !chatLabel && !phone) {
+  if ((requestType === "history" || requestType === "direct_send" || requestType === "open_chat" || requestType === "peek_chat") && !chatKey && !chatLabel && !phone) {
     throw new Error("Choose a WhatsApp chat first.");
   }
   if (requestType === "direct_send" && !clean(input.payload?.body, 5000)) {

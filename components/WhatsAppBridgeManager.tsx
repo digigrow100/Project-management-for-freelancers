@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   CalendarDays,
   CheckCircle2,
@@ -51,7 +51,12 @@ type HistoryMessage = {
 type RequestState = {
   id: string;
   status: string;
-  result?: { chats?: ScannedChat[]; messages?: HistoryMessage[]; sent?: boolean } | null;
+  result?: {
+    chats?: ScannedChat[];
+    messages?: HistoryMessage[];
+    sent?: boolean;
+    remoteMessageKey?: string;
+  } | null;
   error?: string;
 };
 
@@ -136,6 +141,7 @@ export function WhatsAppBridgeManager({
   const [shareUserId, setShareUserId] = useState("");
   const [directDraft, setDirectDraft] = useState("");
   const [isPending, startTransition] = useTransition();
+  const livePeekRunning = useRef(false);
 
   const memberOptions = useMemo(() => members.filter((member) => member.role !== "admin"), [members]);
 
@@ -203,6 +209,53 @@ export function WhatsAppBridgeManager({
     }
     throw new Error("Extension did not respond in time. Keep WhatsApp Web open and try again.");
   }
+
+  function mergeVisibleHistory(messages: HistoryMessage[]) {
+    const range = dayRange(selectedDate);
+    const from = new Date(range.from).getTime();
+    const to = new Date(range.to).getTime();
+    setHistory((current) => {
+      const byKey = new Map(current.map((item) => [item.remoteMessageKey, item]));
+      for (const item of messages) {
+        if (!item?.remoteMessageKey || !item.remoteTimestamp) continue;
+        const time = new Date(item.remoteTimestamp).getTime();
+        if (!Number.isFinite(time) || time < from || time >= to) continue;
+        byKey.set(item.remoteMessageKey, item);
+      }
+      return Array.from(byKey.values()).sort((a, b) =>
+        new Date(a.remoteTimestamp || 0).getTime() - new Date(b.remoteTimestamp || 0).getTime()
+      );
+    });
+  }
+
+  async function peekSelectedChat(chat: SavedAdminChat) {
+    if (livePeekRunning.current) return;
+    livePeekRunning.current = true;
+    try {
+      const id = await createRequest({
+        requestType: "peek_chat",
+        chatKey: chat.chatKey,
+        chatLabel: chat.chatLabel,
+        phone: chat.phone,
+      });
+      const request = await waitForRequest(id);
+      if (request.status === "done" && Array.isArray(request.result?.messages)) {
+        mergeVisibleHistory(request.result.messages);
+      }
+    } catch {
+      // Keep the current conversation visible if one live refresh fails.
+    } finally {
+      livePeekRunning.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "chats" || !selectedChat) return;
+    const chat = selectedChat;
+    void peekSelectedChat(chat);
+    const timer = window.setInterval(() => void peekSelectedChat(chat), 3000);
+    return () => window.clearInterval(timer);
+  }, [activeTab, selectedChat?.id, selectedDate]);
 
   function generatePairingCode() {
     setMessage("");
@@ -527,6 +580,13 @@ export function WhatsAppBridgeManager({
         });
         const request = await waitForRequest(id);
         if (request.status !== "done") throw new Error(request.error || "Message was not sent.");
+        const remoteMessageKey = request.result?.remoteMessageKey || ("direct-ui:" + Date.now());
+        mergeVisibleHistory([{
+          direction: "outbound",
+          body,
+          remoteMessageKey,
+          remoteTimestamp: new Date().toISOString(),
+        }]);
         setMessage("Message sent through WhatsApp Web.");
       } catch (error) {
         setDirectDraft(body);
