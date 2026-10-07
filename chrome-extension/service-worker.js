@@ -4,6 +4,8 @@ const SECURITY_HEALTH_ALARM = "fhq-security-health";
 const IDLE_SECONDS = 60;
 const OFFLINE_GAP_MS = 3 * 60 * 1000;
 const MAX_QUEUE = 50;
+const AI_OFFLINE_ALARM = "fhq-ai-offline";
+const AI_STOP_GRACE_MS = 60 * 1000;
 
 chrome.idle.setDetectionInterval(IDLE_SECONDS);
 
@@ -140,8 +142,13 @@ async function transition(reason, includeTabSwitch = false, allowWorkStart = fal
   const paired = await authState();
   if (!paired.deviceToken) return;
 
+  if (allowWorkStart) {
+    await chrome.alarms.clear(AI_OFFLINE_ALARM);
+    await storageSet({ aiGraceUntil: null });
+  }
+
   const now = Date.now();
-  const state = await storageGet(["workStarted", "sessionId", "startupGraceUntil"]);
+  const state = await storageGet(["workStarted", "sessionId", "startupGraceUntil", "aiGenerating"]);
   let workStarted = state.workStarted === true;
   let sessionId = state.sessionId || null;
 
@@ -163,7 +170,7 @@ async function transition(reason, includeTabSwitch = false, allowWorkStart = fal
     chrome.idle.queryState(IDLE_SECONDS).catch(() => "active"),
     focusedActiveTab(),
   ]);
-  const activityType = idleState === "active" && tab ? "active" : "idle";
+  const activityType = state.aiGenerating === true ? "active" : idleState === "active" && tab ? "active" : "idle";
   const context = cleanTab(tab);
   const startedAt = new Date(now).toISOString();
 
@@ -197,9 +204,11 @@ async function heartbeat() {
 
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
-  const state = await storageGet(["workStarted", "sessionId"]);
+  const state = await storageGet(["workStarted", "sessionId", "aiGenerating", "aiGraceUntil"]);
   const workStarted = state.workStarted === true;
   const sessionId = workStarted ? state.sessionId || null : null;
+  const aiGenerating = state.aiGenerating === true;
+  const aiGraceUntil = Number(state.aiGraceUntil || 0);
 
   await closeCurrentInterval(nowMs, "heartbeat_checkpoint");
 
@@ -208,7 +217,46 @@ async function heartbeat() {
     focusedActiveTab(),
   ]);
   const context = cleanTab(tab);
-  const activityType = workStarted && idleState === "active" && tab ? "active" : "idle";
+
+  if (!aiGenerating && aiGraceUntil > 0 && nowMs >= aiGraceUntil) {
+    await storageSet({
+      currentInterval: null,
+      workStarted: false,
+      sessionId: null,
+      aiGraceUntil: null,
+      lastHeartbeatAt: now,
+    });
+    await queueEvent({
+      sessionId,
+      activityType: "offline",
+      url: context.url,
+      pageTitle: context.pageTitle,
+      startedAt: now,
+      endedAt: now,
+      durationSeconds: 0,
+      metadata: { reason: "ai_completed_inactive_60s" },
+    });
+    if (sessionId) {
+      await queueEvent({
+        sessionId,
+        activityType: "session_end",
+        url: "",
+        pageTitle: "",
+        startedAt: now,
+        endedAt: now,
+        durationSeconds: 0,
+        metadata: { reason: "ai_completed_inactive_60s" },
+      });
+    }
+    await flushQueues();
+    return;
+  }
+
+  const activityType = aiGenerating
+    ? "active"
+    : workStarted && idleState === "active" && tab
+      ? "active"
+      : "idle";
 
   await storageSet({
     currentInterval: {
@@ -228,9 +276,119 @@ async function heartbeat() {
     startedAt: now,
     endedAt: now,
     durationSeconds: 0,
-    metadata: { browserState: idleState, workStarted },
+    metadata: { browserState: idleState, workStarted, aiGenerating },
   });
 
+  await flushQueues();
+}
+
+async function setAiGenerationState(platform, generating) {
+  const paired = await authState();
+  if (!paired.deviceToken) return;
+
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const current = await storageGet(["aiGenerating", "workStarted", "sessionId"]);
+
+  if (generating) {
+    if (current.aiGenerating === true) return;
+    await chrome.alarms.clear(AI_OFFLINE_ALARM);
+    await closeCurrentInterval(nowMs, "ai_generation_started");
+
+    let sessionId = current.sessionId || null;
+    if (!current.workStarted || !sessionId) {
+      sessionId = await beginWorkSession(now);
+    }
+
+    const tab = await focusedActiveTab();
+    const context = cleanTab(tab);
+    await storageSet({
+      aiGenerating: true,
+      aiPlatform: platform,
+      aiGraceUntil: null,
+      workStarted: true,
+      sessionId,
+      currentInterval: {
+        activityType: "active",
+        url: context.url,
+        pageTitle: context.pageTitle,
+        startedAt: now,
+      },
+      lastHeartbeatAt: now,
+    });
+
+    await queueEvent({
+      sessionId,
+      activityType: "heartbeat",
+      url: context.url,
+      pageTitle: context.pageTitle,
+      startedAt: now,
+      endedAt: now,
+      durationSeconds: 0,
+      metadata: { reason: "ai_generation_started", platform },
+    });
+    await flushQueues();
+    return;
+  }
+
+  if (current.aiGenerating !== true) return;
+
+  const graceUntil = nowMs + AI_STOP_GRACE_MS;
+  await storageSet({
+    aiGenerating: false,
+    aiPlatform: platform,
+    aiGraceUntil: graceUntil,
+    lastHeartbeatAt: now,
+  });
+  await chrome.alarms.create(AI_OFFLINE_ALARM, { when: graceUntil });
+}
+
+async function markAiInactiveOffline() {
+  const paired = await authState();
+  if (!paired.deviceToken) return;
+  const state = await storageGet(["aiGenerating", "aiGraceUntil", "sessionId"]);
+  if (state.aiGenerating === true) return;
+
+  const graceUntil = Number(state.aiGraceUntil || 0);
+  const nowMs = Date.now();
+  if (!graceUntil || nowMs < graceUntil) return;
+
+  const now = new Date(nowMs).toISOString();
+  await closeCurrentInterval(nowMs, "ai_completed_inactive_60s");
+  const tab = await focusedActiveTab();
+  const context = cleanTab(tab);
+  const sessionId = state.sessionId || null;
+
+  await queueEvent({
+    sessionId,
+    activityType: "offline",
+    url: context.url,
+    pageTitle: context.pageTitle,
+    startedAt: now,
+    endedAt: now,
+    durationSeconds: 0,
+    metadata: { reason: "ai_completed_inactive_60s" },
+  });
+  if (sessionId) {
+    await queueEvent({
+      sessionId,
+      activityType: "session_end",
+      url: "",
+      pageTitle: "",
+      startedAt: now,
+      endedAt: now,
+      durationSeconds: 0,
+      metadata: { reason: "ai_completed_inactive_60s" },
+    });
+  }
+
+  await storageSet({
+    aiGraceUntil: null,
+    workStarted: false,
+    sessionId: null,
+    currentInterval: null,
+    lastHeartbeatAt: now,
+  });
   await flushQueues();
 }
 
@@ -334,6 +492,9 @@ async function pair(payload) {
     workStarted: false,
     currentInterval: null,
     startupGraceUntil: Date.now() + 1000,
+    aiGenerating: false,
+    aiPlatform: null,
+    aiGraceUntil: null,
     activityQueue: [],
     promptQueue: [],
     lastHeartbeatAt: new Date().toISOString(),
@@ -369,6 +530,9 @@ async function disconnect() {
     workStarted: false,
     currentInterval: null,
     startupGraceUntil: null,
+    aiGenerating: false,
+    aiPlatform: null,
+    aiGraceUntil: null,
     lastHeartbeatAt: null,
   });
 }
@@ -417,6 +581,7 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === FLUSH_ALARM) void flushQueues();
   if (alarm.name === HEARTBEAT_ALARM) void heartbeat();
+  if (alarm.name === AI_OFFLINE_ALARM) void markAiInactiveOffline();
   if (alarm.name === SECURITY_HEALTH_ALARM) void securityHealthCheck();
 });
 
@@ -458,7 +623,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "AI_GENERATION_STATE") {
+    setAiGenerationState(message.platform, message.generating === true)
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
   if (message.type === "AI_PROMPT_SUBMITTED") {
+    chrome.alarms.clear(AI_OFFLINE_ALARM);
+    storageSet({ aiGraceUntil: null });
     transition("ai_prompt", false, true)
       .then(() => storageGet(["sessionId"]))
       .then((state) => queuePrompt({
