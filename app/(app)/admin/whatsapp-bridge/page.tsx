@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import { listClients, listTeamMembers } from "@/lib/store";
 import { getWhatsAppBridgeHealth, listWhatsAppClientLinks } from "@/lib/whatsappBridge";
+import { listAdminSavedWhatsAppChats } from "@/lib/whatsappBridgeRequests";
 import { WhatsAppBridgeManager } from "@/components/WhatsAppBridgeManager";
 
 export const dynamic = "force-dynamic";
@@ -10,11 +11,12 @@ export default async function WhatsAppBridgePage() {
   const profile = await getCurrentProfile();
   if (profile?.role !== "admin") notFound();
 
-  const [clients, members, links, health] = await Promise.all([
+  const [clients, members, links, health, savedChats] = await Promise.all([
     listClients(),
     listTeamMembers(),
     listWhatsAppClientLinks(),
     getWhatsAppBridgeHealth(),
+    listAdminSavedWhatsAppChats(profile.id),
   ]);
 
   return (
@@ -25,7 +27,7 @@ export default async function WhatsAppBridgePage() {
           Connect your admin-controlled WhatsApp Web and give selected team members controlled access to selected client chats.
         </p>
       </div>
-      <WhatsAppBridgeManager clients={clients} members={members} initialLinks={links} initialHealth={health} />
+      <WhatsAppBridgeManager clients={clients} members={members} initialLinks={links} initialHealth={health} initialSavedChats={savedChats} />
     </div>
   );
 }

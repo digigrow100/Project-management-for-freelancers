@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   AlarmClock,
@@ -73,6 +73,7 @@ export function AdminWorkflowLauncher({
   projects: Project[];
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState(initialItems);
   const [settings, setSettings] = useState(initialSettings);
@@ -198,7 +199,7 @@ export function AdminWorkflowLauncher({
     });
   }
 
-  if (pendingCount === 0) return null;
+  if (pathname === "/admin/whatsapp-bridge" || pendingCount === 0) return null;
 
   return (
     <>
