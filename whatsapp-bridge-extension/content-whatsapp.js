@@ -90,12 +90,11 @@
     selection.removeAllRanges();
     selection.addRange(range);
     document.execCommand("delete", false);
+
+    // execCommand("insertText") already fires the input event that WhatsApp's
+    // editor listens for. Dispatching a second synthetic InputEvent caused the
+    // same text to be inserted twice in current WhatsApp Web builds.
     if (value) document.execCommand("insertText", false, value);
-    element.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      inputType: "insertText",
-      data: value,
-    }));
   }
 
   function canonicalRow(node) {
@@ -666,9 +665,23 @@
       setEditableText(composer, text);
       await sleep(300);
 
-      const verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
-      if (!verifiedText && text) {
-        throw new Error("WhatsApp chat is open, but the message box did not accept the text.");
+      let verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
+      if (verifiedText !== text.trim() && text) {
+        // Never send a duplicated or mutated payload. Clear the composer and
+        // make one clean insertion attempt.
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(composer);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand("delete", false);
+        document.execCommand("insertText", false, text);
+        await sleep(250);
+        verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
+      }
+
+      if (text && verifiedText !== text.trim()) {
+        throw new Error("WhatsApp message box changed the text, so the message was not sent.");
       }
 
       const sendButton =
