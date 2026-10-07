@@ -95,24 +95,60 @@
     return match ? match[0].replace(/\s+/g, " ").trim() : "";
   }
 
+  function rowStableId(row) {
+    const attributeNames = ["data-id", "data-chat-id", "data-jid"];
+    for (const name of attributeNames) {
+      const direct = String(row.getAttribute?.(name) || "").trim();
+      if (direct) return direct;
+      const nested = row.querySelector?.("[" + name + "]");
+      const nestedValue = String(nested?.getAttribute?.(name) || "").trim();
+      if (nestedValue) return nestedValue;
+    }
+    const href = String(row.querySelector?.("a[href]")?.getAttribute("href") || "").trim();
+    if (href && /wa\.me|phone=|@c\.us|@g\.us/i.test(href)) return href;
+    return "";
+  }
+
+  function digits(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
   function buildChatResults(rows) {
     const labelCounts = new Map();
-    const seen = new Set();
-    const results = [];
-
     for (const row of rows) {
       const label = rowLabel(row);
       if (!label) continue;
       const key = normalize(label);
-      const ordinal = labelCounts.get(key) || 0;
-      labelCounts.set(key, ordinal + 1);
-      const chatKey = "wa-match:" + ordinal;
+      labelCounts.set(key, (labelCounts.get(key) || 0) + 1);
+    }
+
+    const seen = new Set();
+    const results = [];
+    for (const row of rows) {
+      const label = rowLabel(row);
+      if (!label) continue;
+      const labelKey = normalize(label);
+      const stableId = rowStableId(row);
       const phone = rowPhone(row);
+      const phoneDigits = digits(phone);
+      const duplicateLabel = (labelCounts.get(labelKey) || 0) > 1;
+
+      let chatKey = "";
+      let safeToMap = true;
+      let warning = "";
+      if (stableId) chatKey = "wa-id:" + encodeURIComponent(stableId);
+      else if (phoneDigits) chatKey = "wa-phone:" + phoneDigits;
+      else if (!duplicateLabel) chatKey = "wa-label:" + encodeURIComponent(labelKey);
+      else {
+        safeToMap = false;
+        warning = "Duplicate name found, but WhatsApp did not expose a stable ID or phone for this row. Open WhatsApp and make the contact uniquely identifiable before mapping or sending.";
+      }
+
       const secondary = String(row.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
-      const signature = key + "|" + ordinal + "|" + phone;
+      const signature = chatKey || ("unsafe|" + labelKey + "|" + secondary);
       if (seen.has(signature)) continue;
       seen.add(signature);
-      results.push({ chatKey, chatLabel: label, phone, secondary });
+      results.push({ chatKey, chatLabel: label, phone, secondary, safeToMap, warning });
       if (results.length >= 60) break;
     }
     return results;
@@ -144,7 +180,8 @@
 
   async function openClient(target) {
     const query = targetQuery(target);
-    if (!query) throw new Error("WhatsApp chat mapping is empty.");
+    const chatKey = String(target.chatKey || "");
+    if (!query || !chatKey) throw new Error("WhatsApp chat does not have a safe stable mapping.");
 
     const search = searchBox();
     if (!search) throw new Error("WhatsApp search box was not found.");
@@ -152,22 +189,24 @@
     await sleep(900);
 
     const rows = candidateRows();
-    const exact = rows.filter((row) => normalize(rowLabel(row)) === normalize(target.chatLabel || query));
-    const match = String(target.chatKey || "").match(/^wa-match:(\d+)$/);
-    const ordinal = match ? Number(match[1]) : 0;
-    let row = exact[ordinal] || exact[0];
+    let row = null;
 
-    if (!row) {
-      const needles = [target.chatLabel, target.phone, query].map(normalize).filter(Boolean);
-      row = rows.find((item) => {
-        const text = normalize(item.textContent);
-        return needles.some((needle) => text.includes(needle));
-      });
+    if (chatKey.startsWith("wa-id:")) {
+      const wanted = decodeURIComponent(chatKey.slice("wa-id:".length));
+      row = rows.find((item) => rowStableId(item) === wanted) || null;
+    } else if (chatKey.startsWith("wa-phone:")) {
+      const wanted = chatKey.slice("wa-phone:".length);
+      row = rows.find((item) => digits(rowPhone(item)) === wanted) || null;
+    } else if (chatKey.startsWith("wa-label:")) {
+      const wanted = decodeURIComponent(chatKey.slice("wa-label:".length));
+      const exact = rows.filter((item) => normalize(rowLabel(item)) === wanted);
+      if (exact.length === 1) row = exact[0];
+      else if (exact.length > 1) throw new Error("More than one WhatsApp chat now has this name. Re-scan and map a stable result.");
     }
 
     if (!row) {
       setEditableText(search, "");
-      throw new Error("WhatsApp chat not found for " + query + ".");
+      throw new Error("The exact mapped WhatsApp chat could not be found. Re-scan it before sending.");
     }
 
     row.click();
@@ -199,21 +238,54 @@
     );
   }
 
+  function localeMonthFirst() {
+    try {
+      const locale = document.documentElement.lang || navigator.language || "en-GB";
+      const parts = new Intl.DateTimeFormat(locale, { year: "numeric", month: "numeric", day: "numeric" })
+        .formatToParts(new Date(2020, 10, 22))
+        .filter((part) => part.type === "month" || part.type === "day");
+      return parts[0]?.type === "month";
+    } catch {
+      return false;
+    }
+  }
+
+  function parseSlashDate(first, second, yearValue) {
+    let a = Number(first);
+    let b = Number(second);
+    let year = Number(yearValue);
+    if (year < 100) year += 2000;
+    let month;
+    let day;
+    if (a > 12) {
+      day = a;
+      month = b;
+    } else if (b > 12) {
+      month = a;
+      day = b;
+    } else if (localeMonthFirst()) {
+      month = a;
+      day = b;
+    } else {
+      day = a;
+      month = b;
+    }
+    return { year, month, day };
+  }
+
   function parseWhatsAppTimestamp(prePlain) {
     const value = String(prePlain || "");
     let match = value.match(/\[(\d{1,2}):(\d{2}),\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\]/);
     if (match) {
-      let year = Number(match[5]);
-      if (year < 100) year += 2000;
-      return new Date(year, Number(match[4]) - 1, Number(match[3]), Number(match[1]), Number(match[2])).toISOString();
+      const date = parseSlashDate(match[3], match[4], match[5]);
+      return new Date(date.year, date.month - 1, date.day, Number(match[1]), Number(match[2])).toISOString();
     }
     match = value.match(/\[(\d{1,2}):(\d{2})\s*([AP]M),\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\]/i);
     if (match) {
       let hour = Number(match[1]) % 12;
       if (match[3].toUpperCase() === "PM") hour += 12;
-      let year = Number(match[6]);
-      if (year < 100) year += 2000;
-      return new Date(year, Number(match[5]) - 1, Number(match[4]), hour, Number(match[2])).toISOString();
+      const date = parseSlashDate(match[4], match[5], match[6]);
+      return new Date(date.year, date.month - 1, date.day, hour, Number(match[2])).toISOString();
     }
     return null;
   }
