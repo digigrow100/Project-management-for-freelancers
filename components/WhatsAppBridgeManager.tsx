@@ -71,11 +71,11 @@ function dayRange(value: string) {
 }
 
 function chatIdentity(chat: { chatKey?: string; chatLabel?: string; phone?: string }) {
-  return [
-    String(chat.chatKey || "").trim(),
-    String(chat.phone || "").replace(/\D/g, ""),
-    String(chat.chatLabel || "").trim().toLowerCase(),
-  ].join("|");
+  const stableKey = String(chat.chatKey || "").trim();
+  if (stableKey) return "key:" + stableKey;
+  const phone = String(chat.phone || "").replace(/\D/g, "");
+  if (phone) return "phone:" + phone;
+  return "label:" + String(chat.chatLabel || "").trim().toLowerCase();
 }
 
 function historyTime(value: string | null) {
