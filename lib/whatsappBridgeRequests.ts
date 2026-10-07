@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabaseClient";
 import type { AuthenticatedWhatsAppBridge } from "./whatsappBridge";
+import type { Profile } from "./types";
 
 const REQUEST_TTL_MS = 10 * 60 * 1000;
 const PROCESSING_STALE_MS = 2 * 60 * 1000;
@@ -30,7 +31,7 @@ async function requireAdmin(userId: string) {
   if (!data || data.role !== "admin") throw new Error("Admin access required.");
 }
 
-export type BridgeRequestType = "scan" | "list_chats" | "history" | "direct_send";
+export type BridgeRequestType = "scan" | "list_chats" | "history" | "direct_send" | "open_chat";
 
 export async function createAdminWhatsAppRequest(
   adminUserId: string,
@@ -57,7 +58,7 @@ export async function createAdminWhatsAppRequest(
   const dateTo = validDate(input.dateTo);
 
   if (requestType === "scan" && !query) throw new Error("Enter a WhatsApp name to scan.");
-  if ((requestType === "history" || requestType === "direct_send") && !chatKey && !chatLabel && !phone) {
+  if ((requestType === "history" || requestType === "direct_send" || requestType === "open_chat") && !chatKey && !chatLabel && !phone) {
     throw new Error("Choose a WhatsApp chat first.");
   }
   if (requestType === "direct_send" && !clean(input.payload?.body, 5000)) {
@@ -96,6 +97,58 @@ export async function createAdminWhatsAppRequest(
       date_from: dateFrom,
       date_to: dateTo,
       payload: input.payload ?? {},
+      status: "queued",
+      expires_at: new Date(Date.now() + REQUEST_TTL_MS).toISOString(),
+      updated_at: now,
+    })
+    .select("id,status,created_at,expires_at")
+    .single();
+  if (error) throw error;
+  return {
+    id: String(data.id),
+    status: String(data.status),
+    createdAt: String(data.created_at),
+    expiresAt: String(data.expires_at),
+  };
+}
+
+export async function createWhatsAppOpenRequestForClient(profile: Profile, clientId: string) {
+  if (!clientId) throw new Error("Client is required.");
+  const supabase = getSupabase();
+
+  const { data: link, error: linkError } = await supabase
+    .from("freelance_hq_whatsapp_client_links")
+    .select("client_id,chat_key,chat_label,phone,is_enabled,created_by")
+    .eq("client_id", clientId)
+    .maybeSingle();
+  if (linkError) throw linkError;
+  if (!link?.is_enabled) throw new Error("This WhatsApp chat is not enabled.");
+
+  if (profile.role !== "admin") {
+    const { data: access, error: accessError } = await supabase
+      .from("freelance_hq_whatsapp_chat_access")
+      .select("client_id")
+      .eq("client_id", clientId)
+      .eq("user_id", profile.id)
+      .maybeSingle();
+    if (accessError) throw accessError;
+    if (!access) throw new Error("You do not have access to this WhatsApp chat.");
+  }
+
+  const ownerUserId = String(link.created_by || "");
+  if (!ownerUserId) throw new Error("WhatsApp bridge owner is missing.");
+
+  const now = nowIso();
+  const { data, error } = await supabase
+    .from("freelance_hq_whatsapp_bridge_requests")
+    .insert({
+      created_by: ownerUserId,
+      request_type: "open_chat",
+      chat_key: clean(link.chat_key, 300),
+      chat_label: clean(link.chat_label, 240),
+      phone: clean(link.phone, 80),
+      client_id: clientId,
+      payload: {},
       status: "queued",
       expires_at: new Date(Date.now() + REQUEST_TTL_MS).toISOString(),
       updated_at: now,
