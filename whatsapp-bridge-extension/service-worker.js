@@ -15,7 +15,10 @@ async function ensureIdentity() {
   if (!state.deviceId) next.deviceId = crypto.randomUUID();
   if (!state.extensionInstallId) next.extensionInstallId = crypto.randomUUID();
   if (Object.keys(next).length) await storageSet(next);
-  return { deviceId: state.deviceId || next.deviceId, extensionInstallId: state.extensionInstallId || next.extensionInstallId };
+  return {
+    deviceId: state.deviceId || next.deviceId,
+    extensionInstallId: state.extensionInstallId || next.extensionInstallId,
+  };
 }
 
 async function authState() {
@@ -95,7 +98,7 @@ async function acknowledge(message, status, remoteMessageKey = "", error = "") {
       body: JSON.stringify({ id: message.id, status, remoteMessageKey, error }),
     });
   } catch {
-    // A stale "sending" item is automatically returned to the queue server-side.
+    // Stale "sending" items are returned to the queue server-side.
   }
 }
 
@@ -118,6 +121,32 @@ async function processOutbox(tabId) {
   }
 }
 
+async function completeRemoteRequest(id, ok, result = null, error = "") {
+  await apiFetch("/api/whatsapp-bridge/requests", {
+    method: "POST",
+    body: JSON.stringify({ id, ok, result, error }),
+  });
+}
+
+async function processRemoteRequest(tabId) {
+  const response = await apiFetch("/api/whatsapp-bridge/requests", { method: "GET" });
+  if (!response.ok) return;
+  const data = await response.json();
+  const request = data.request;
+  if (!request?.id) return;
+
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, { type: "WA_BRIDGE_REQUEST", request });
+    if (result?.ok) {
+      await completeRemoteRequest(request.id, true, result.result || {});
+    } else {
+      await completeRemoteRequest(request.id, false, null, result?.error || "WhatsApp request failed.");
+    }
+  } catch (error) {
+    await completeRemoteRequest(request.id, false, null, error?.message || "WhatsApp tab unavailable.");
+  }
+}
+
 let tickRunning = false;
 async function bridgeTick(tabId, whatsappReady) {
   if (tickRunning) return;
@@ -128,7 +157,11 @@ async function bridgeTick(tabId, whatsappReady) {
 
     const stored = await storageGet(["lastHeartbeatAt"]);
     if (Date.now() - Number(stored.lastHeartbeatAt || 0) >= HEARTBEAT_MS) {
-      await heartbeat(Boolean(whatsappReady), whatsappReady ? "online" : "auth_required", whatsappReady ? "" : "WhatsApp Web is not logged in.");
+      await heartbeat(
+        Boolean(whatsappReady),
+        whatsappReady ? "online" : "auth_required",
+        whatsappReady ? "" : "WhatsApp Web is not logged in.",
+      );
     }
 
     if (!whatsappReady) return;
@@ -138,6 +171,8 @@ async function bridgeTick(tabId, whatsappReady) {
     } catch {
       return;
     }
+
+    await processRemoteRequest(tabId);
     await processOutbox(tabId);
   } finally {
     tickRunning = false;
