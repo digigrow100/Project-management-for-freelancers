@@ -210,6 +210,11 @@ export interface EmployeeActivitySummary {
   currentSessionDurationSeconds: number;
   todayActiveSeconds: number;
   todayIdleSeconds: number;
+  thisMonthActiveSeconds: number;
+  startedTodayAt: string | null;
+  lastWorkAt: string | null;
+  todayByProject: Record<string, number>;
+  monthByProject: Record<string, number>;
   lastSeenAt: string | null;
   aiPromptsToday: number;
   deviceCount: number;
