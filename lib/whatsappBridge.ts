@@ -375,6 +375,13 @@ export async function saveWhatsAppClientLink(input: {
       .eq("client_id", input.clientId)
       .in("user_id", removed);
     if (error) throw error;
+
+    const { error: shareError } = await supabase
+      .from("freelance_hq_whatsapp_message_shares")
+      .delete()
+      .eq("client_id", input.clientId)
+      .in("user_id", removed);
+    if (shareError) throw shareError;
   }
 
   if (requested.length) {
