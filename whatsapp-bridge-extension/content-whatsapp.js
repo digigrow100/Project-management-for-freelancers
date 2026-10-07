@@ -3,6 +3,7 @@
   let cycleIndex = 0;
   let busy = false;
   let lastSyncAt = 0;
+  let lastOpenedChatKey = "";
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -378,7 +379,18 @@
   async function waitForOpenedChat(target, timeoutMs = 5000) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
-      if (composerBox() && activeChatMatches(target)) return true;
+      const composer = composerBox();
+      if (composer) {
+        const matches = activeChatMatches(target);
+        const search = searchBox();
+        // Current WhatsApp builds can hide/remove the search input immediately
+        // after the selected row opens. In that state, the visible composer is
+        // the strongest signal that the click successfully opened a conversation.
+        if (matches || !search) {
+          lastOpenedChatKey = String(target.chatKey || "");
+          return true;
+        }
+      }
       await sleep(150);
     }
     return false;
@@ -389,10 +401,19 @@
     const chatKey = String(target.chatKey || "");
     if (!query || !chatKey) throw new Error("WhatsApp chat does not have a safe stable mapping.");
 
-    if (activeChatMatches(target) && composerBox()) return true;
+    const existingComposer = composerBox();
+    if (existingComposer && (lastOpenedChatKey === chatKey || activeChatMatches(target))) {
+      lastOpenedChatKey = chatKey;
+      return true;
+    }
 
     const search = searchBox();
-    if (!search) throw new Error("WhatsApp search box was not found.");
+    if (!search) {
+      // If the app just opened this chat, WhatsApp may remove the search box
+      // from the DOM while leaving the conversation composer active.
+      if (existingComposer && lastOpenedChatKey === chatKey) return true;
+      throw new Error("WhatsApp search box was not found.");
+    }
     setEditableText(search, query);
 
     let rows = [];
@@ -613,8 +634,34 @@
       }
       if (!composer) throw new Error("WhatsApp conversation opened but the message box was not found.");
 
-      setEditableText(composer, String(body || ""));
+      const text = String(body || "");
+      setEditableText(composer, text);
       await sleep(250);
+
+      const currentComposerText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
+      if (!currentComposerText && text) {
+        composer.focus();
+        try {
+          document.execCommand("insertText", false, text);
+        } catch {}
+        composer.dispatchEvent(new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: text,
+        }));
+        composer.dispatchEvent(new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertText",
+          data: text,
+        }));
+        await sleep(200);
+      }
+
+      const verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
+      if (!verifiedText && text) {
+        throw new Error("WhatsApp chat is open, but the message box did not accept the text.");
+      }
 
       const sendButton =
         document.querySelector('#main [data-testid="compose-btn-send"]') ||
@@ -645,6 +692,7 @@
       }
 
       await sleep(800);
+      lastOpenedChatKey = String(target.chatKey || "");
       return { ok: true, remoteMessageKey: (remoteKeyPrefix || "outbound:") + Date.now() };
     } finally {
       busy = false;
