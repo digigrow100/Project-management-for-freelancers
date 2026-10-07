@@ -97,54 +97,67 @@ async function closeCurrentInterval(endMs, reason) {
   await storageSet({ currentInterval: null });
 }
 
-async function ensureSession() {
-  const paired = await authState();
-  if (!paired.deviceToken) return null;
-  const state = await storageGet(["sessionId", "lastHeartbeatAt", "currentInterval"]);
-  const now = Date.now();
-  const last = state.lastHeartbeatAt ? new Date(state.lastHeartbeatAt).getTime() : 0;
-  let sessionId = state.sessionId || null;
-
-  if (sessionId && last && now - last > OFFLINE_GAP_MS) {
-    const closeAt = Math.min(now, last + 60000);
-    await closeCurrentInterval(closeAt, "heartbeat_timeout");
-    await queueEvent({
-      sessionId,
-      activityType: "session_end",
-      url: "",
-      pageTitle: "",
-      startedAt: new Date(closeAt).toISOString(),
-      endedAt: new Date(closeAt).toISOString(),
-      durationSeconds: 0,
-      metadata: { reason: "offline_timeout" },
-    });
-    sessionId = null;
-  }
-
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    const startedAt = new Date().toISOString();
-    await storageSet({ sessionId, lastHeartbeatAt: startedAt });
-    await queueEvent({
-      sessionId,
-      activityType: "session_start",
-      url: "",
-      pageTitle: "",
-      startedAt,
-      endedAt: null,
-      durationSeconds: 0,
-      metadata: {},
-    });
-  }
+async function beginWorkSession(startedAt) {
+  const sessionId = crypto.randomUUID();
+  await storageSet({
+    sessionId,
+    workStarted: true,
+    lastHeartbeatAt: startedAt,
+  });
+  await queueEvent({
+    sessionId,
+    activityType: "session_start",
+    url: "",
+    pageTitle: "",
+    startedAt,
+    endedAt: null,
+    durationSeconds: 0,
+    metadata: { reason: "first_meaningful_browser_work" },
+  });
   return sessionId;
 }
 
-async function transition(reason, includeTabSwitch = false) {
+async function ensureWaitingInterval() {
   const paired = await authState();
   if (!paired.deviceToken) return;
-  const sessionId = await ensureSession();
+  const state = await storageGet(["workStarted", "currentInterval"]);
+  if (state.workStarted || state.currentInterval) return;
+  const tab = await focusedActiveTab();
+  const context = cleanTab(tab);
+  const startedAt = new Date().toISOString();
+  await storageSet({
+    currentInterval: {
+      activityType: "idle",
+      url: context.url,
+      pageTitle: context.pageTitle,
+      startedAt,
+    },
+    lastHeartbeatAt: startedAt,
+  });
+}
+
+async function transition(reason, includeTabSwitch = false, allowWorkStart = false) {
+  const paired = await authState();
+  if (!paired.deviceToken) return;
+
   const now = Date.now();
-  await closeCurrentInterval(now, reason);
+  const state = await storageGet(["workStarted", "sessionId", "startupGraceUntil"]);
+  let workStarted = state.workStarted === true;
+  let sessionId = state.sessionId || null;
+
+  if (!workStarted) {
+    const graceUntil = Number(state.startupGraceUntil || 0);
+    if (!allowWorkStart || (reason !== "ai_prompt" && now < graceUntil)) {
+      await ensureWaitingInterval();
+      return;
+    }
+
+    await closeCurrentInterval(now, "work_started");
+    sessionId = await beginWorkSession(new Date(now).toISOString());
+    workStarted = true;
+  } else {
+    await closeCurrentInterval(now, reason);
+  }
 
   const [idleState, tab] = await Promise.all([
     chrome.idle.queryState(IDLE_SECONDS).catch(() => "active"),
@@ -181,24 +194,78 @@ async function transition(reason, includeTabSwitch = false) {
 async function heartbeat() {
   const paired = await authState();
   if (!paired.deviceToken) return;
-  const sessionId = await ensureSession();
-  const now = new Date().toISOString();
+
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const state = await storageGet(["workStarted", "sessionId"]);
+  const workStarted = state.workStarted === true;
+  const sessionId = workStarted ? state.sessionId || null : null;
+
+  await closeCurrentInterval(nowMs, "heartbeat_checkpoint");
+
   const [idleState, tab] = await Promise.all([
     chrome.idle.queryState(IDLE_SECONDS).catch(() => "active"),
     focusedActiveTab(),
   ]);
   const context = cleanTab(tab);
+  const activityType = workStarted && idleState === "active" && tab ? "active" : "idle";
+
+  await storageSet({
+    currentInterval: {
+      activityType,
+      url: context.url,
+      pageTitle: context.pageTitle,
+      startedAt: now,
+    },
+    lastHeartbeatAt: now,
+  });
+
   await queueEvent({
     sessionId,
-    activityType: idleState === "active" && tab ? "heartbeat" : "idle",
+    activityType: workStarted && activityType === "active" ? "heartbeat" : "idle",
     url: context.url,
     pageTitle: context.pageTitle,
     startedAt: now,
     endedAt: now,
     durationSeconds: 0,
-    metadata: { browserState: idleState },
+    metadata: { browserState: idleState, workStarted },
   });
-  await storageSet({ lastHeartbeatAt: now });
+
+  await flushQueues();
+}
+
+async function resetBrowserTracking() {
+  const paired = await authState();
+  if (!paired.deviceToken) return;
+
+  const nowMs = Date.now();
+  const state = await storageGet(["sessionId", "lastHeartbeatAt", "workStarted"]);
+  if (state.workStarted && state.sessionId) {
+    const lastMs = state.lastHeartbeatAt ? new Date(state.lastHeartbeatAt).getTime() : nowMs;
+    const closeAt = Math.min(nowMs, lastMs + 60000);
+    await closeCurrentInterval(closeAt, "browser_restart");
+    await queueEvent({
+      sessionId: state.sessionId,
+      activityType: "session_end",
+      url: "",
+      pageTitle: "",
+      startedAt: new Date(closeAt).toISOString(),
+      endedAt: new Date(closeAt).toISOString(),
+      durationSeconds: 0,
+      metadata: { reason: "browser_restart" },
+    });
+  } else {
+    await closeCurrentInterval(nowMs, "browser_restart");
+  }
+
+  await storageSet({
+    sessionId: null,
+    workStarted: false,
+    currentInterval: null,
+    startupGraceUntil: nowMs + 5000,
+    lastHeartbeatAt: new Date(nowMs).toISOString(),
+  });
+  await ensureWaitingInterval();
   await flushQueues();
 }
 
@@ -264,13 +331,14 @@ async function pair(payload) {
     employee: data.employee,
     deviceRecordId: data.deviceRecordId,
     sessionId: null,
+    workStarted: false,
     currentInterval: null,
+    startupGraceUntil: Date.now() + 1000,
     activityQueue: [],
     promptQueue: [],
-    lastHeartbeatAt: null,
+    lastHeartbeatAt: new Date().toISOString(),
   });
-  await ensureSession();
-  await transition("paired");
+  await ensureWaitingInterval();
   await flushQueues();
   return data;
 }
@@ -298,7 +366,9 @@ async function disconnect() {
     employee: null,
     deviceRecordId: null,
     sessionId: null,
+    workStarted: false,
     currentInterval: null,
+    startupGraceUntil: null,
     lastHeartbeatAt: null,
   });
 }
@@ -340,7 +410,8 @@ chrome.runtime.onStartup.addListener(() => {
   void lockExtensionStorage();
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 1 });
-  void transition("browser_start");
+  chrome.alarms.create(SECURITY_HEALTH_ALARM, { periodInMinutes: 360 });
+  void resetBrowserTracking();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -349,13 +420,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SECURITY_HEALTH_ALARM) void securityHealthCheck();
 });
 
-chrome.tabs.onActivated.addListener(() => void transition("tab_switch", true));
+chrome.tabs.onActivated.addListener(() => void transition("tab_switch", true, true));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!tab.active) return;
-  if (changeInfo.url || changeInfo.title) void transition("tab_update");
+  if (!tab.active || !changeInfo.url) return;
+  void transition("navigation", false, true);
 });
-chrome.windows.onFocusChanged.addListener(() => void transition("window_focus"));
-chrome.idle.onStateChanged.addListener(() => void transition("idle_state"));
+chrome.windows.onFocusChanged.addListener(() => void transition("window_focus", false, false));
+chrome.idle.onStateChanged.addListener(() => void transition("idle_state", false, false));
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message.type !== "string") return false;
@@ -388,7 +459,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "AI_PROMPT_SUBMITTED") {
-    storageGet(["sessionId"])
+    transition("ai_prompt", false, true)
+      .then(() => storageGet(["sessionId"]))
       .then((state) => queuePrompt({
         platform: message.platform,
         promptText: message.promptText,
@@ -406,4 +478,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 void lockExtensionStorage();
 void ensureIdentity();
 void securityHealthCheck();
-void transition("service_worker_awake");
+void ensureWaitingInterval();
