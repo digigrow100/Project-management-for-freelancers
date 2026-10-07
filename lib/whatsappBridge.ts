@@ -748,21 +748,23 @@ export async function ingestWhatsAppInbound(
   if (!Array.isArray(rawMessages)) throw new Error("Messages must be an array.");
   const supabase = getSupabase();
   const config = await getBridgeClientConfig(device);
-  const allowedClients = new Set(config.map((item) => item.clientId));
+  const configByClient = new Map(config.map((item) => [item.clientId, item]));
   const rows: Array<Record<string, unknown>> = [];
 
   for (const raw of rawMessages.slice(0, MAX_INBOUND_BATCH)) {
     const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
     const clientId = typeof item.clientId === "string" ? item.clientId : "";
-    if (!allowedClients.has(clientId)) continue;
+    const clientConfig = configByClient.get(clientId);
+    if (!clientConfig) continue;
     const body = sanitizeText(item.body);
     if (!body) continue;
     const remoteMessageKey = sanitizeText(item.remoteMessageKey, 500);
     if (!remoteMessageKey) continue;
-    const receivedAt =
-      typeof item.receivedAt === "string" && !Number.isNaN(new Date(item.receivedAt).getTime())
-        ? new Date(item.receivedAt).toISOString()
-        : nowIso();
+    if (typeof item.receivedAt !== "string" || Number.isNaN(new Date(item.receivedAt).getTime())) continue;
+    const receivedAt = new Date(item.receivedAt).toISOString();
+    const receivedTime = new Date(receivedAt).getTime();
+    const syncFromTime = new Date(clientConfig.syncFrom).getTime();
+    if (Number.isFinite(syncFromTime) && receivedTime < syncFromTime) continue;
 
     rows.push({
       client_id: clientId,
