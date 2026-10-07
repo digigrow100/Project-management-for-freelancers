@@ -216,15 +216,43 @@ export function WhatsAppBridgeManager({
     const range = dayRange(selectedDate);
     const from = new Date(range.from).getTime();
     const to = new Date(range.to).getTime();
+
+    function sameLogicalMessage(a: HistoryMessage, b: HistoryMessage) {
+      if (a.direction !== b.direction) return false;
+      if (a.body.trim() !== b.body.trim()) return false;
+      if (!a.remoteTimestamp || !b.remoteTimestamp) return false;
+      const aTime = new Date(a.remoteTimestamp).getTime();
+      const bTime = new Date(b.remoteTimestamp).getTime();
+      return Number.isFinite(aTime) && Number.isFinite(bTime) && Math.abs(aTime - bTime) <= 15000;
+    }
+
     setHistory((current) => {
-      const byKey = new Map(current.map((item) => [item.remoteMessageKey, item]));
+      const next = [...current];
+
       for (const item of messages) {
         if (!item?.remoteMessageKey || !item.remoteTimestamp) continue;
         const time = new Date(item.remoteTimestamp).getTime();
         if (!Number.isFinite(time) || time < from || time >= to) continue;
-        byKey.set(item.remoteMessageKey, item);
+
+        const exactIndex = next.findIndex((existing) => existing.remoteMessageKey === item.remoteMessageKey);
+        if (exactIndex >= 0) {
+          next[exactIndex] = item;
+          continue;
+        }
+
+        const logicalIndex = next.findIndex((existing) => sameLogicalMessage(existing, item));
+        if (logicalIndex >= 0) {
+          const existing = next[logicalIndex];
+          const existingIsOptimistic = existing.remoteMessageKey.startsWith("direct:");
+          const incomingIsReal = !item.remoteMessageKey.startsWith("direct:");
+          next[logicalIndex] = existingIsOptimistic && incomingIsReal ? item : existing;
+          continue;
+        }
+
+        next.push(item);
       }
-      return Array.from(byKey.values()).sort((a, b) =>
+
+      return next.sort((a, b) =>
         new Date(a.remoteTimestamp || 0).getTime() - new Date(b.remoteTimestamp || 0).getTime()
       );
     });
