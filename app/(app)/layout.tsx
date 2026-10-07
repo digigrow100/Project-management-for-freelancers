@@ -90,7 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 </div>
               </div>
             )}
-            {profile?.role === "member" && <ExtensionHealthBanner />}
+            {profile && <ExtensionHealthBanner />}
             {children}
           </div>
         </main>
