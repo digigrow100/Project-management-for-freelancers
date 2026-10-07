@@ -66,16 +66,45 @@
 
   function candidateRows() {
     const selectors = [
+      '#pane-side [data-testid="cell-frame-container"]',
       '#pane-side [role="listitem"]',
       '#pane-side [role="row"]',
-      '#pane-side [data-testid="cell-frame-container"]',
+      '[data-testid="search-results-list"] [data-testid="cell-frame-container"]',
+      '[data-testid="search-results-list"] [role="listitem"]',
+      '[aria-label*="Search results"] [role="listitem"]',
+      '[aria-label*="Search results"] [role="row"]',
       '#pane-side div[tabindex="-1"]',
     ];
+
+    const collected = [];
+    const seen = new Set();
     for (const selector of selectors) {
-      const rows = Array.from(document.querySelectorAll(selector));
-      if (rows.length) return rows;
+      for (const row of document.querySelectorAll(selector)) {
+        if (!(row instanceof HTMLElement)) continue;
+        if (!row.offsetParent) continue;
+        if (seen.has(row)) continue;
+        seen.add(row);
+        collected.push(row);
+      }
     }
-    return Array.from(document.querySelectorAll("#pane-side > div div"));
+    if (collected.length) return collected;
+
+    // WhatsApp frequently changes the wrapper around search results. As a
+    // resilient fallback, walk visible titled contact-name elements back to
+    // their nearest clickable row.
+    for (const titleNode of document.querySelectorAll('#pane-side [title], [aria-label*="Search results"] [title]')) {
+      if (!(titleNode instanceof HTMLElement) || !titleNode.offsetParent) continue;
+      const row =
+        titleNode.closest('[data-testid="cell-frame-container"]') ||
+        titleNode.closest('[role="listitem"]') ||
+        titleNode.closest('[role="row"]') ||
+        titleNode.closest('div[tabindex="-1"]') ||
+        titleNode.closest('div[role="button"]');
+      if (!(row instanceof HTMLElement) || !row.offsetParent || seen.has(row)) continue;
+      seen.add(row);
+      collected.push(row);
+    }
+    return collected;
   }
 
   function rowLabel(row) {
@@ -158,15 +187,25 @@
     if (!whatsappReady()) throw new Error("WhatsApp Web is not ready.");
     const search = searchBox();
     if (!search) throw new Error("WhatsApp search box was not found.");
+
+    const needle = normalize(query);
     setEditableText(search, String(query || "").trim());
-    await sleep(1000);
-    const results = buildChatResults(candidateRows()).filter((item) => {
-      const needle = normalize(query);
-      return !needle || normalize(item.chatLabel).includes(needle) || normalize(item.secondary).includes(needle);
-    });
+
+    let rows = [];
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await sleep(attempt === 0 ? 700 : 350);
+      rows = candidateRows();
+      const hasNeedle = rows.some((row) => normalize(rowLabel(row)).includes(needle) || normalize(row.textContent).includes(needle));
+      if (rows.length && hasNeedle) break;
+    }
+
+    const results = buildChatResults(rows).filter((item) =>
+      !needle || normalize(item.chatLabel).includes(needle) || normalize(item.secondary).includes(needle)
+    );
+
     setEditableText(search, "");
     await sleep(250);
-    return { chats: results };
+    return { chats: results, debug: { rowCount: rows.length } };
   }
 
   async function listChats() {
