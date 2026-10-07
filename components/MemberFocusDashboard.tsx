@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Circle,
   Clock3,
+  Activity,
   FileText,
   Flag,
   ListChecks,
@@ -19,7 +20,7 @@ import {
   X,
   Target,
 } from "lucide-react";
-import type { Project, Task, TaskFocusState, TaskSkipReason } from "@/lib/types";
+import type { EmployeeActivitySummary, Project, Task, TaskFocusState, TaskSkipReason } from "@/lib/types";
 import {
   completeFocusTaskAction,
   pauseFocusTaskAction,
@@ -115,11 +116,13 @@ export function MemberFocusDashboard({
   projects,
   focusStates,
   timeTotals,
+  initialExtensionWork,
 }: {
   tasks: Task[];
   projects: Project[];
   focusStates: TaskFocusState[];
   timeTotals: Record<string, number>;
+  initialExtensionWork: EmployeeActivitySummary | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -130,13 +133,34 @@ export function MemberFocusDashboard({
   const [adminNote, setAdminNote] = useState("");
   const [pendingPanelOpen, setPendingPanelOpen] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [extensionWork, setExtensionWork] = useState<EmployeeActivitySummary | null>(initialExtensionWork);
+  const [extensionSyncedAt, setExtensionSyncedAt] = useState(() => Date.now());
 
   useEffect(() => {
+    let cancelled = false;
     const id = window.setInterval(() => setClockNow(Date.now()), 1000);
     const refreshId = window.setInterval(() => router.refresh(), 45000);
+
+    async function refreshExtensionWork() {
+      try {
+        const response = await fetch("/api/extension/my-work-summary", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as { summary?: EmployeeActivitySummary | null };
+        if (!cancelled) {
+          setExtensionWork(data.summary ?? null);
+          setExtensionSyncedAt(Date.now());
+        }
+      } catch {
+        // Keep the last known timer state if a refresh fails.
+      }
+    }
+
+    const extensionId = window.setInterval(() => void refreshExtensionWork(), 15000);
     return () => {
+      cancelled = true;
       window.clearInterval(id);
       window.clearInterval(refreshId);
+      window.clearInterval(extensionId);
     };
   }, [router]);
 
@@ -322,10 +346,52 @@ export function MemberFocusDashboard({
       ? Math.max(0, Math.floor((clockNow - new Date(currentFocus.startedAt).getTime()) / 1000))
       : 0;
   const currentTrackedSeconds = currentClosedSeconds + currentLiveSeconds;
+  const extensionFresh =
+    extensionWork?.lastSeenAt &&
+    clockNow - new Date(extensionWork.lastSeenAt).getTime() <= 90_000;
+  const liveExtensionSeconds =
+    extensionWork?.status === "active" && extensionFresh
+      ? Math.max(0, Math.floor((clockNow - extensionSyncedAt) / 1000))
+      : 0;
+  const todayBrowserWorkSeconds = (extensionWork?.todayActiveSeconds ?? 0) + liveExtensionSeconds;
 
   return (
     <div className={cn("grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]", isPending && "opacity-80")}>
       <main className="min-w-0 space-y-5">
+        {extensionWork && extensionWork.deviceCount > 0 && (
+          <section className="rounded-xl2 border border-accent-500/20 bg-base-850 p-4 shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent-500/10 text-accent-300">
+                  <Activity size={18} />
+                </span>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">Today&apos;s work time</p>
+                  <p className="mt-1 font-mono text-2xl font-semibold text-accent-300">{formatTrackedTime(todayBrowserWorkSeconds)}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className={cn(
+                  "rounded-full px-2.5 py-1 font-semibold",
+                  extensionWork.status === "active" && extensionFresh
+                    ? "bg-emerald-500/10 text-emerald-300"
+                    : extensionWork.status === "idle"
+                      ? "bg-amber-500/10 text-amber-300"
+                      : "bg-base-700 text-neutral-500",
+                )}>
+                  {extensionWork.status === "active" && extensionFresh ? "Working" : extensionWork.status === "idle" ? "Paused" : "Offline"}
+                </span>
+                <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-semibold text-amber-300">
+                  Paused {formatTrackedTime(extensionWork.todayIdleSeconds)}
+                </span>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-neutral-600">
+              This timer counts extension-detected active browser work only. Idle time is kept separate as paused time.
+            </p>
+          </section>
+        )}
+
         <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-5 shadow-card">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div
