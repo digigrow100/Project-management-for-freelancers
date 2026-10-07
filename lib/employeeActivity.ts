@@ -584,31 +584,58 @@ function toDevice(row: DeviceRow): EmployeeDevice {
   };
 }
 
-function startOfPakistanDay(daysOffset = 0): Date {
-  const now = new Date();
+function pakistanDateParts(value = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Karachi",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(now);
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  }).formatToParts(value);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value])) as Record<string, string>;
+}
+
+function startOfPakistanDay(daysOffset = 0): Date {
+  const map = pakistanDateParts();
   const base = new Date(String(map.year) + "-" + String(map.month) + "-" + String(map.day) + "T00:00:00+05:00");
   base.setUTCDate(base.getUTCDate() + daysOffset);
   return base;
+}
+
+function startOfPakistanMonth(): Date {
+  const map = pakistanDateParts();
+  return new Date(String(map.year) + "-" + String(map.month) + "-01T00:00:00+05:00");
+}
+
+function addSecondsByProject(
+  target: Record<string, number>,
+  rows: Array<{ project_id?: string | null; duration_seconds?: number | null }>,
+) {
+  for (const row of rows) {
+    if (!row.project_id) continue;
+    target[String(row.project_id)] = (target[String(row.project_id)] ?? 0) + clampDuration(row.duration_seconds);
+  }
 }
 
 export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySummary[]> {
   const supabase = getSupabase();
   const todayStart = startOfPakistanDay(0).toISOString();
   const tomorrowStart = startOfPakistanDay(1).toISOString();
-  const [{ data: profiles, error: profileError }, { data: devices, error: deviceError }, { data: activities, error: activityError }, { data: prompts, error: promptError }, { data: projects, error: projectError }, { data: sessions, error: sessionError }] = await Promise.all([
+  const monthStart = startOfPakistanMonth().toISOString();
+
+  const [
+    { data: profiles, error: profileError },
+    { data: devices, error: deviceError },
+    { data: monthActivities, error: activityError },
+    { data: prompts, error: promptError },
+    { data: projects, error: projectError },
+    { data: sessions, error: sessionError },
+  ] = await Promise.all([
     supabase.from("freelance_hq_profiles").select("id,name,email,role").eq("role", "member"),
     supabase.from("freelance_hq_employee_devices").select("*").is("revoked_at", null),
     supabase
       .from("freelance_hq_activity_logs")
-      .select("employee_id,activity_type,duration_seconds,started_at")
-      .gte("started_at", todayStart)
+      .select("employee_id,project_id,activity_type,duration_seconds,started_at,ended_at")
+      .gte("started_at", monthStart)
       .lt("started_at", tomorrowStart),
     supabase
       .from("freelance_hq_ai_prompt_logs")
@@ -618,10 +645,12 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
     supabase.from("freelance_hq_projects").select("id,name"),
     supabase
       .from("freelance_hq_browser_sessions")
-      .select("id,employee_id,device_id,started_at,status")
-      .is("ended_at", null)
-      .order("started_at", { ascending: false }),
+      .select("id,employee_id,device_id,started_at,ended_at,status")
+      .gte("started_at", todayStart)
+      .lt("started_at", tomorrowStart)
+      .order("started_at", { ascending: true }),
   ]);
+
   for (const error of [profileError, deviceError, activityError, promptError, projectError, sessionError]) {
     if (error) throw error;
   }
@@ -636,18 +665,59 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
     const seenAge = freshest ? now - new Date(freshest.last_seen_at).getTime() : Number.POSITIVE_INFINITY;
     const status: BrowserDeviceStatus =
       seenAge > 3 * 60 * 1000 ? "offline" : freshest?.last_status === "idle" ? "idle" : "active";
-    const employeeActivities = (activities ?? []).filter((row) => String(row.employee_id) === employeeId);
-    const todayActiveSeconds = employeeActivities
-      .filter((row) => row.activity_type === "active")
-      .reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
-    const todayIdleSeconds = employeeActivities
-      .filter((row) => row.activity_type === "idle")
-      .reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
-    const aiPromptsToday = (prompts ?? []).filter((row) => String(row.employee_id) === employeeId).length;
-    const activeSession = (sessions ?? []).find(
-      (session) => String(session.employee_id) === employeeId && String(session.device_id) === freshest?.id,
+
+    const employeeActivities = (monthActivities ?? []).filter((row) => String(row.employee_id) === employeeId);
+    const todayActivities = employeeActivities.filter(
+      (row) => String(row.started_at) >= todayStart && String(row.started_at) < tomorrowStart,
     );
-    const startedAt = activeSession?.started_at ? String(activeSession.started_at) : null;
+    const todayActiveRows = todayActivities.filter((row) => row.activity_type === "active");
+    const todayIdleRows = todayActivities.filter((row) => row.activity_type === "idle");
+    const monthActiveRows = employeeActivities.filter((row) => row.activity_type === "active");
+
+    const todayActiveSeconds = todayActiveRows.reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
+    const todayIdleSeconds = todayIdleRows.reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
+    const thisMonthActiveSeconds = monthActiveRows.reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
+
+    const todayByProject: Record<string, number> = {};
+    const monthByProject: Record<string, number> = {};
+    addSecondsByProject(todayByProject, todayActiveRows);
+    addSecondsByProject(monthByProject, monthActiveRows);
+
+    const employeeSessions = (sessions ?? []).filter((session) => String(session.employee_id) === employeeId);
+    const startedTodayAt =
+      employeeSessions.length > 0
+        ? String(employeeSessions[0]?.started_at ?? "")
+        : todayActiveRows.length > 0
+          ? String([...todayActiveRows].sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)))[0]?.started_at ?? "")
+          : null;
+
+    const activeSession = employeeSessions.find(
+      (session) =>
+        !session.ended_at &&
+        String(session.device_id) === freshest?.id &&
+        session.status !== "ended",
+    );
+    const currentSessionStartedAt = activeSession?.started_at ? String(activeSession.started_at) : null;
+
+    const lastClosedWorkAt =
+      todayActiveRows.length > 0
+        ? [...todayActiveRows]
+            .map((row) => String(row.ended_at || row.started_at))
+            .sort((a, b) => b.localeCompare(a))[0] ?? null
+        : null;
+    const deviceWorkAt =
+      freshest?.last_status === "active" &&
+      freshest.last_seen_at &&
+      String(freshest.last_seen_at) >= todayStart &&
+      String(freshest.last_seen_at) < tomorrowStart
+        ? String(freshest.last_seen_at)
+        : null;
+    const lastWorkAt =
+      [lastClosedWorkAt, deviceWorkAt]
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+    const aiPromptsToday = (prompts ?? []).filter((row) => String(row.employee_id) === employeeId).length;
 
     return {
       employeeId,
@@ -659,15 +729,27 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
       currentUrl: freshest?.current_url ?? "",
       currentProjectId: freshest?.current_project_id ?? null,
       currentProjectName: freshest?.current_project_id ? projectNames.get(freshest.current_project_id) ?? null : null,
-      currentSessionStartedAt: startedAt,
-      currentSessionDurationSeconds: startedAt ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)) : 0,
+      currentSessionStartedAt,
+      currentSessionDurationSeconds: currentSessionStartedAt
+        ? Math.max(0, Math.floor((now - new Date(currentSessionStartedAt).getTime()) / 1000))
+        : 0,
       todayActiveSeconds,
       todayIdleSeconds,
+      thisMonthActiveSeconds,
+      startedTodayAt: startedTodayAt || null,
+      lastWorkAt,
+      todayByProject,
+      monthByProject,
       lastSeenAt: freshest?.last_seen_at ?? null,
       aiPromptsToday,
       deviceCount: employeeDevices.length,
     };
   });
+}
+
+export async function getEmployeeActivitySummary(employeeId: string): Promise<EmployeeActivitySummary | null> {
+  const rows = await getEmployeeActivitySummaries();
+  return rows.find((row) => row.employeeId === employeeId) ?? null;
 }
 
 export async function queryEmployeeActivity(input: {
