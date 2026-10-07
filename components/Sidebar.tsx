@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/seo/pages", label: "SEO Pages", icon: PanelsTopLeft },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
+  { href: "/client-chat", label: "Client Chat", icon: MessageCircleMore },
 ];
 
 export function Sidebar({
@@ -116,6 +117,13 @@ export function Sidebar({
             >
               <Package size={17} className="text-neutral-500 group-hover:text-accent-400" />
               Services
+            </Link>
+            <Link
+              href="/admin/whatsapp-bridge"
+              className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
+            >
+              <MessageCircleMore size={17} className="text-neutral-500 group-hover:text-accent-400" />
+              WhatsApp Bridge
             </Link>
             <Link
               href="/admin/time-tracking"
