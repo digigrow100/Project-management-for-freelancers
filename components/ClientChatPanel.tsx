@@ -24,6 +24,7 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const notificationBaseline = useRef<Record<string, Set<string>>>({});
 
   const selected = useMemo(() => clients.find((client) => client.clientId === selectedId) ?? null, [clients, selectedId]);
 
@@ -53,7 +54,31 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
         setError(data.error || "Could not load messages.");
         return;
       }
-      setMessages(Array.isArray(data.messages) ? data.messages : []);
+      const nextMessages = Array.isArray(data.messages) ? data.messages : [];
+      const inboundIds = new Set(
+        nextMessages
+          .filter((message: WhatsAppChatMessage) => message.direction === "inbound")
+          .map((message: WhatsAppChatMessage) => message.id),
+      );
+      const previous = notificationBaseline.current[clientId];
+
+      if (!previous) {
+        notificationBaseline.current[clientId] = inboundIds;
+      } else {
+        for (const item of nextMessages as WhatsAppChatMessage[]) {
+          if (item.direction !== "inbound" || previous.has(item.id)) continue;
+          previous.add(item.id);
+          const client = clients.find((entry) => entry.clientId === clientId);
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(client?.clientName || "New WhatsApp message", {
+              body: item.body,
+              tag: "team-whatsapp-" + item.id,
+            });
+          }
+        }
+      }
+
+      setMessages(nextMessages);
       setError("");
     } catch {
       setError("Could not refresh messages.");
@@ -125,9 +150,20 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
             <h2 className="text-sm font-semibold text-neutral-100">Client Chats</h2>
             <p className="mt-0.5 text-[10px] text-neutral-600">Only chats you are allowed to access</p>
           </div>
-          <button type="button" onClick={() => void loadClients()} className="rounded-lg p-2 text-neutral-500 hover:bg-base-800 hover:text-neutral-200" aria-label="Refresh clients">
-            <RefreshCw size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            {"Notification" in window && Notification.permission !== "granted" && (
+              <button
+                type="button"
+                onClick={() => void Notification.requestPermission()}
+                className="rounded-lg px-2 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
+              >
+                Enable alerts
+              </button>
+            )}
+            <button type="button" onClick={() => void loadClients()} className="rounded-lg p-2 text-neutral-500 hover:bg-base-800 hover:text-neutral-200" aria-label="Refresh clients">
+              <RefreshCw size={14} />
+            </button>
+          </div>
         </div>
         <div className="max-h-[260px] overflow-y-auto md:max-h-[70vh]">
           {clients.map((client) => (
