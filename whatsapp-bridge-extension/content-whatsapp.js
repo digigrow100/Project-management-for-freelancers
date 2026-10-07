@@ -407,14 +407,17 @@
   }
 
   function extractRecentInbound(target) {
+    const syncFrom = target.syncFrom ? new Date(target.syncFrom).getTime() : Date.now();
     return allMessageContainers().slice(-60).map((node) => {
       const message = extractMessage(node, target);
-      if (!message || message.direction !== "inbound") return null;
+      if (!message || message.direction !== "inbound" || !message.remoteTimestamp) return null;
+      const receivedTime = new Date(message.remoteTimestamp).getTime();
+      if (!Number.isFinite(receivedTime) || receivedTime < syncFrom) return null;
       return {
         clientId: target.clientId,
         body: message.body,
         remoteMessageKey: message.remoteMessageKey,
-        receivedAt: message.remoteTimestamp || new Date().toISOString(),
+        receivedAt: message.remoteTimestamp,
       };
     }).filter(Boolean);
   }
