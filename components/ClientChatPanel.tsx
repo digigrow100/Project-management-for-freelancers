@@ -75,6 +75,22 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, selectedId]);
 
+  function selectClient(client: WhatsAppChatClient) {
+    setSelectedId(client.clientId);
+    setError("");
+    void fetch("/api/client-chat/" + encodeURIComponent(client.clientId) + "/open", {
+      method: "POST",
+    })
+      .then(async (response) => {
+        if (response.ok) return;
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Could not open this chat in WhatsApp Web.");
+      })
+      .catch((openError) => {
+        setError(openError instanceof Error ? openError.message : "Could not open this chat in WhatsApp Web.");
+      });
+  }
+
   function sendMessage() {
     if (!selected || !draft.trim() || !selected.canSend) return;
     const body = draft.trim();
@@ -118,7 +134,7 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
             <button
               key={client.clientId}
               type="button"
-              onClick={() => setSelectedId(client.clientId)}
+              onClick={() => selectClient(client)}
               className={cn(
                 "flex w-full items-start gap-3 border-b border-base-700/30 px-4 py-3 text-left transition-colors",
                 selectedId === client.clientId ? "bg-accent-500/10" : "hover:bg-base-800/70",
