@@ -164,8 +164,16 @@ async function disconnect() {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  void chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
-  void ensureIdentity();
+  void (async () => {
+    try {
+      if (chrome.storage.local.setAccessLevel) {
+        await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+      }
+    } catch {
+      // Older Chromium builds may not support storage access levels.
+    }
+    await ensureIdentity();
+  })();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
