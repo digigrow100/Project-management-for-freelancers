@@ -201,11 +201,25 @@
     return String(value || "").replace(/\D/g, "");
   }
 
+  function isSystemChatRow(label) {
+    const value = normalize(label);
+    return (
+      !value ||
+      value === "locked chats" ||
+      value.startsWith("locked chats ") ||
+      value === "archived" ||
+      value.startsWith("archived ") ||
+      value === "communities" ||
+      value === "status" ||
+      value === "channels"
+    );
+  }
+
   function buildChatResults(rows) {
     const labelCounts = new Map();
     for (const row of rows) {
       const label = rowLabel(row);
-      if (!label) continue;
+      if (!label || isSystemChatRow(label)) continue;
       const key = normalize(label);
       labelCounts.set(key, (labelCounts.get(key) || 0) + 1);
     }
@@ -214,7 +228,7 @@
     const results = [];
     for (const row of rows) {
       const label = rowLabel(row);
-      if (!label) continue;
+      if (!label || isSystemChatRow(label)) continue;
       const labelKey = normalize(label);
       const stableId = rowStableId(row);
       const phone = rowPhone(row);
