@@ -64,6 +64,24 @@ export async function createAdminWhatsAppRequest(
     throw new Error("Message cannot be empty.");
   }
 
+  if (requestType === "history" && clientId) {
+    const { data: link, error: linkError } = await getSupabase()
+      .from("freelance_hq_whatsapp_client_links")
+      .select("chat_key,chat_label,phone,is_enabled")
+      .eq("client_id", clientId)
+      .maybeSingle();
+    if (linkError) throw linkError;
+    if (!link?.is_enabled) throw new Error("This WhatsApp client mapping is not enabled.");
+
+    const configuredKey = clean(link.chat_key, 300);
+    const configuredPhone = clean(link.phone, 80).replace(/\D/g, "");
+    const requestedPhone = phone.replace(/\D/g, "");
+    const sameChat =
+      (configuredKey && chatKey && configuredKey === chatKey) ||
+      (!configuredKey && configuredPhone && requestedPhone && configuredPhone === requestedPhone);
+    if (!sameChat) throw new Error("The selected WhatsApp chat no longer matches this client mapping. Re-scan it first.");
+  }
+
   const now = nowIso();
   const { data, error } = await getSupabase()
     .from("freelance_hq_whatsapp_bridge_requests")
@@ -195,8 +213,8 @@ async function ingestHistoryResult(
     const body = clean(item.body, 5000);
     const remoteMessageKey = clean(item.remoteMessageKey, 500);
     const direction = item.direction === "outbound" ? "outbound" : "inbound";
-    const remoteTimestamp = validDate(item.remoteTimestamp) || nowIso();
-    if (!body || !remoteMessageKey) continue;
+    const remoteTimestamp = validDate(item.remoteTimestamp);
+    if (!body || !remoteMessageKey || !remoteTimestamp) continue;
 
     rows.push({
       client_id: clientId,
@@ -273,6 +291,12 @@ export async function removeWhatsAppClientMapping(adminUserId: string, clientId:
     .delete()
     .eq("client_id", clientId);
   if (shareError) throw shareError;
+
+  const { error: messageError } = await supabase
+    .from("freelance_hq_whatsapp_messages")
+    .delete()
+    .eq("client_id", clientId);
+  if (messageError) throw messageError;
 
   const { error: linkError } = await supabase
     .from("freelance_hq_whatsapp_client_links")
