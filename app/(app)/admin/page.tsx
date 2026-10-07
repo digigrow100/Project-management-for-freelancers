@@ -26,6 +26,7 @@ import { getEmployeeActivitySummaries } from "@/lib/employeeActivity";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
 import { AdminTeamPanel } from "@/components/AdminTeamPanel";
 import { EmployeeActivityOverview } from "@/components/EmployeeActivityOverview";
+import { AdminMyWorkTime } from "@/components/AdminMyWorkTime";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,8 @@ export default async function AdminPage() {
           Projects, payments, team workload, personal tasks, renewals and recent activity in one place.
         </p>
       </div>
+
+      <AdminMyWorkTime initialSummary={employeeActivity.find((row) => row.employeeId === currentProfile.id) ?? null} />
 
       <AdminDashboardOverview
         projects={projects}
