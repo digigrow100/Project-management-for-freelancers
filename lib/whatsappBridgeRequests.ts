@@ -414,3 +414,80 @@ export async function revokeWhatsAppSharedHistory(adminUserId: string, clientId:
     .eq("user_id", userId);
   if (error) throw error;
 }
+
+
+export type WhatsAppAdminSavedChat = {
+  id: string;
+  chatKey: string;
+  chatLabel: string;
+  phone: string;
+  secondary: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listAdminSavedWhatsAppChats(adminUserId: string): Promise<WhatsAppAdminSavedChat[]> {
+  await requireAdmin(adminUserId);
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_whatsapp_admin_chats")
+    .select("id,chat_key,chat_label,phone,secondary,created_at,updated_at")
+    .eq("owner_user_id", adminUserId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    chatKey: String(row.chat_key || ""),
+    chatLabel: String(row.chat_label || ""),
+    phone: String(row.phone || ""),
+    secondary: String(row.secondary || ""),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }));
+}
+
+export async function saveAdminWhatsAppChat(
+  adminUserId: string,
+  input: { chatKey?: unknown; chatLabel?: unknown; phone?: unknown; secondary?: unknown },
+) {
+  await requireAdmin(adminUserId);
+  const chatKey = clean(input.chatKey, 300);
+  const chatLabel = clean(input.chatLabel, 240);
+  const phone = clean(input.phone, 80);
+  const secondary = clean(input.secondary, 300);
+  if (!chatKey || !chatLabel) throw new Error("Choose a valid WhatsApp chat first.");
+
+  const now = nowIso();
+  const { data, error } = await getSupabase()
+    .from("freelance_hq_whatsapp_admin_chats")
+    .upsert({
+      owner_user_id: adminUserId,
+      chat_key: chatKey,
+      chat_label: chatLabel,
+      phone,
+      secondary,
+      updated_at: now,
+    }, { onConflict: "owner_user_id,chat_key" })
+    .select("id,chat_key,chat_label,phone,secondary,created_at,updated_at")
+    .single();
+  if (error) throw error;
+  return {
+    id: String(data.id),
+    chatKey: String(data.chat_key || ""),
+    chatLabel: String(data.chat_label || ""),
+    phone: String(data.phone || ""),
+    secondary: String(data.secondary || ""),
+    createdAt: String(data.created_at),
+    updatedAt: String(data.updated_at),
+  };
+}
+
+export async function removeAdminWhatsAppChat(adminUserId: string, id: string) {
+  await requireAdmin(adminUserId);
+  if (!id) throw new Error("Saved chat is required.");
+  const { error } = await getSupabase()
+    .from("freelance_hq_whatsapp_admin_chats")
+    .delete()
+    .eq("id", id)
+    .eq("owner_user_id", adminUserId);
+  if (error) throw error;
+}
