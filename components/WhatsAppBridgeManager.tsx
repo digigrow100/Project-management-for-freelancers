@@ -31,6 +31,8 @@ type ScannedChat = {
   chatLabel: string;
   phone: string;
   secondary?: string;
+  safeToMap?: boolean;
+  warning?: string;
 };
 
 type HistoryMessage = {
@@ -66,6 +68,14 @@ function dayRange(value: string) {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { from: start.toISOString(), to: end.toISOString() };
+}
+
+function chatIdentity(chat: { chatKey?: string; chatLabel?: string; phone?: string }) {
+  return [
+    String(chat.chatKey || "").trim(),
+    String(chat.phone || "").replace(/\D/g, ""),
+    String(chat.chatLabel || "").trim().toLowerCase(),
+  ].join("|");
 }
 
 function historyTime(value: string | null) {
@@ -120,11 +130,9 @@ export function WhatsAppBridgeManager({
 
   const memberOptions = useMemo(() => members.filter((member) => member.role !== "admin"), [members]);
 
-  const mappedByLabel = useMemo(() => {
+  const mappedByIdentity = useMemo(() => {
     const map = new Map<string, WhatsAppClientLink>();
-    for (const link of links) {
-      map.set((link.chatLabel || "").trim().toLowerCase(), link);
-    }
+    for (const link of links) map.set(chatIdentity(link), link);
     return map;
   }, [links]);
 
@@ -177,8 +185,8 @@ export function WhatsAppBridgeManager({
   }
 
   async function waitForRequest(id: string): Promise<RequestState> {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 650));
+    for (let attempt = 0; attempt < 140; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 750));
       const response = await fetch("/api/admin/whatsapp-bridge/requests?id=" + encodeURIComponent(id), { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not read extension response.");
@@ -261,8 +269,16 @@ export function WhatsAppBridgeManager({
   }
 
   function addScannedChat(chat: ScannedChat, index: number) {
+    if (chat.safeToMap === false || !chat.chatKey) {
+      setMessage(chat.warning || "This duplicate WhatsApp chat cannot be safely identified yet.");
+      return;
+    }
     const choiceKey = chat.chatLabel + "|" + chat.chatKey + "|" + index;
     const clientId = mappingChoice[choiceKey];
+    if (!clientId) {
+      setMessage("Choose which app client this WhatsApp chat belongs to.");
+      return;
+    }
     const client = clients.find((item) => item.id === clientId);
     if (!client) {
       setMessage("Choose which app client this WhatsApp chat belongs to.");
@@ -336,11 +352,15 @@ export function WhatsAppBridgeManager({
 
   function loadHistory() {
     if (!selectedChat) return;
+    if (selectedChat.safeToMap === false || !selectedChat.chatKey) {
+      setMessage(selectedChat.warning || "This WhatsApp chat cannot be safely identified for history loading.");
+      return;
+    }
     setMessage("");
     startTransition(async () => {
       try {
         const range = dayRange(selectedDate);
-        const mapped = mappedByLabel.get(selectedChat.chatLabel.trim().toLowerCase());
+        const mapped = mappedByIdentity.get(chatIdentity(selectedChat));
         const id = await createRequest({
           requestType: "history",
           chatKey: selectedChat.chatKey,
@@ -371,7 +391,7 @@ export function WhatsAppBridgeManager({
       setMessage("Choose a team member first.");
       return;
     }
-    const mapped = mappedByLabel.get(selectedChat.chatLabel.trim().toLowerCase());
+    const mapped = mappedByIdentity.get(chatIdentity(selectedChat));
     if (!mapped) {
       setMessage("Map this WhatsApp chat to an app client before sharing it with the team.");
       return;
@@ -394,6 +414,10 @@ export function WhatsAppBridgeManager({
 
   function sendDirect() {
     if (!selectedChat || !directDraft.trim()) return;
+    if (selectedChat.safeToMap === false || !selectedChat.chatKey) {
+      setMessage(selectedChat.warning || "This WhatsApp chat cannot be safely identified for sending.");
+      return;
+    }
     const body = directDraft.trim();
     setDirectDraft("");
     startTransition(async () => {
@@ -511,7 +535,8 @@ export function WhatsAppBridgeManager({
                         <option value="">Choose app client…</option>
                         {clients.map((client) => <option key={client.id} value={client.id}>{client.name || client.company || client.phone}</option>)}
                       </select>
-                      <button type="button" onClick={() => addScannedChat(chat, index)} disabled={isPending} className="rounded-lg border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-xs font-semibold text-accent-300">Add / Map</button>
+                      <button type="button" onClick={() => addScannedChat(chat, index)} disabled={isPending || chat.safeToMap === false || !chat.chatKey} className="rounded-lg border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-xs font-semibold text-accent-300 disabled:opacity-40">Add / Map</button>
+                      {chat.warning && <p className="md:col-span-3 text-[10px] text-amber-300">{chat.warning}</p>}
                     </div>
                   );
                 })}
@@ -591,6 +616,7 @@ export function WhatsAppBridgeManager({
                   <button key={chat.chatLabel + chat.chatKey + index} type="button" onClick={() => { setSelectedChat(chat); setHistory([]); setSelectedHistoryKeys([]); }} className={cn("block w-full border-b border-base-700/30 px-4 py-3 text-left", selectedChat?.chatLabel === chat.chatLabel && selectedChat?.chatKey === chat.chatKey ? "bg-accent-500/10" : "hover:bg-base-800/60")}>
                     <p className="truncate text-xs font-semibold text-neutral-200">{chat.chatLabel}</p>
                     <p className="mt-1 truncate text-[10px] text-neutral-600">{chat.phone || chat.secondary || "WhatsApp chat"}</p>
+                    {chat.warning && <p className="mt-1 text-[9px] text-amber-300">{chat.warning}</p>}
                   </button>
                 ))}
                 {directChats.length === 0 && <p className="p-6 text-center text-xs text-neutral-600">Click Refresh chats, or search a WhatsApp name.</p>}
@@ -607,7 +633,7 @@ export function WhatsAppBridgeManager({
                         <CalendarDays size={13} />
                         <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="bg-transparent text-neutral-200 outline-none" />
                       </label>
-                      <button type="button" onClick={loadHistory} disabled={isPending || !selectedDate} className="rounded-lg bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950">Load this day</button>
+                      <button type="button" onClick={loadHistory} disabled={isPending || !selectedDate || selectedChat.safeToMap === false || !selectedChat.chatKey} className="rounded-lg bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950 disabled:opacity-40">Load this day</button>
                     </div>
                   </div>
 
@@ -630,7 +656,7 @@ export function WhatsAppBridgeManager({
                   </div>
 
                   <div className="border-t border-base-700/50 p-3">
-                    {mappedByLabel.has(selectedChat.chatLabel.trim().toLowerCase()) && (
+                    {mappedByIdentity.has(chatIdentity(selectedChat)) && (
                       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-base-700/60 bg-base-900/50 p-3">
                         <select value={shareUserId} onChange={(event) => setShareUserId(event.target.value)} className="rounded-lg border border-base-700 bg-base-950 px-2 py-2 text-xs text-neutral-200 outline-none">
                           <option value="">Share with team member…</option>
@@ -643,7 +669,7 @@ export function WhatsAppBridgeManager({
 
                     <div className="flex items-end gap-2">
                       <textarea value={directDraft} onChange={(event) => setDirectDraft(event.target.value)} rows={2} placeholder={"Message " + selectedChat.chatLabel + "…"} className="min-h-[48px] flex-1 resize-none rounded-xl border border-base-700 bg-base-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-accent-500" />
-                      <button type="button" onClick={sendDirect} disabled={isPending || !directDraft.trim()} className="grid h-12 w-12 place-items-center rounded-xl bg-accent-500 text-base-950 disabled:opacity-40" aria-label="Send direct WhatsApp message"><Send size={17} /></button>
+                      <button type="button" onClick={sendDirect} disabled={isPending || !directDraft.trim() || selectedChat.safeToMap === false || !selectedChat.chatKey} className="grid h-12 w-12 place-items-center rounded-xl bg-accent-500 text-base-950 disabled:opacity-40" aria-label="Send direct WhatsApp message"><Send size={17} /></button>
                     </div>
                   </div>
                 </>
