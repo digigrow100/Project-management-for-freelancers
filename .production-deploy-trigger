@@ -1,4 +1,4 @@
 Production deployment trigger
 Date: 2026-10-07
-Base: b50d4e9d452cf3e66a6122787c0c364d9a326fdc
-Reason: deploy near-realtime team WhatsApp chat updates
+Base: b5e9b1d33cfa88f95862530489cec5cf6e12aabd
+Reason: team WhatsApp client access visibility update
