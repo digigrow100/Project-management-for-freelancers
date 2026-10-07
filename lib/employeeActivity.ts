@@ -630,7 +630,7 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
     { data: projects, error: projectError },
     { data: sessions, error: sessionError },
   ] = await Promise.all([
-    supabase.from("freelance_hq_profiles").select("id,name,email,role").eq("role", "member"),
+    supabase.from("freelance_hq_profiles").select("id,name,email,role"),
     supabase.from("freelance_hq_employee_devices").select("*").is("revoked_at", null),
     supabase
       .from("freelance_hq_activity_logs")
