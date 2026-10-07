@@ -63,8 +63,8 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
   useEffect(() => {
     void loadMessages(selectedId);
     if (!selectedId) return;
-    const messageTimer = window.setInterval(() => void loadMessages(selectedId), 4000);
-    const clientTimer = window.setInterval(() => void loadClients(), 15000);
+    const messageTimer = window.setInterval(() => void loadMessages(selectedId), 1000);
+    const clientTimer = window.setInterval(() => void loadClients(), 5000);
     return () => {
       window.clearInterval(messageTimer);
       window.clearInterval(clientTimer);
