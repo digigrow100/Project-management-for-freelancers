@@ -56,15 +56,34 @@ export function WhatsAppBridgeManager({
     setHealth(await response.json());
   }
 
+  function draftFor(clientId: string): Draft {
+    return drafts[clientId] ?? {
+      chatKey: "",
+      chatLabel: "",
+      phone: "",
+      isEnabled: true,
+      accessUserIds: [],
+    };
+  }
+
   function updateDraft(clientId: string, patch: Partial<Draft>) {
-    setDrafts((current) => ({
-      ...current,
-      [clientId]: { ...current[clientId], ...patch },
-    }));
+    setDrafts((current) => {
+      const base = current[clientId] ?? {
+        chatKey: "",
+        chatLabel: "",
+        phone: "",
+        isEnabled: true,
+        accessUserIds: [],
+      };
+      return {
+        ...current,
+        [clientId]: { ...base, ...patch },
+      };
+    });
   }
 
   function toggleAccess(clientId: string, userId: string) {
-    const draft = drafts[clientId];
+    const draft = draftFor(clientId);
     const next = draft.accessUserIds.includes(userId)
       ? draft.accessUserIds.filter((id) => id !== userId)
       : [...draft.accessUserIds, userId];
@@ -87,7 +106,7 @@ export function WhatsAppBridgeManager({
 
   function saveClient(clientId: string) {
     setMessage("");
-    const draft = drafts[clientId];
+    const draft = draftFor(clientId);
     startTransition(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/configure", {
         method: "POST",
@@ -164,7 +183,7 @@ export function WhatsAppBridgeManager({
         </div>
         <div className="divide-y divide-base-700/40">
           {clients.map((client) => {
-            const draft = drafts[client.id];
+            const draft = draftFor(client.id);
             return (
               <div key={client.id} className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
