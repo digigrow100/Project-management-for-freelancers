@@ -142,6 +142,8 @@ export function WhatsAppBridgeManager({
   const [directDraft, setDirectDraft] = useState("");
   const [isPending, startTransition] = useTransition();
   const livePeekRunning = useRef(false);
+  const adminNotificationBaseline = useRef<string>("");
+  const adminSeenInbound = useRef<Set<string>>(new Set());
 
   const memberOptions = useMemo(() => members.filter((member) => member.role !== "admin"), [members]);
 
@@ -240,7 +242,27 @@ export function WhatsAppBridgeManager({
       });
       const request = await waitForRequest(id);
       if (request.status === "done" && Array.isArray(request.result?.messages)) {
-        mergeVisibleHistory(request.result.messages);
+        const messages = request.result.messages;
+        const baselineKey = chat.id + "|" + selectedDate;
+        const inbound = messages.filter((item) => item.direction === "inbound");
+
+        if (adminNotificationBaseline.current !== baselineKey) {
+          adminNotificationBaseline.current = baselineKey;
+          adminSeenInbound.current = new Set(inbound.map((item) => item.remoteMessageKey));
+        } else {
+          for (const item of inbound) {
+            if (adminSeenInbound.current.has(item.remoteMessageKey)) continue;
+            adminSeenInbound.current.add(item.remoteMessageKey);
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(chat.chatLabel || "New WhatsApp message", {
+                body: item.body,
+                tag: "admin-whatsapp-" + item.remoteMessageKey,
+              });
+            }
+          }
+        }
+
+        mergeVisibleHistory(messages);
       }
     } catch {
       // Keep the current conversation visible if one live refresh fails.
@@ -757,7 +779,18 @@ export function WhatsAppBridgeManager({
                 <h2 className="text-sm font-semibold text-neutral-100">My WhatsApp Chats</h2>
                 <p className="mt-1 text-xs text-neutral-600">Admin view. Read or message WhatsApp chats without mapping them to the team.</p>
               </div>
-              <button type="button" onClick={refreshSavedChats} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300"><RefreshCw size={13} /> Refresh saved</button>
+              <div className="flex items-center gap-2">
+                {"Notification" in window && Notification.permission !== "granted" && (
+                  <button
+                    type="button"
+                    onClick={() => void Notification.requestPermission()}
+                    className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300"
+                  >
+                    Enable notifications
+                  </button>
+                )}
+                <button type="button" onClick={refreshSavedChats} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300"><RefreshCw size={13} /> Refresh saved</button>
+              </div>
             </div>
             <div className="mt-3 flex gap-2">
               <input value={scanQuery} onChange={(event) => setScanQuery(event.target.value)} placeholder="Search WhatsApp name…" className="min-w-0 flex-1 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs text-neutral-100 outline-none" />
