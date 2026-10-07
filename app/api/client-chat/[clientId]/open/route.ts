@@ -6,12 +6,11 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   _request: Request,
-  context: { params: Promise<{ clientId: string }> },
+  { params }: { params: { clientId: string } },
 ) {
   try {
     const profile = await requireProfile();
-    const { clientId } = await context.params;
-    const result = await createWhatsAppOpenRequestForClient(profile, clientId);
+    const result = await createWhatsAppOpenRequestForClient(profile, params.clientId);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
