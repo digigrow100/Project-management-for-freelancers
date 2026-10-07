@@ -302,6 +302,57 @@ export interface Client {
   createdAt: string;
 }
 
+
+export interface WhatsAppBridgeHealth {
+  state: "online" | "offline" | "not_linked" | "problem";
+  deviceId: string | null;
+  deviceLabel: string | null;
+  whatsappReady: boolean;
+  lastSeenAt: string | null;
+  lastError: string | null;
+}
+
+export interface WhatsAppChatClient {
+  clientId: string;
+  clientName: string;
+  company: string;
+  phone: string;
+  chatKey: string;
+  chatLabel: string;
+  canSend: boolean;
+  isEnabled: boolean;
+  unreadCount: number;
+  lastMessageAt: string | null;
+  lastMessagePreview: string;
+}
+
+export interface WhatsAppChatMessage {
+  id: string;
+  clientId: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  status: "queued" | "sending" | "sent" | "failed" | "received";
+  senderUserId: string | null;
+  senderName: string | null;
+  errorText: string;
+  createdAt: string;
+  sentAt: string | null;
+  receivedAt: string | null;
+  remoteTimestamp: string | null;
+}
+
+export interface WhatsAppClientLink {
+  clientId: string;
+  clientName: string;
+  company: string;
+  clientPhone: string;
+  chatKey: string;
+  chatLabel: string;
+  phone: string;
+  isEnabled: boolean;
+  accessUserIds: string[];
+}
+
 export type InvoiceBankKey = "uk" | "pk" | "none" | null;
 
 export interface InvoiceBankDetails {
