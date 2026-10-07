@@ -315,19 +315,51 @@
     return String(target.chatLabel || target.phone || "").trim();
   }
 
+  function currentChatLabel() {
+    const header = document.querySelector("#main header");
+    if (!header) return "";
+    const candidates = Array.from(header.querySelectorAll("span[title], div[title], [aria-label]"))
+      .map((node) => String(node.getAttribute("title") || node.getAttribute("aria-label") || "").trim())
+      .filter((value) => value && !looksLikeIconLabel(value) && !looksLikeMessagePreview(value));
+    return candidates[0] || "";
+  }
+
+  function activeChatMatches(target) {
+    const expected = normalize(target.chatLabel || target.phone || "");
+    if (!expected) return false;
+    const active = normalize(currentChatLabel());
+    if (!active) return false;
+    return active === expected || active.includes(expected) || expected.includes(active);
+  }
+
+  async function waitForOpenedChat(target, timeoutMs = 5000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (composerBox() && activeChatMatches(target)) return true;
+      await sleep(150);
+    }
+    return false;
+  }
+
   async function openClient(target) {
     const query = targetQuery(target);
     const chatKey = String(target.chatKey || "");
     if (!query || !chatKey) throw new Error("WhatsApp chat does not have a safe stable mapping.");
 
+    if (activeChatMatches(target) && composerBox()) return true;
+
     const search = searchBox();
     if (!search) throw new Error("WhatsApp search box was not found.");
     setEditableText(search, query);
-    await sleep(900);
 
-    const rows = candidateRows();
+    let rows = [];
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await sleep(attempt === 0 ? 650 : 250);
+      rows = candidateRows();
+      if (rows.length) break;
+    }
+
     let row = null;
-
     if (chatKey.startsWith("wa-id:")) {
       const wanted = decodeURIComponent(chatKey.slice("wa-id:".length));
       row = rows.find((item) => rowStableId(item) === wanted) || null;
@@ -347,14 +379,26 @@
     }
 
     if (!row) {
-      setEditableText(search, "");
       throw new Error("The exact WhatsApp chat could not be found. Re-scan and add the chat again.");
     }
 
-    row.click();
-    await sleep(850);
-    setEditableText(search, "");
-    await sleep(250);
+    const clickTarget =
+      row.querySelector('[role="button"]') ||
+      row.querySelector('[tabindex="0"]') ||
+      row;
+    clickTarget.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    clickTarget.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    clickTarget.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    clickTarget.click();
+
+    const opened = await waitForOpenedChat(target, 6000);
+    if (!opened) {
+      throw new Error("WhatsApp found the contact but did not open the conversation.");
+    }
+
+    // Keep the search state untouched after opening. Clearing it immediately
+    // can make current WhatsApp Web builds jump back to the normal chat list.
+    return true;
   }
 
   function simpleHash(value) {
@@ -589,6 +633,10 @@
     if (request.requestType === "scan") return scanChats(request.query);
     if (request.requestType === "list_chats") return listChats();
     if (request.requestType === "history") return fetchHistory(request);
+    if (request.requestType === "open_chat") {
+      await openClient(request);
+      return { opened: true };
+    }
     if (request.requestType === "direct_send") {
       const result = await sendToChat(request, request.payload?.body || "", "direct:");
       return { sent: result.ok === true, remoteMessageKey: result.remoteMessageKey || "" };
