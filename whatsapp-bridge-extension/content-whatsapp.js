@@ -353,19 +353,28 @@
   }
 
   async function fetchHistory(request) {
-    await openClient(request);
-    await loadBackTo(request.dateFrom);
-    const from = request.dateFrom ? new Date(request.dateFrom).getTime() : Number.NEGATIVE_INFINITY;
-    const to = request.dateTo ? new Date(request.dateTo).getTime() : Number.POSITIVE_INFINITY;
-    const messages = allMessageContainers()
-      .map((node) => extractMessage(node, request))
-      .filter(Boolean)
-      .filter((message) => {
-        if (!message.remoteTimestamp) return false;
-        const time = new Date(message.remoteTimestamp).getTime();
-        return Number.isFinite(time) && time >= from && time < to;
-      });
-    return { messages };
+    if (busy) {
+      for (let i = 0; i < 40 && busy; i += 1) await sleep(250);
+    }
+    if (busy) throw new Error("WhatsApp bridge is busy. Try the history request again.");
+    busy = true;
+    try {
+      await openClient(request);
+      await loadBackTo(request.dateFrom);
+      const from = request.dateFrom ? new Date(request.dateFrom).getTime() : Number.NEGATIVE_INFINITY;
+      const to = request.dateTo ? new Date(request.dateTo).getTime() : Number.POSITIVE_INFINITY;
+      const messages = allMessageContainers()
+        .map((node) => extractMessage(node, request))
+        .filter(Boolean)
+        .filter((message) => {
+          if (!message.remoteTimestamp) return false;
+          const time = new Date(message.remoteTimestamp).getTime();
+          return Number.isFinite(time) && time >= from && time < to;
+        });
+      return { messages };
+    } finally {
+      busy = false;
+    }
   }
 
   async function sendToChat(target, body, remoteKeyPrefix) {
