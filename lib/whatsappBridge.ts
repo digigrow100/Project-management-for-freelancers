@@ -346,6 +346,33 @@ export async function saveWhatsAppClientLink(input: {
   const phone = sanitizeText(input.phone, 80);
   if (!chatKey && !chatLabel && !phone) throw new Error("Choose a WhatsApp chat before saving the mapping.");
 
+  const { data: existingLink, error: existingLinkError } = await supabase
+    .from("freelance_hq_whatsapp_client_links")
+    .select("chat_key,chat_label,phone,sync_from")
+    .eq("client_id", input.clientId)
+    .maybeSingle();
+  if (existingLinkError) throw existingLinkError;
+
+  const mappingChanged = Boolean(
+    existingLink &&
+    String(existingLink.chat_key || "") &&
+    String(existingLink.chat_key || "") !== chatKey
+  );
+
+  if (mappingChanged) {
+    const { error: messageResetError } = await supabase
+      .from("freelance_hq_whatsapp_messages")
+      .delete()
+      .eq("client_id", input.clientId);
+    if (messageResetError) throw messageResetError;
+
+    const { error: accessResetError } = await supabase
+      .from("freelance_hq_whatsapp_chat_access")
+      .delete()
+      .eq("client_id", input.clientId);
+    if (accessResetError) throw accessResetError;
+  }
+
   const { error: linkError } = await supabase
     .from("freelance_hq_whatsapp_client_links")
     .upsert(
@@ -356,6 +383,7 @@ export async function saveWhatsAppClientLink(input: {
         phone,
         is_enabled: Boolean(input.isEnabled),
         created_by: input.adminUserId,
+        sync_from: mappingChanged || !existingLink ? now : existingLink.sync_from,
         updated_at: now,
       },
       { onConflict: "client_id" },
