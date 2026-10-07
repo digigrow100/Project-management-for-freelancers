@@ -116,13 +116,13 @@ export function MemberFocusDashboard({
   projects,
   focusStates,
   timeTotals,
-  initialExtensionWork,
+  initialExtensionWork = null,
 }: {
   tasks: Task[];
   projects: Project[];
   focusStates: TaskFocusState[];
   timeTotals: Record<string, number>;
-  initialExtensionWork: EmployeeActivitySummary | null;
+  initialExtensionWork?: EmployeeActivitySummary | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
