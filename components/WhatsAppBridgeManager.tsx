@@ -780,7 +780,7 @@ export function WhatsAppBridgeManager({
                 <p className="mt-1 text-xs text-neutral-600">Admin view. Read or message WhatsApp chats without mapping them to the team.</p>
               </div>
               <div className="flex items-center gap-2">
-                {"Notification" in window && Notification.permission !== "granted" && (
+                {typeof window !== "undefined" && "Notification" in window && Notification.permission !== "granted" && (
                   <button
                     type="button"
                     onClick={() => void Notification.requestPermission()}
