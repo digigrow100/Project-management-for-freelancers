@@ -35,6 +35,12 @@ type ScannedChat = {
   warning?: string;
 };
 
+type SavedAdminChat = ScannedChat & {
+  id: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 type HistoryMessage = {
   direction: "inbound" | "outbound";
   body: string;
@@ -95,11 +101,13 @@ export function WhatsAppBridgeManager({
   members,
   initialLinks,
   initialHealth,
+  initialSavedChats,
 }: {
   clients: Client[];
   members: Profile[];
   initialLinks: WhatsAppClientLink[];
   initialHealth: WhatsAppBridgeHealth;
+  initialSavedChats: SavedAdminChat[];
 }) {
   const [activeTab, setActiveTab] = useState<"mapping" | "chats">("mapping");
   const [links, setLinks] = useState(initialLinks);
@@ -119,8 +127,9 @@ export function WhatsAppBridgeManager({
   const [scanQuery, setScanQuery] = useState("");
   const [scanResults, setScanResults] = useState<ScannedChat[]>([]);
   const [mappingChoice, setMappingChoice] = useState<Record<string, string>>({});
-  const [directChats, setDirectChats] = useState<ScannedChat[]>([]);
-  const [selectedChat, setSelectedChat] = useState<ScannedChat | null>(null);
+  const [directChats, setDirectChats] = useState<SavedAdminChat[]>(initialSavedChats);
+  const [directSearchResults, setDirectSearchResults] = useState<ScannedChat[]>([]);
+  const [selectedChat, setSelectedChat] = useState<SavedAdminChat | null>(initialSavedChats[0] ?? null);
   const [selectedDate, setSelectedDate] = useState(localDateValue());
   const [history, setHistory] = useState<HistoryMessage[]>([]);
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<string[]>([]);
@@ -329,24 +338,79 @@ export function WhatsAppBridgeManager({
     });
   }
 
-  function loadDirectChats(useSearch = false) {
+  function refreshSavedChats() {
     setMessage("");
     startTransition(async () => {
       try {
-        const id = await createRequest(useSearch && scanQuery.trim()
-          ? { requestType: "scan", query: scanQuery.trim() }
-          : { requestType: "list_chats" });
-        const request = await waitForRequest(id);
-        if (request.status !== "done") throw new Error(request.error || "Could not load WhatsApp chats.");
-        const chats = Array.isArray(request.result?.chats) ? request.result!.chats! : [];
+        const response = await fetch("/api/admin/whatsapp-bridge/my-chats", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not refresh saved chats.");
+        const chats = Array.isArray(data.chats) ? data.chats as SavedAdminChat[] : [];
         setDirectChats(chats);
         if (selectedChat) {
-          const stillThere = chats.find((chat) => chat.chatLabel === selectedChat.chatLabel && chat.chatKey === selectedChat.chatKey);
-          if (!stillThere) setSelectedChat(null);
+          const fresh = chats.find((chat) => chat.id === selectedChat.id);
+          if (fresh) setSelectedChat(fresh);
         }
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Could not load WhatsApp chats.");
+        setMessage(error instanceof Error ? error.message : "Could not refresh saved chats.");
       }
+    });
+  }
+
+  function searchMyWhatsAppChats() {
+    if (!scanQuery.trim()) return;
+    setMessage("");
+    startTransition(async () => {
+      try {
+        const id = await createRequest({ requestType: "scan", query: scanQuery.trim() });
+        const request = await waitForRequest(id);
+        if (request.status !== "done") throw new Error(request.error || "Could not search WhatsApp.");
+        setDirectSearchResults(Array.isArray(request.result?.chats) ? request.result!.chats! : []);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Could not search WhatsApp.");
+      }
+    });
+  }
+
+  function saveMyWhatsAppChat(chat: ScannedChat) {
+    if (chat.safeToMap === false || !chat.chatKey) {
+      setMessage(chat.warning || "This WhatsApp chat cannot be safely saved yet.");
+      return;
+    }
+    startTransition(async () => {
+      const response = await fetch("/api/admin/whatsapp-bridge/my-chats", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(chat),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.error || "Could not save this WhatsApp chat.");
+        return;
+      }
+      const saved = data.chat as SavedAdminChat;
+      setDirectChats((current) => [saved, ...current.filter((item) => item.id !== saved.id && item.chatKey !== saved.chatKey)]);
+      setSelectedChat(saved);
+      setDirectSearchResults((current) => current.filter((item) => item.chatKey !== chat.chatKey));
+      setMessage(chat.chatLabel + " added to My WhatsApp Chats.");
+    });
+  }
+
+  function removeMyWhatsAppChat(chat: SavedAdminChat) {
+    startTransition(async () => {
+      const response = await fetch("/api/admin/whatsapp-bridge/my-chats?id=" + encodeURIComponent(chat.id), { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.error || "Could not remove saved chat.");
+        return;
+      }
+      setDirectChats((current) => current.filter((item) => item.id !== chat.id));
+      if (selectedChat?.id === chat.id) {
+        setSelectedChat(null);
+        setHistory([]);
+        setSelectedHistoryKeys([]);
+      }
+      setMessage(chat.chatLabel + " removed from My WhatsApp Chats.");
     });
   }
 
@@ -601,25 +665,44 @@ export function WhatsAppBridgeManager({
                 <h2 className="text-sm font-semibold text-neutral-100">My WhatsApp Chats</h2>
                 <p className="mt-1 text-xs text-neutral-600">Admin view. Read or message WhatsApp chats without mapping them to the team.</p>
               </div>
-              <button type="button" onClick={() => loadDirectChats(false)} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300"><RefreshCw size={13} /> Refresh chats</button>
+              <button type="button" onClick={refreshSavedChats} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300"><RefreshCw size={13} /> Refresh saved</button>
             </div>
             <div className="mt-3 flex gap-2">
               <input value={scanQuery} onChange={(event) => setScanQuery(event.target.value)} placeholder="Search WhatsApp name…" className="min-w-0 flex-1 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs text-neutral-100 outline-none" />
-              <button type="button" onClick={() => loadDirectChats(true)} disabled={isPending || !scanQuery.trim()} className="rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300">Search</button>
+              <button type="button" onClick={searchMyWhatsAppChats} disabled={isPending || !scanQuery.trim()} className="rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300">Search WhatsApp</button>
             </div>
+            {directSearchResults.length > 0 && (
+              <div className="mt-3 divide-y divide-base-700/40 rounded-xl border border-base-700/60 bg-base-900/40">
+                {directSearchResults.map((chat, index) => (
+                  <div key={chat.chatKey + chat.chatLabel + index} className="flex items-center justify-between gap-3 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-neutral-200">{chat.chatLabel}</p>
+                      <p className="mt-0.5 truncate text-[10px] text-neutral-600">{chat.phone || chat.secondary || "WhatsApp result"}</p>
+                    </div>
+                    <button type="button" onClick={() => saveMyWhatsAppChat(chat)} disabled={isPending || chat.safeToMap === false || !chat.chatKey} className="shrink-0 rounded-lg border border-accent-500/40 bg-accent-500/10 px-3 py-2 text-[10px] font-semibold text-accent-300 disabled:opacity-40">
+                      Add to My Chats
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid min-h-[620px] md:grid-cols-[280px_1fr]">
             <aside className="border-b border-base-700/50 md:border-b-0 md:border-r">
               <div className="max-h-[620px] overflow-y-auto">
-                {directChats.map((chat, index) => (
-                  <button key={chat.chatLabel + chat.chatKey + index} type="button" onClick={() => { setSelectedChat(chat); setHistory([]); setSelectedHistoryKeys([]); }} className={cn("block w-full border-b border-base-700/30 px-4 py-3 text-left", selectedChat?.chatLabel === chat.chatLabel && selectedChat?.chatKey === chat.chatKey ? "bg-accent-500/10" : "hover:bg-base-800/60")}>
-                    <p className="truncate text-xs font-semibold text-neutral-200">{chat.chatLabel}</p>
-                    <p className="mt-1 truncate text-[10px] text-neutral-600">{chat.phone || chat.secondary || "WhatsApp chat"}</p>
-                    {chat.warning && <p className="mt-1 text-[9px] text-amber-300">{chat.warning}</p>}
-                  </button>
+                {directChats.map((chat) => (
+                  <div key={chat.id} className={cn("flex items-start border-b border-base-700/30", selectedChat?.id === chat.id ? "bg-accent-500/10" : "hover:bg-base-800/60")}>
+                    <button type="button" onClick={() => { setSelectedChat(chat); setHistory([]); setSelectedHistoryKeys([]); }} className="min-w-0 flex-1 px-4 py-3 text-left">
+                      <p className="truncate text-xs font-semibold text-neutral-200">{chat.chatLabel}</p>
+                      <p className="mt-1 truncate text-[10px] text-neutral-600">{chat.phone || chat.secondary || "Saved WhatsApp chat"}</p>
+                    </button>
+                    <button type="button" onClick={() => removeMyWhatsAppChat(chat)} className="m-2 rounded-lg p-2 text-rose-300 hover:bg-rose-500/10" aria-label={"Remove " + chat.chatLabel}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 ))}
-                {directChats.length === 0 && <p className="p-6 text-center text-xs text-neutral-600">Click Refresh chats, or search a WhatsApp name.</p>}
+                {directChats.length === 0 && <p className="p-6 text-center text-xs text-neutral-600">No saved chats yet. Search a WhatsApp name above and add only the chats you want to keep here.</p>}
               </div>
             </aside>
 
@@ -674,7 +757,7 @@ export function WhatsAppBridgeManager({
                   </div>
                 </>
               ) : (
-                <div className="grid flex-1 place-items-center p-8 text-center text-sm text-neutral-500">Select a WhatsApp chat.</div>
+                <div className="grid flex-1 place-items-center p-8 text-center text-sm text-neutral-500">Search WhatsApp above, add the chats you want, then select one here.</div>
               )}
             </div>
           </div>
