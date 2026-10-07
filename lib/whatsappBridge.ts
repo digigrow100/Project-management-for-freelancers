@@ -338,7 +338,7 @@ export async function saveWhatsAppClientLink(input: {
   const chatKey = sanitizeText(input.chatKey, 240);
   const chatLabel = sanitizeText(input.chatLabel, 240);
   const phone = sanitizeText(input.phone, 80);
-  if (!chatKey && !chatLabel && !phone) throw new Error("Add a WhatsApp chat name or phone number.");
+  if (!chatKey && !chatLabel && !phone) throw new Error("Choose a WhatsApp chat before saving the mapping.");
 
   const { error: linkError } = await supabase
     .from("freelance_hq_whatsapp_client_links")
@@ -356,50 +356,73 @@ export async function saveWhatsAppClientLink(input: {
     );
   if (linkError) throw linkError;
 
-  const { error: deleteError } = await supabase
+  const requested = Array.from(new Set(input.accessUserIds.filter(Boolean)));
+  const { data: existing, error: existingError } = await supabase
     .from("freelance_hq_whatsapp_chat_access")
-    .delete()
+    .select("user_id,live_from")
     .eq("client_id", input.clientId);
-  if (deleteError) throw deleteError;
+  if (existingError) throw existingError;
 
-  const accessUserIds = Array.from(new Set(input.accessUserIds.filter(Boolean)));
-  if (accessUserIds.length > 0) {
-    const { error: accessError } = await supabase.from("freelance_hq_whatsapp_chat_access").insert(
-      accessUserIds.map((userId) => ({
-        client_id: input.clientId,
-        user_id: userId,
-        can_send: true,
-        granted_by: input.adminUserId,
-        updated_at: now,
-      })),
-    );
-    if (accessError) throw accessError;
+  const existingByUser = new Map((existing ?? []).map((row) => [String(row.user_id), row]));
+  const removed = (existing ?? [])
+    .map((row) => String(row.user_id))
+    .filter((userId) => !requested.includes(userId));
+
+  if (removed.length) {
+    const { error } = await supabase
+      .from("freelance_hq_whatsapp_chat_access")
+      .delete()
+      .eq("client_id", input.clientId)
+      .in("user_id", removed);
+    if (error) throw error;
+  }
+
+  if (requested.length) {
+    const rows = requested.map((userId) => ({
+      client_id: input.clientId,
+      user_id: userId,
+      can_send: true,
+      granted_by: input.adminUserId,
+      live_from: existingByUser.get(userId)?.live_from || now,
+      updated_at: now,
+    }));
+    const { error } = await supabase
+      .from("freelance_hq_whatsapp_chat_access")
+      .upsert(rows, { onConflict: "client_id,user_id" });
+    if (error) throw error;
   }
 }
 
 async function canAccessClient(profile: Profile, clientId: string) {
-  if (profile.role === "admin") return { allowed: true, canSend: true };
+  if (profile.role === "admin") return { allowed: true, canSend: true, liveFrom: null as string | null };
   const { data, error } = await getSupabase()
     .from("freelance_hq_whatsapp_chat_access")
-    .select("can_send")
+    .select("can_send,live_from")
     .eq("client_id", clientId)
     .eq("user_id", profile.id)
     .maybeSingle();
   if (error) throw error;
-  return { allowed: Boolean(data), canSend: Boolean(data?.can_send) };
+  return {
+    allowed: Boolean(data),
+    canSend: Boolean(data?.can_send),
+    liveFrom: data?.live_from ? String(data.live_from) : null,
+  };
 }
 
 export async function listAccessibleWhatsAppClients(profile: Profile): Promise<WhatsAppChatClient[]> {
   const supabase = getSupabase();
+  let accessRows: Array<{ client_id: unknown; can_send: unknown; live_from: unknown }> = [];
   let allowedClientIds: string[] | null = null;
+
   if (profile.role !== "admin") {
     const { data: access, error } = await supabase
       .from("freelance_hq_whatsapp_chat_access")
-      .select("client_id,can_send")
+      .select("client_id,can_send,live_from")
       .eq("user_id", profile.id);
     if (error) throw error;
-    allowedClientIds = (access ?? []).map((row) => String(row.client_id));
-    if (allowedClientIds.length === 0) return [];
+    accessRows = (access ?? []) as typeof accessRows;
+    allowedClientIds = accessRows.map((row) => String(row.client_id));
+    if (!allowedClientIds.length) return [];
   }
 
   let linkQuery = supabase
@@ -417,38 +440,55 @@ export async function listAccessibleWhatsAppClients(profile: Profile): Promise<W
 
   const clientById = new Map((clients ?? []).map((row) => [String(row.id), row]));
   const clientIds = (links ?? []).map((row) => String(row.client_id));
-  const { data: messages, error: messageError } = clientIds.length
-    ? await supabase
-        .from("freelance_hq_whatsapp_messages")
-        .select("client_id,body,created_at,received_at")
-        .in("client_id", clientIds)
-        .order("created_at", { ascending: false })
-        .limit(500)
-    : { data: [], error: null };
+  const [{ data: messages, error: messageError }, { data: shares, error: shareError }] = await Promise.all([
+    clientIds.length
+      ? supabase
+          .from("freelance_hq_whatsapp_messages")
+          .select("id,client_id,body,created_at,received_at,sent_at")
+          .in("client_id", clientIds)
+          .order("created_at", { ascending: false })
+          .limit(1000)
+      : Promise.resolve({ data: [], error: null }),
+    profile.role !== "admin" && clientIds.length
+      ? supabase
+          .from("freelance_hq_whatsapp_message_shares")
+          .select("message_id,client_id")
+          .eq("user_id", profile.id)
+          .in("client_id", clientIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
   if (messageError) throw messageError;
+  if (shareError) throw shareError;
 
-  return Promise.all(
-    (links ?? []).map(async (row) => {
-      const clientId = String(row.client_id);
-      const client = clientById.get(clientId);
-      const clientMessages = (messages ?? []).filter((message) => String(message.client_id) === clientId);
-      const last = clientMessages[0];
-      const access = await canAccessClient(profile, clientId);
-      return {
-        clientId,
-        clientName: String(client?.name || client?.company || "Client"),
-        company: String(client?.company || ""),
-        phone: String(row.phone || client?.phone || ""),
-        chatKey: String(row.chat_key || ""),
-        chatLabel: String(row.chat_label || ""),
-        canSend: access.canSend,
-        isEnabled: Boolean(row.is_enabled),
-        unreadCount: 0,
-        lastMessageAt: last ? String(last.received_at || last.created_at) : null,
-        lastMessagePreview: last ? sanitizeText(last.body, 120) : "",
-      };
-    }),
-  );
+  const accessByClient = new Map(accessRows.map((row) => [String(row.client_id), row]));
+  const sharedIds = new Set((shares ?? []).map((row) => String(row.message_id)));
+
+  return (links ?? []).map((row) => {
+    const clientId = String(row.client_id);
+    const client = clientById.get(clientId);
+    const access = accessByClient.get(clientId);
+    const liveFrom = access?.live_from ? new Date(String(access.live_from)).getTime() : 0;
+    const visible = (messages ?? []).filter((message) => {
+      if (String(message.client_id) !== clientId) return false;
+      if (profile.role === "admin") return true;
+      const created = new Date(String(message.created_at)).getTime();
+      return sharedIds.has(String(message.id)) || (Number.isFinite(created) && created >= liveFrom);
+    });
+    const last = visible[0];
+    return {
+      clientId,
+      clientName: String(client?.name || client?.company || row.chat_label || "Client"),
+      company: String(client?.company || ""),
+      phone: String(row.phone || client?.phone || ""),
+      chatKey: String(row.chat_key || ""),
+      chatLabel: String(row.chat_label || ""),
+      canSend: profile.role === "admin" ? true : Boolean(access?.can_send),
+      isEnabled: Boolean(row.is_enabled),
+      unreadCount: 0,
+      lastMessageAt: last ? String(last.received_at || last.sent_at || last.created_at) : null,
+      lastMessagePreview: last ? sanitizeText(last.body, 120) : "",
+    };
+  });
 }
 
 export async function listWhatsAppMessages(profile: Profile, clientId: string): Promise<WhatsAppChatMessage[]> {
@@ -456,20 +496,38 @@ export async function listWhatsAppMessages(profile: Profile, clientId: string): 
   if (!access.allowed) throw new Error("Access denied.");
 
   const supabase = getSupabase();
-  const [{ data: rows, error }, { data: profiles, error: profileError }] = await Promise.all([
+  const [{ data: rows, error }, { data: profiles, error: profileError }, { data: shares, error: shareError }] = await Promise.all([
     supabase
       .from("freelance_hq_whatsapp_messages")
       .select("*")
       .eq("client_id", clientId)
       .order("created_at", { ascending: true })
-      .limit(500),
+      .limit(1000),
     supabase.from("freelance_hq_profiles").select("id,name,email"),
+    profile.role !== "admin"
+      ? supabase
+          .from("freelance_hq_whatsapp_message_shares")
+          .select("message_id")
+          .eq("client_id", clientId)
+          .eq("user_id", profile.id)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (error) throw error;
   if (profileError) throw profileError;
+  if (shareError) throw shareError;
+
+  const sharedIds = new Set((shares ?? []).map((row) => String(row.message_id)));
+  const liveFrom = access.liveFrom ? new Date(access.liveFrom).getTime() : 0;
+  const visibleRows = profile.role === "admin"
+    ? (rows ?? [])
+    : (rows ?? []).filter((row) => {
+        const created = new Date(String(row.created_at)).getTime();
+        return sharedIds.has(String(row.id)) || (Number.isFinite(created) && created >= liveFrom);
+      });
+
   const nameById = new Map((profiles ?? []).map((row) => [String(row.id), String(row.name || row.email || "Team")]));
 
-  return (rows ?? []).map((row) => ({
+  return visibleRows.map((row) => ({
     id: String(row.id),
     clientId: String(row.client_id),
     direction: row.direction,
