@@ -134,7 +134,6 @@ export function MemberFocusDashboard({
   const [pendingPanelOpen, setPendingPanelOpen] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [extensionWork, setExtensionWork] = useState<EmployeeActivitySummary | null>(initialExtensionWork);
-  const [extensionSyncedAt, setExtensionSyncedAt] = useState(() => Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -148,7 +147,6 @@ export function MemberFocusDashboard({
         const data = (await response.json()) as { summary?: EmployeeActivitySummary | null };
         if (!cancelled) {
           setExtensionWork(data.summary ?? null);
-          setExtensionSyncedAt(Date.now());
         }
       } catch {
         // Keep the last known timer state if a refresh fails.
@@ -350,8 +348,8 @@ export function MemberFocusDashboard({
     extensionWork?.lastSeenAt &&
     clockNow - new Date(extensionWork.lastSeenAt).getTime() <= 90_000;
   const liveExtensionSeconds =
-    extensionWork?.status === "active" && extensionFresh
-      ? Math.max(0, Math.floor((clockNow - extensionSyncedAt) / 1000))
+    extensionWork?.status === "active" && extensionFresh && extensionWork.lastSeenAt
+      ? Math.max(0, Math.floor((clockNow - new Date(extensionWork.lastSeenAt).getTime()) / 1000))
       : 0;
   const todayBrowserWorkSeconds = (extensionWork?.todayActiveSeconds ?? 0) + liveExtensionSeconds;
 
