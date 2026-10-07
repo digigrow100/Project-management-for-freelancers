@@ -393,6 +393,17 @@ export function WhatsAppBridgeManager({
       setSelectedChat(saved);
       setDirectSearchResults((current) => current.filter((item) => item.chatKey !== chat.chatKey));
       setMessage(chat.chatLabel + " added to My WhatsApp Chats.");
+      try {
+        const id = await createRequest({
+          requestType: "open_chat",
+          chatKey: saved.chatKey,
+          chatLabel: saved.chatLabel,
+          phone: saved.phone,
+        });
+        await waitForRequest(id);
+      } catch {
+        // The chat is saved even if WhatsApp Web is temporarily unavailable.
+      }
     });
   }
 
@@ -411,6 +422,27 @@ export function WhatsAppBridgeManager({
         setSelectedHistoryKeys([]);
       }
       setMessage(chat.chatLabel + " removed from My WhatsApp Chats.");
+    });
+  }
+
+  function openMyWhatsAppChat(chat: SavedAdminChat) {
+    setSelectedChat(chat);
+    setHistory([]);
+    setSelectedHistoryKeys([]);
+    setMessage("");
+    startTransition(async () => {
+      try {
+        const id = await createRequest({
+          requestType: "open_chat",
+          chatKey: chat.chatKey,
+          chatLabel: chat.chatLabel,
+          phone: chat.phone,
+        });
+        const request = await waitForRequest(id);
+        if (request.status !== "done") throw new Error(request.error || "Could not open this chat in WhatsApp Web.");
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Could not open this chat in WhatsApp Web.");
+      }
     });
   }
 
@@ -693,7 +725,7 @@ export function WhatsAppBridgeManager({
               <div className="max-h-[620px] overflow-y-auto">
                 {directChats.map((chat) => (
                   <div key={chat.id} className={cn("flex items-start border-b border-base-700/30", selectedChat?.id === chat.id ? "bg-accent-500/10" : "hover:bg-base-800/60")}>
-                    <button type="button" onClick={() => { setSelectedChat(chat); setHistory([]); setSelectedHistoryKeys([]); }} className="min-w-0 flex-1 px-4 py-3 text-left">
+                    <button type="button" onClick={() => openMyWhatsAppChat(chat)} className="min-w-0 flex-1 px-4 py-3 text-left">
                       <p className="truncate text-xs font-semibold text-neutral-200">{chat.chatLabel}</p>
                       <p className="mt-1 truncate text-[10px] text-neutral-600">{chat.phone || chat.secondary || "Saved WhatsApp chat"}</p>
                     </button>
