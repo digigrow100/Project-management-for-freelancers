@@ -141,11 +141,14 @@
       const rawId =
         node.getAttribute("data-id") ||
         node.querySelector("[data-id]")?.getAttribute("data-id") ||
-        node.getAttribute("data-testid") ||
+        "";
+      const prePlain =
+        node.getAttribute("data-pre-plain-text") ||
+        node.querySelector("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") ||
         "";
       const remoteMessageKey = rawId
         ? "wa:" + rawId
-        : "wa-fallback:" + simpleHash(target.clientId + "|" + body + "|" + index);
+        : "wa-fallback:" + simpleHash(target.clientId + "|" + prePlain + "|" + body);
       return {
         clientId: target.clientId,
         body,
