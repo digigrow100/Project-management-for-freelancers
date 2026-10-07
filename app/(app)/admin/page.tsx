@@ -105,6 +105,7 @@ export default async function AdminPage() {
         completedTasks={completedTasks}
         members={members}
         initialPresence={memberPresence}
+        initialEmployeeActivity={employeeActivity}
         timeSummaries={timeSummaries}
         timeEntries={timeEntries}
         memberProjectIds={Object.fromEntries(assignmentsByMember)}
