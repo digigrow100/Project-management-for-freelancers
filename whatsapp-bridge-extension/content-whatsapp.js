@@ -738,7 +738,7 @@
 
   async function syncOneClient() {
     if (busy || !whatsappReady() || !clients.length) return;
-    if (Date.now() - lastSyncAt < 3000) return;
+    if (Date.now() - lastSyncAt < 1000) return;
     busy = true;
     try {
       let target = null;
@@ -827,6 +827,6 @@
     if (ready) void syncOneClient();
   }
 
-  window.setInterval(tick, 3000);
+  window.setInterval(tick, 1000);
   window.setTimeout(tick, 1000);
 })();
