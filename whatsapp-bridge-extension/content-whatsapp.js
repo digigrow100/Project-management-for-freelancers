@@ -52,13 +52,17 @@
 
   function composerBox() {
     const selectors = [
-      'footer div[contenteditable="true"][role="textbox"]',
-      '[data-testid="conversation-compose-box-input"]',
+      '#main footer div[contenteditable="true"][role="textbox"]',
+      '#main [data-testid="conversation-compose-box-input"]',
+      '#main div[contenteditable="true"][role="textbox"][aria-label*="message" i]',
+      '#main div[contenteditable="true"][role="textbox"][data-tab]',
+      '#main footer div[contenteditable="true"]',
+      '#main div[contenteditable="true"][role="textbox"]',
       'footer div[contenteditable="true"]',
     ];
     for (const selector of selectors) {
       const node = document.querySelector(selector);
-      if (node) return node;
+      if (node && node.offsetParent) return node;
     }
     return null;
   }
@@ -271,7 +275,11 @@
         warning = "Duplicate name found, but WhatsApp did not expose a stable ID or phone for this row. Open WhatsApp and make the contact uniquely identifiable before mapping or sending.";
       }
 
-      const secondary = String(row.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
+      const rawSecondary = String(row.textContent || "").replace(/\s+/g, " ").trim();
+      const secondary = [
+        phone,
+        rawSecondary.match(/\b\d+\s+unread\s+messages?\b/i)?.[0] || "",
+      ].filter(Boolean).join(" · ").slice(0, 120);
       const signature = chatKey || ("unsafe|" + labelKey + "|" + secondary);
       if (seen.has(signature)) continue;
       seen.add(signature);
@@ -322,6 +330,41 @@
       .map((node) => String(node.getAttribute("title") || node.getAttribute("aria-label") || "").trim())
       .filter((value) => value && !looksLikeIconLabel(value) && !looksLikeMessagePreview(value));
     return candidates[0] || "";
+  }
+
+  function clickChatRow(row, target) {
+    const wanted = normalize(target.chatLabel || "");
+    const titleNode = Array.from(row.querySelectorAll("span[title], div[title]"))
+      .find((node) => normalize(node.getAttribute("title")) === wanted);
+
+    const candidates = [
+      titleNode,
+      titleNode?.closest('[role="button"]'),
+      titleNode?.closest('[tabindex]'),
+      row.querySelector('[role="button"]'),
+      row.querySelector('[tabindex="0"]'),
+      row,
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      if (!(candidate instanceof HTMLElement)) continue;
+      try {
+        candidate.scrollIntoView({ block: "center", inline: "nearest" });
+      } catch {}
+      const rect = candidate.getBoundingClientRect();
+      const init = {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + Math.min(12, Math.max(1, rect.width / 2)),
+        clientY: rect.top + Math.min(12, Math.max(1, rect.height / 2)),
+        button: 0,
+      };
+      candidate.dispatchEvent(new PointerEvent("pointerdown", init));
+      candidate.dispatchEvent(new MouseEvent("mousedown", init));
+      candidate.dispatchEvent(new PointerEvent("pointerup", init));
+      candidate.dispatchEvent(new MouseEvent("mouseup", init));
+      candidate.click();
+    }
   }
 
   function activeChatMatches(target) {
@@ -382,16 +425,9 @@
       throw new Error("The exact WhatsApp chat could not be found. Re-scan and add the chat again.");
     }
 
-    const clickTarget =
-      row.querySelector('[role="button"]') ||
-      row.querySelector('[tabindex="0"]') ||
-      row;
-    clickTarget.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-    clickTarget.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    clickTarget.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    clickTarget.click();
+    clickChatRow(row, target);
 
-    const opened = await waitForOpenedChat(target, 6000);
+    const opened = await waitForOpenedChat(target, 7000);
     if (!opened) {
       throw new Error("WhatsApp found the contact but did not open the conversation.");
     }
@@ -570,22 +606,45 @@
     busy = true;
     try {
       await openClient(target);
-      const composer = composerBox();
-      if (!composer) throw new Error("WhatsApp message composer was not found.");
+      let composer = composerBox();
+      for (let attempt = 0; attempt < 20 && !composer; attempt += 1) {
+        await sleep(150);
+        composer = composerBox();
+      }
+      if (!composer) throw new Error("WhatsApp conversation opened but the message box was not found.");
+
       setEditableText(composer, String(body || ""));
-      await sleep(200);
+      await sleep(250);
+
       const sendButton =
-        document.querySelector('[data-testid="compose-btn-send"]') ||
-        document.querySelector('button[aria-label*="Send"]') ||
-        document.querySelector('[data-icon="send"]')?.closest("button,div[role='button']");
-      if (sendButton) {
+        document.querySelector('#main [data-testid="compose-btn-send"]') ||
+        document.querySelector('#main button[aria-label*="Send" i]') ||
+        document.querySelector('#main [data-icon="send"]')?.closest("button,div[role='button']") ||
+        document.querySelector('#main button span[data-icon="send"]')?.closest("button");
+
+      if (sendButton instanceof HTMLElement) {
         sendButton.click();
       } else {
+        composer.focus();
         composer.dispatchEvent(new KeyboardEvent("keydown", {
-          key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true,
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        }));
+        composer.dispatchEvent(new KeyboardEvent("keyup", {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
         }));
       }
-      await sleep(650);
+
+      await sleep(800);
       return { ok: true, remoteMessageKey: (remoteKeyPrefix || "outbound:") + Date.now() };
     } finally {
       busy = false;
