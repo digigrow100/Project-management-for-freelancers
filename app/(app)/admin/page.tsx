@@ -23,10 +23,12 @@ import {
   listAdminWorkItems,
 } from "@/lib/store";
 import { getEmployeeActivitySummaries } from "@/lib/employeeActivity";
+import { getWhatsAppBridgeHealth } from "@/lib/whatsappBridge";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
 import { AdminTeamPanel } from "@/components/AdminTeamPanel";
 import { EmployeeActivityOverview } from "@/components/EmployeeActivityOverview";
 import { AdminMyWorkTime } from "@/components/AdminMyWorkTime";
+import { WhatsAppBridgeAdminCard } from "@/components/WhatsAppBridgeAdminCard";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +53,7 @@ export default async function AdminPage() {
     adminWorkItems,
     memberPresence,
     employeeActivity,
+    whatsappBridgeHealth,
   ] = await Promise.all([
     listTeamMembers(),
     getProjects(),
@@ -68,6 +71,7 @@ export default async function AdminPage() {
     listAdminWorkItems(currentProfile.id),
     listMemberPresence(),
     getEmployeeActivitySummaries(),
+    getWhatsAppBridgeHealth(),
   ]);
 
   const [invoiceItems, domainSettings, websitesByDomainId] = await Promise.all([
@@ -100,6 +104,8 @@ export default async function AdminPage() {
       </div>
 
       <AdminMyWorkTime initialSummary={employeeActivity.find((row) => row.employeeId === currentProfile.id) ?? null} />
+
+      <WhatsAppBridgeAdminCard initialHealth={whatsappBridgeHealth} />
 
       <AdminDashboardOverview
         projects={projects}
