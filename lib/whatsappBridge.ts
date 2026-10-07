@@ -492,35 +492,42 @@ export async function listAccessibleWhatsAppClients(profile: Profile): Promise<W
   const sharedIdSet = new Set(sharedIds);
   const accessByClient = new Map(accessRows.map((row) => [String(row.client_id), row]));
 
-  return (links ?? []).map((row) => {
-    const clientId = String(row.client_id);
-    const client = clientById.get(clientId);
-    const access = accessByClient.get(clientId);
-    const liveFrom = access?.live_from ? new Date(String(access.live_from)).getTime() : 0;
-    const visible = messages
-      .filter((message) => {
-        if (String(message.client_id) !== clientId) return false;
-        if (profile.role === "admin") return true;
-        return sharedIdSet.has(String(message.id)) || messageEffectiveTimestamp(message) >= liveFrom;
-      })
-      .sort((a, b) => messageEffectiveTimestamp(b) - messageEffectiveTimestamp(a));
-    const last = visible[0];
-    return {
-      clientId,
-      clientName: String(client?.name || client?.company || row.chat_label || "Client"),
-      company: String(client?.company || ""),
-      phone: String(row.phone || client?.phone || ""),
-      chatKey: String(row.chat_key || ""),
-      chatLabel: String(row.chat_label || ""),
-      canSend: profile.role === "admin" ? true : Boolean(access?.can_send),
-      isEnabled: Boolean(row.is_enabled),
-      unreadCount: 0,
-      lastMessageAt: last
-        ? String(last.remote_timestamp || last.received_at || last.sent_at || last.created_at || "")
-        : null,
-      lastMessagePreview: last ? sanitizeText(last.body, 120) : "",
-    };
-  });
+  return (links ?? [])
+    .map((row): WhatsAppChatClient | null => {
+      const clientId = String(row.client_id);
+      const client = clientById.get(clientId);
+      const access = accessByClient.get(clientId);
+      const liveFrom = access?.live_from ? new Date(String(access.live_from)).getTime() : 0;
+      const visible = messages
+        .filter((message) => {
+          if (String(message.client_id) !== clientId) return false;
+          if (profile.role === "admin") return true;
+          return sharedIdSet.has(String(message.id)) || messageEffectiveTimestamp(message) >= liveFrom;
+        })
+        .sort((a, b) => messageEffectiveTimestamp(b) - messageEffectiveTimestamp(a));
+
+      // A team chat stays completely hidden until there is an explicit shared
+      // starting message or a genuinely new message after access was granted.
+      if (profile.role !== "admin" && visible.length === 0) return null;
+
+      const last = visible[0];
+      return {
+        clientId,
+        clientName: String(client?.name || client?.company || row.chat_label || "Client"),
+        company: String(client?.company || ""),
+        phone: String(row.phone || client?.phone || ""),
+        chatKey: String(row.chat_key || ""),
+        chatLabel: String(row.chat_label || ""),
+        canSend: profile.role === "admin" ? true : Boolean(access?.can_send),
+        isEnabled: Boolean(row.is_enabled),
+        unreadCount: 0,
+        lastMessageAt: last
+          ? String(last.remote_timestamp || last.received_at || last.sent_at || last.created_at || "")
+          : null,
+        lastMessagePreview: last ? sanitizeText(last.body, 120) : "",
+      };
+    })
+    .filter((item): item is WhatsAppChatClient => item !== null);
 }
 
 export async function listWhatsAppMessages(profile: Profile, clientId: string): Promise<WhatsAppChatMessage[]> {
@@ -594,6 +601,34 @@ export async function listWhatsAppMessages(profile: Profile, clientId: string): 
 export async function queueWhatsAppMessage(profile: Profile, clientId: string, bodyRaw: unknown) {
   const access = await canAccessClient(profile, clientId);
   if (!access.allowed || !access.canSend) throw new Error("You cannot send messages to this client.");
+
+  if (profile.role !== "admin") {
+    const supabase = getSupabase();
+    const [{ data: shares, error: shareError }, { data: recent, error: recentError }] = await Promise.all([
+      supabase
+        .from("freelance_hq_whatsapp_message_shares")
+        .select("message_id")
+        .eq("client_id", clientId)
+        .eq("user_id", profile.id)
+        .limit(1),
+      supabase
+        .from("freelance_hq_whatsapp_messages")
+        .select("remote_timestamp,received_at,sent_at,created_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
+    if (shareError) throw shareError;
+    if (recentError) throw recentError;
+    const liveFrom = access.liveFrom ? new Date(access.liveFrom).getTime() : Number.POSITIVE_INFINITY;
+    const hasLiveMessage = (recent ?? []).some((row) =>
+      messageEffectiveTimestamp(row as Record<string, unknown>) >= liveFrom
+    );
+    if (!(shares ?? []).length && !hasLiveMessage) {
+      throw new Error("This chat has not started yet. The admin must share a starting message first.");
+    }
+  }
+
   const body = sanitizeText(bodyRaw);
   if (!body) throw new Error("Message cannot be empty.");
 
