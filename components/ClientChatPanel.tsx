@@ -151,7 +151,7 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
             <p className="mt-0.5 text-[10px] text-neutral-600">Only chats you are allowed to access</p>
           </div>
           <div className="flex items-center gap-1">
-            {"Notification" in window && Notification.permission !== "granted" && (
+            {typeof window !== "undefined" && "Notification" in window && Notification.permission !== "granted" && (
               <button
                 type="button"
                 onClick={() => void Notification.requestPermission()}
