@@ -22,17 +22,32 @@
 
   function searchBox() {
     const selectors = [
+      'input[placeholder*="Search" i]',
+      'input[aria-label*="Search" i]',
+      '[data-testid="chat-list-search"] input',
       '[data-testid="chat-list-search"] div[contenteditable="true"]',
       'div[contenteditable="true"][data-tab="3"]',
-      'div[contenteditable="true"][role="textbox"][aria-placeholder*="Search"]',
-      'div[contenteditable="true"][role="textbox"][title*="Search"]',
+      'div[contenteditable="true"][role="textbox"][aria-placeholder*="Search" i]',
+      'div[contenteditable="true"][role="textbox"][aria-label*="Search" i]',
+      'div[contenteditable="true"][role="textbox"][title*="Search" i]',
+      '[role="textbox"][aria-label*="Search or start new chat" i]',
     ];
     for (const selector of selectors) {
       const node = document.querySelector(selector);
-      if (node) return node;
+      if (node && !node.closest("footer")) return node;
     }
-    const boxes = Array.from(document.querySelectorAll('div[contenteditable="true"][role="textbox"]'));
-    return boxes.find((node) => !node.closest("footer")) || null;
+
+    const genericInputs = Array.from(document.querySelectorAll('input, [contenteditable="true"][role="textbox"]'));
+    return genericInputs.find((node) => {
+      if (node.closest("footer")) return false;
+      const hint = [
+        node.getAttribute?.("placeholder"),
+        node.getAttribute?.("aria-label"),
+        node.getAttribute?.("title"),
+        node.getAttribute?.("aria-placeholder"),
+      ].filter(Boolean).join(" ");
+      return /search/i.test(hint);
+    }) || null;
   }
 
   function composerBox() {
@@ -50,6 +65,19 @@
 
   function setEditableText(element, value) {
     element.focus();
+
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      const setter = Object.getOwnPropertyDescriptor(
+        element instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      if (setter) setter.call(element, value);
+      else element.value = value;
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, data: value }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
     const selection = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -64,58 +92,89 @@
     }));
   }
 
+  function canonicalRow(node) {
+    if (!(node instanceof HTMLElement)) return null;
+    return (
+      node.closest('[data-testid="cell-frame-container"]') ||
+      node.closest('[role="listitem"]') ||
+      node.closest('[role="row"]') ||
+      node.closest('div[tabindex="-1"]') ||
+      node
+    );
+  }
+
   function candidateRows() {
-    const selectors = [
+    const selectorGroups = [
       '#pane-side [data-testid="cell-frame-container"]',
-      '#pane-side [role="listitem"]',
-      '#pane-side [role="row"]',
       '[data-testid="search-results-list"] [data-testid="cell-frame-container"]',
+      '#pane-side [role="listitem"]',
       '[data-testid="search-results-list"] [role="listitem"]',
-      '[aria-label*="Search results"] [role="listitem"]',
-      '[aria-label*="Search results"] [role="row"]',
+      '#pane-side [role="row"]',
+      '[aria-label*="Search results" i] [role="row"]',
       '#pane-side div[tabindex="-1"]',
     ];
 
-    const collected = [];
-    const seen = new Set();
-    for (const selector of selectors) {
-      for (const row of document.querySelectorAll(selector)) {
-        if (!(row instanceof HTMLElement)) continue;
-        if (!row.offsetParent) continue;
-        if (seen.has(row)) continue;
+    for (const selector of selectorGroups) {
+      const seen = new Set();
+      const rows = [];
+      for (const node of document.querySelectorAll(selector)) {
+        const row = canonicalRow(node);
+        if (!(row instanceof HTMLElement) || !row.offsetParent || seen.has(row)) continue;
         seen.add(row);
-        collected.push(row);
+        rows.push(row);
       }
+      if (rows.length) return rows;
     }
-    if (collected.length) return collected;
 
-    // WhatsApp frequently changes the wrapper around search results. As a
-    // resilient fallback, walk visible titled contact-name elements back to
-    // their nearest clickable row.
-    for (const titleNode of document.querySelectorAll('#pane-side [title], [aria-label*="Search results"] [title]')) {
-      if (!(titleNode instanceof HTMLElement) || !titleNode.offsetParent) continue;
-      const row =
-        titleNode.closest('[data-testid="cell-frame-container"]') ||
-        titleNode.closest('[role="listitem"]') ||
-        titleNode.closest('[role="row"]') ||
-        titleNode.closest('div[tabindex="-1"]') ||
-        titleNode.closest('div[role="button"]');
+    const seen = new Set();
+    const fallback = [];
+    for (const titleNode of document.querySelectorAll('#pane-side [title], [aria-label*="Search results" i] [title]')) {
+      const row = canonicalRow(titleNode);
       if (!(row instanceof HTMLElement) || !row.offsetParent || seen.has(row)) continue;
       seen.add(row);
-      collected.push(row);
+      fallback.push(row);
     }
-    return collected;
+    return fallback;
+  }
+
+  function looksLikeIconLabel(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) return true;
+    return (
+      normalized.startsWith("wds-") ||
+      normalized.startsWith("ic-") ||
+      normalized.includes("chatlock-outline") ||
+      normalized === "locked chats" ||
+      normalized === "archived" ||
+      normalized === "mute" ||
+      normalized === "pin"
+    );
   }
 
   function rowLabel(row) {
-    const titled = Array.from(row.querySelectorAll("[title]"))
+    const titleCandidates = Array.from(row.querySelectorAll("span[title], div[title]"))
       .map((node) => String(node.getAttribute("title") || "").trim())
-      .find(Boolean);
-    if (titled) return titled;
-    const aria = String(row.getAttribute("aria-label") || "").trim();
-    if (aria) return aria;
+      .filter((value) => value && !looksLikeIconLabel(value));
+
+    if (titleCandidates.length) {
+      return titleCandidates
+        .sort((a, b) => b.length - a.length)
+        .find((value) => value.length <= 120) || titleCandidates[0];
+    }
+
+    const ariaCandidates = [
+      String(row.getAttribute("aria-label") || "").trim(),
+      ...Array.from(row.querySelectorAll("[aria-label]"))
+        .map((node) => String(node.getAttribute("aria-label") || "").trim()),
+    ].filter((value) => value && !looksLikeIconLabel(value) && !/unread|message|delivered|read/i.test(value));
+    if (ariaCandidates.length) return ariaCandidates[0].slice(0, 120);
+
     const text = String(row.textContent || "").replace(/\s+/g, " ").trim();
-    return text.slice(0, 120);
+    return text
+      .replace(/^wds-[^\s]+/i, "")
+      .replace(/^ic-[^\s]+/i, "")
+      .trim()
+      .slice(0, 120);
   }
 
   function rowPhone(row) {
