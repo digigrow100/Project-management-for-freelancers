@@ -7,9 +7,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const profile = await requireProfile();
-    if (profile.role !== "member") {
-      return NextResponse.json({ summary: null }, { status: 403 });
-    }
     const summary = await getEmployeeActivitySummary(profile.id);
     return NextResponse.json({ summary }, { headers: { "cache-control": "no-store" } });
   } catch {
