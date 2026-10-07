@@ -664,7 +664,11 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
     const freshest = [...employeeDevices].sort((a, b) => String(b.last_seen_at).localeCompare(String(a.last_seen_at)))[0] ?? null;
     const seenAge = freshest ? now - new Date(freshest.last_seen_at).getTime() : Number.POSITIVE_INFINITY;
     const status: BrowserDeviceStatus =
-      seenAge > 3 * 60 * 1000 ? "offline" : freshest?.last_status === "idle" ? "idle" : "active";
+      seenAge > 3 * 60 * 1000 || freshest?.last_status === "offline"
+        ? "offline"
+        : freshest?.last_status === "idle"
+          ? "idle"
+          : "active";
 
     const employeeActivities = (monthActivities ?? []).filter((row) => String(row.employee_id) === employeeId);
     const todayActivities = employeeActivities.filter(
