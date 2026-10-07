@@ -534,10 +534,6 @@ export async function listAccessibleWhatsAppClients(profile: Profile): Promise<W
         })
         .sort((a, b) => messageEffectiveTimestamp(b) - messageEffectiveTimestamp(a));
 
-      // A team chat stays completely hidden until there is an explicit shared
-      // starting message or a genuinely new message after access was granted.
-      if (profile.role !== "admin" && visible.length === 0) return null;
-
       const last = visible[0];
       return {
         clientId,
@@ -629,33 +625,6 @@ export async function listWhatsAppMessages(profile: Profile, clientId: string): 
 export async function queueWhatsAppMessage(profile: Profile, clientId: string, bodyRaw: unknown) {
   const access = await canAccessClient(profile, clientId);
   if (!access.allowed || !access.canSend) throw new Error("You cannot send messages to this client.");
-
-  if (profile.role !== "admin") {
-    const supabase = getSupabase();
-    const [{ data: shares, error: shareError }, { data: recent, error: recentError }] = await Promise.all([
-      supabase
-        .from("freelance_hq_whatsapp_message_shares")
-        .select("message_id")
-        .eq("client_id", clientId)
-        .eq("user_id", profile.id)
-        .limit(1),
-      supabase
-        .from("freelance_hq_whatsapp_messages")
-        .select("remote_timestamp,received_at,sent_at,created_at")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
-        .limit(100),
-    ]);
-    if (shareError) throw shareError;
-    if (recentError) throw recentError;
-    const liveFrom = access.liveFrom ? new Date(access.liveFrom).getTime() : Number.POSITIVE_INFINITY;
-    const hasLiveMessage = (recent ?? []).some((row) =>
-      messageEffectiveTimestamp(row as Record<string, unknown>) >= liveFrom
-    );
-    if (!(shares ?? []).length && !hasLiveMessage) {
-      throw new Error("This chat has not started yet. The admin must share a starting message first.");
-    }
-  }
 
   const body = sanitizeText(bodyRaw);
   if (!body) throw new Error("Message cannot be empty.");
