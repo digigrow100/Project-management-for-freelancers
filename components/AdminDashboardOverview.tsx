@@ -19,7 +19,7 @@ import {
   Users,
   WalletCards,
 } from "lucide-react";
-import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, MemberPresence, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary, Website } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, EmployeeActivitySummary, Invoice, InvoiceItem, MemberPresence, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary, Website } from "@/lib/types";
 import { businessMonthKey } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import { DomainsPanel } from "@/components/DomainsPanel";
@@ -126,6 +126,7 @@ export function AdminDashboardOverview({
   completedTasks,
   members,
   initialPresence,
+  initialEmployeeActivity,
   timeSummaries,
   timeEntries,
   memberProjectIds,
@@ -147,6 +148,7 @@ export function AdminDashboardOverview({
   completedTasks: Task[];
   members: Profile[];
   initialPresence: MemberPresence[];
+  initialEmployeeActivity: EmployeeActivitySummary[];
   timeSummaries: TaskTimeSummary[];
   timeEntries: TaskTimeEntry[];
   memberProjectIds: Record<string, string[]>;
@@ -165,21 +167,28 @@ export function AdminDashboardOverview({
   const [dashboardTab, setDashboardTab] = useState<"overview" | "reports" | "accounts" | "domains">("overview");
   const [presence, setPresence] = useState<MemberPresence[]>(initialPresence);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
+  const [employeeActivity, setEmployeeActivity] = useState<EmployeeActivitySummary[]>(initialEmployeeActivity);
 
   useEffect(() => {
     let cancelled = false;
 
     async function refreshPresence() {
       try {
-        const response = await fetch("/api/presence/team", { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as { presence?: MemberPresence[] };
-        if (!cancelled && Array.isArray(data.presence)) {
-          setPresence(data.presence);
-          setPresenceNow(Date.now());
+        const [presenceResponse, activityResponse] = await Promise.all([
+          fetch("/api/presence/team", { cache: "no-store" }),
+          fetch("/api/admin/employee-activity?summary=1", { cache: "no-store" }),
+        ]);
+        if (presenceResponse.ok) {
+          const data = (await presenceResponse.json()) as { presence?: MemberPresence[] };
+          if (!cancelled && Array.isArray(data.presence)) setPresence(data.presence);
         }
+        if (activityResponse.ok) {
+          const data = (await activityResponse.json()) as { summaries?: EmployeeActivitySummary[] };
+          if (!cancelled && Array.isArray(data.summaries)) setEmployeeActivity(data.summaries);
+        }
+        if (!cancelled) setPresenceNow(Date.now());
       } catch {
-        // Presence is a convenience signal; keep the last known state if polling fails.
+        // Keep the latest known state if polling fails.
       }
     }
 
@@ -274,6 +283,7 @@ export function AdminDashboardOverview({
     }
     return { status: "online" as const, label: "Online", lastSeen: current.lastSeenAt };
   }
+  const extensionByMember = new Map(employeeActivity.map((item) => [item.employeeId, item]));
   const memberPerformance = members
     .filter((member) => member.role !== "admin")
     .map((member) => {
@@ -291,57 +301,29 @@ export function AdminDashboardOverview({
           ? Math.round(projectProgress.reduce((sum, item) => sum + item.percent, 0) / projectProgress.length)
           : 0;
 
-      const entries = timeEntries.filter((entry) => entry.userId === member.id);
-      const todayEntries = entries.filter((entry) => businessDayKey(entry.startedAt) === todayKey);
-      const allTimeSeconds = entries.reduce((sum, entry) => sum + liveEntrySeconds(entry, nowMs), 0);
-      const todaySeconds = todayEntries.reduce((sum, entry) => sum + liveEntrySeconds(entry, nowMs), 0);
-
-      const firstStartedAt =
-        todayEntries.length > 0
-          ? [...todayEntries].sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0]?.startedAt ?? null
-          : null;
-      const latestActivityAt =
-        todayEntries.length > 0
-          ? todayEntries
-              .map((entry) => entry.endedAt ?? entry.startedAt)
-              .sort((a, b) => b.localeCompare(a))[0] ?? null
-          : null;
-
-      const activeEntry = todayEntries.find((entry) => !entry.endedAt);
-      const spanEndMs = activeEntry
-        ? nowMs
-        : latestActivityAt
-          ? new Date(latestActivityAt).getTime()
-          : 0;
-      const firstStartMs = firstStartedAt ? new Date(firstStartedAt).getTime() : 0;
-      const idleSeconds =
-        firstStartMs > 0 && spanEndMs >= firstStartMs
-          ? Math.max(0, Math.floor((spanEndMs - firstStartMs) / 1000) - todaySeconds)
-          : 0;
-
-      const todayByProject = new Map<string, number>();
-      const allTimeByProject = new Map<string, number>();
-      for (const entry of entries) {
-        const seconds = liveEntrySeconds(entry, nowMs);
-        allTimeByProject.set(entry.projectId, (allTimeByProject.get(entry.projectId) ?? 0) + seconds);
-        if (businessDayKey(entry.startedAt) === todayKey) {
-          todayByProject.set(entry.projectId, (todayByProject.get(entry.projectId) ?? 0) + seconds);
-        }
-      }
+      const extension = extensionByMember.get(member.id);
+      const status =
+        extension?.deviceCount
+          ? extension.status === "active"
+            ? { status: "online" as const, label: "Active", lastSeen: extension.lastSeenAt }
+            : extension.status === "idle"
+              ? { status: "away" as const, label: "Idle", lastSeen: extension.lastSeenAt }
+              : { status: "offline" as const, label: "Offline", lastSeen: extension.lastSeenAt }
+          : memberPresenceState(member.id);
 
       return {
         member,
-        presence: memberPresenceState(member.id),
+        presence: status,
         projectProgress,
         overallPercent,
-        allTimeSeconds,
-        todaySeconds,
-        firstStartedAt,
-        latestActivityAt,
-        idleSeconds,
-        isActive: entries.some((entry) => !entry.endedAt),
-        todayByProject,
-        allTimeByProject,
+        todaySeconds: extension?.todayActiveSeconds ?? 0,
+        monthSeconds: extension?.thisMonthActiveSeconds ?? 0,
+        firstStartedAt: extension?.startedTodayAt ?? null,
+        latestActivityAt: extension?.lastWorkAt ?? null,
+        idleSeconds: extension?.todayIdleSeconds ?? 0,
+        isActive: extension?.status === "active",
+        todayByProject: new Map(Object.entries(extension?.todayByProject ?? {})),
+        monthByProject: new Map(Object.entries(extension?.monthByProject ?? {})),
       };
     });
 
@@ -676,7 +658,7 @@ export function AdminDashboardOverview({
           </section>
 
         <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-          <SectionHead icon={Activity} title="Team Performance" subtitle="Daily activity, time and assigned-project progress" />
+          <SectionHead icon={Activity} title="Team Performance" subtitle="Extension work time, paused time and assigned-project progress" />
           <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
             {memberPerformance.map((row) => (
               <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
@@ -730,15 +712,15 @@ export function AdminDashboardOverview({
                     <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
                   </div>
                   <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">All time</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.allTimeSeconds)}</p>
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">This Month</p>
+                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.monthSeconds)}</p>
                   </div>
                   <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
                     <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
                     <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
                   </div>
                   <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last activity</p>
+                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last time today</p>
                     <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
                   </div>
                 </div>
@@ -764,7 +746,7 @@ export function AdminDashboardOverview({
                         </div>
                         <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
                           <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
-                          <span>Total {duration(row.allTimeByProject.get(project.id) ?? 0)}</span>
+                          <span>This month {duration(row.monthByProject.get(project.id) ?? 0)}</span>
                         </div>
                       </div>
                     ))}
