@@ -319,7 +319,42 @@ export async function shareWhatsAppHistory(
   } else if (remoteKeys.length) {
     query = query.in("remote_message_key", remoteKeys);
   } else if (from && to) {
-    query = query.gte("created_at", from).lt("created_at", to);
+    const [{ data: remoteMessages, error: remoteError }, { data: localMessages, error: localError }] = await Promise.all([
+      supabase
+        .from("freelance_hq_whatsapp_messages")
+        .select("id")
+        .eq("client_id", clientId)
+        .gte("remote_timestamp", from)
+        .lt("remote_timestamp", to)
+        .limit(1000),
+      supabase
+        .from("freelance_hq_whatsapp_messages")
+        .select("id")
+        .eq("client_id", clientId)
+        .is("remote_timestamp", null)
+        .gte("created_at", from)
+        .lt("created_at", to)
+        .limit(1000),
+    ]);
+    if (remoteError) throw remoteError;
+    if (localError) throw localError;
+    const combined = new Map<string, { id: unknown }>();
+    for (const item of [...(remoteMessages ?? []), ...(localMessages ?? [])]) combined.set(String(item.id), item);
+    const messages = Array.from(combined.values());
+    if (!messages.length) return { shared: 0 };
+    const now = nowIso();
+    const rows = messages.map((message) => ({
+      message_id: message.id,
+      client_id: clientId,
+      user_id: userId,
+      shared_by: adminUserId,
+      created_at: now,
+    }));
+    const { error } = await supabase
+      .from("freelance_hq_whatsapp_message_shares")
+      .upsert(rows, { onConflict: "message_id,user_id", ignoreDuplicates: true });
+    if (error) throw error;
+    return { shared: rows.length };
   } else {
     throw new Error("Select messages, a full day, or a date range to share.");
   }
