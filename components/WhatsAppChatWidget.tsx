@@ -5,6 +5,7 @@ import {
   AlertCircle,
   CheckCheck,
   Clock3,
+  CalendarRange,
   Languages,
   Loader2,
   MessageCircleMore,
@@ -34,8 +35,10 @@ function messageTime(value: string) {
 
 export function WhatsAppChatWidget({
   initialClients,
+  isAdmin = false,
 }: {
   initialClients: WhatsAppChatClient[];
+  isAdmin?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [clients, setClients] = useState(initialClients);
@@ -49,6 +52,10 @@ export function WhatsAppChatWidget({
   });
   const [translationBusy, setTranslationBusy] = useState(false);
   const [translationError, setTranslationError] = useState("");
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
+  const [historyImporting, setHistoryImporting] = useState(false);
+  const [historyStatus, setHistoryStatus] = useState("");
   const [showOriginalIds, setShowOriginalIds] = useState<Set<string>>(new Set());
   const [explainingId, setExplainingId] = useState("");
   const [explanations, setExplanations] = useState<Record<string, string>>({});
@@ -156,6 +163,21 @@ export function WhatsAppChatWidget({
   }
 
   useEffect(() => {
+    if (!isAdmin || historyFrom || historyTo) return;
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - 7);
+    const asInput = (value: Date) => {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, "0");
+      const day = String(value.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    setHistoryFrom(asInput(from));
+    setHistoryTo(asInput(to));
+  }, [isAdmin, historyFrom, historyTo]);
+
+  useEffect(() => {
     if (!open) return;
 
     void loadClients();
@@ -188,6 +210,7 @@ export function WhatsAppChatWidget({
     setError("");
     setTranslationError("");
     setTranslation({ enabled: false, detectedLanguage: "" });
+    setHistoryStatus("");
     setMessages([]);
     setShowOriginalIds(new Set());
     setExplanations({});
@@ -285,6 +308,92 @@ export function WhatsAppChatWidget({
       else next.add(messageId);
       return next;
     });
+  }
+
+  async function importHistory() {
+    if (!isAdmin || !selected || historyImporting) return;
+    if (!historyFrom || !historyTo) {
+      setHistoryStatus("Select both start and end dates.");
+      return;
+    }
+
+    const start = new Date(historyFrom + "T00:00:00+05:00");
+    const selectedEnd = new Date(historyTo + "T00:00:00+05:00");
+    if (Number.isNaN(start.getTime()) || Number.isNaN(selectedEnd.getTime())) {
+      setHistoryStatus("Choose a valid date range.");
+      return;
+    }
+    if (start.getTime() > selectedEnd.getTime()) {
+      setHistoryStatus("Start date cannot be after end date.");
+      return;
+    }
+
+    const endExclusive = new Date(selectedEnd.getTime() + 24 * 60 * 60 * 1000);
+    setHistoryImporting(true);
+    setHistoryStatus("Importing WhatsApp history…");
+
+    try {
+      const createResponse = await fetch("/api/admin/whatsapp-bridge/requests", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          requestType: "history",
+          clientId: selected.clientId,
+          chatKey: selected.chatKey,
+          chatLabel: selected.chatLabel,
+          phone: selected.phone,
+          dateFrom: start.toISOString(),
+          dateTo: endExclusive.toISOString(),
+        }),
+      });
+      const created = (await createResponse.json()) as { id?: string; error?: string };
+      if (!createResponse.ok || !created.id) {
+        throw new Error(created.error || "Could not start history import.");
+      }
+
+      let completed = false;
+      for (let attempt = 0; attempt < 150; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        const statusResponse = await fetch(
+          "/api/admin/whatsapp-bridge/requests?id=" + encodeURIComponent(created.id),
+          { cache: "no-store" },
+        );
+        const status = (await statusResponse.json()) as {
+          status?: string;
+          error?: string;
+          result?: { messages?: unknown[] } | null;
+        };
+
+        if (!statusResponse.ok) {
+          throw new Error(status.error || "Could not check history import.");
+        }
+        if (status.status === "failed") {
+          throw new Error(status.error || "WhatsApp history import failed.");
+        }
+        if (status.status === "done") {
+          const count = Array.isArray(status.result?.messages) ? status.result!.messages!.length : 0;
+          setHistoryStatus(
+            count > 0
+              ? `Imported ${count} message${count === 1 ? "" : "s"} from the selected range.`
+              : "Import completed. No messages were found in that range.",
+          );
+          completed = true;
+          break;
+        }
+      }
+
+      if (!completed) {
+        throw new Error("History import is taking too long. Please try again.");
+      }
+
+      await loadMessages(selected.clientId);
+    } catch (importError) {
+      setHistoryStatus(
+        importError instanceof Error ? importError.message : "Could not import WhatsApp history.",
+      );
+    } finally {
+      setHistoryImporting(false);
+    }
   }
 
   function sendMessage() {
@@ -483,30 +592,118 @@ export function WhatsAppChatWidget({
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => void toggleTranslation()}
-                          disabled={translationBusy}
-                          className={cn(
-                            "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition",
-                            translation.enabled
-                              ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
-                              : "border-base-700 bg-base-950 text-neutral-500 hover:text-neutral-300",
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isAdmin && (
+                            <span className="hidden items-center gap-1.5 lg:flex">
+                              <CalendarRange size={13} className="text-neutral-500" />
+                              <input
+                                type="date"
+                                value={historyFrom}
+                                max={historyTo || undefined}
+                                onChange={(event) => {
+                                  setHistoryFrom(event.target.value);
+                                  setHistoryStatus("");
+                                }}
+                                className="w-[126px] rounded-lg border border-base-700 bg-base-950 px-2 py-1.5 text-[10px] text-neutral-300 outline-none focus:border-accent-500"
+                                aria-label="History start date"
+                              />
+                              <span className="text-[10px] text-neutral-600">to</span>
+                              <input
+                                type="date"
+                                value={historyTo}
+                                min={historyFrom || undefined}
+                                onChange={(event) => {
+                                  setHistoryTo(event.target.value);
+                                  setHistoryStatus("");
+                                }}
+                                className="w-[126px] rounded-lg border border-base-700 bg-base-950 px-2 py-1.5 text-[10px] text-neutral-300 outline-none focus:border-accent-500"
+                                aria-label="History end date"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void importHistory()}
+                                disabled={historyImporting || !historyFrom || !historyTo}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-950 px-2.5 py-1.5 text-[10px] font-semibold text-neutral-300 transition hover:border-accent-500/50 hover:text-accent-300 disabled:opacity-50"
+                              >
+                                {historyImporting ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <CalendarRange size={12} />
+                                )}
+                                {historyImporting ? "Importing…" : "Import"}
+                              </button>
+                            </span>
                           )}
-                          title="Translate this conversation to Roman Urdu"
-                        >
-                          {translationBusy ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <Languages size={12} />
-                          )}
-                          {translationBusy
-                            ? "Translating…"
-                            : translation.enabled
-                              ? "Roman Urdu ON"
-                              : "Roman Urdu"}
-                        </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void toggleTranslation()}
+                            disabled={translationBusy}
+                            className={cn(
+                              "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition",
+                              translation.enabled
+                                ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
+                                : "border-base-700 bg-base-950 text-neutral-500 hover:text-neutral-300",
+                            )}
+                            title="Translate this conversation to Roman Urdu"
+                          >
+                            {translationBusy ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Languages size={12} />
+                            )}
+                            {translationBusy
+                              ? "Translating…"
+                              : translation.enabled
+                                ? "Roman Urdu ON"
+                                : "Roman Urdu"}
+                          </button>
+                        </div>
                       </div>
+
+                      {isAdmin && (
+                        <div className="flex shrink-0 items-center gap-2 border-b border-base-700/40 px-4 py-2 lg:hidden">
+                          <CalendarRange size={13} className="shrink-0 text-neutral-500" />
+                          <input
+                            type="date"
+                            value={historyFrom}
+                            max={historyTo || undefined}
+                            onChange={(event) => {
+                              setHistoryFrom(event.target.value);
+                              setHistoryStatus("");
+                            }}
+                            className="min-w-0 flex-1 rounded-lg border border-base-700 bg-base-950 px-2 py-1.5 text-[10px] text-neutral-300 outline-none"
+                            aria-label="History start date"
+                          />
+                          <span className="text-[10px] text-neutral-600">to</span>
+                          <input
+                            type="date"
+                            value={historyTo}
+                            min={historyFrom || undefined}
+                            onChange={(event) => {
+                              setHistoryTo(event.target.value);
+                              setHistoryStatus("");
+                            }}
+                            className="min-w-0 flex-1 rounded-lg border border-base-700 bg-base-950 px-2 py-1.5 text-[10px] text-neutral-300 outline-none"
+                            aria-label="History end date"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void importHistory()}
+                            disabled={historyImporting || !historyFrom || !historyTo}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-base-700 bg-base-950 px-2.5 py-1.5 text-[10px] font-semibold text-neutral-300 disabled:opacity-50"
+                          >
+                            {historyImporting ? <Loader2 size={11} className="animate-spin" /> : <CalendarRange size={11} />}
+                            Import
+                          </button>
+                        </div>
+                      )}
+
+                      {historyStatus && isAdmin && (
+                        <div className="shrink-0 border-b border-base-700/40 bg-base-950/30 px-4 py-1.5 text-[10px] text-neutral-500">
+                          {historyStatus}
+                        </div>
+                      )}
 
                       {(translationError || error) && (
                         <div className="shrink-0 border-b border-base-700/40 bg-rose-500/5 px-4 py-2 text-[10px] text-rose-300">
