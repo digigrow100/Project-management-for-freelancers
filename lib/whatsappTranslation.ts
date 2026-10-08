@@ -327,8 +327,8 @@ async function detectLanguageIfNeeded(profile: Profile, clientId: string) {
     .filter((message) => message.direction === "inbound")
     .slice(-8);
 
-  if (!recentInbound.length) return setting;
-  const latestInbound = recentInbound[recentInbound.length - 1];
+  const latestInbound = recentInbound.at(-1);
+  if (!latestInbound) return setting;
 
   if (
     setting.detectedLanguage &&
