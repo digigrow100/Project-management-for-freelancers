@@ -81,6 +81,8 @@ import type {
   SearchIntent,
   Service,
   SeoModule,
+  SeoAssignableModule,
+  SeoModuleAssignment,
   SeoWorkflowItem,
   SeoWorkflowModule,
   SeoWorkflowLoginMethod,
@@ -460,6 +462,107 @@ function toSeoWorkflowItem(row: SeoWorkflowItemRow): SeoWorkflowItem {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+const SEO_ASSIGNMENT_TITLE_PREFIX: Record<SeoAssignableModule, string> = {
+  website_pages: "Complete SEO checklist —",
+  full_website: "Full Website —",
+  social_media: "Social Media —",
+  local_listing: "Local Listing —",
+  blog_onsite: "Blog Onsite —",
+  web_2_0: "Web 2.0 —",
+  guest_blogging: "Guest Blogging —",
+  recurring: "Recurring SEO —",
+  reporting: "Reporting —",
+};
+
+export async function listSeoModuleAssignments(projectId: string): Promise<SeoModuleAssignment[]> {
+  try {
+    const [{ data, error }, members] = await Promise.all([
+      getSupabase()
+        .from("freelance_hq_seo_module_assignments")
+        .select("project_id,module,assigned_to")
+        .eq("project_id", projectId),
+      listTeamMembers(),
+    ]);
+    if (error) throw error;
+    const names = new Map(members.map((member) => [member.id, member.name || member.email]));
+    return ((data ?? []) as Array<{ project_id: string; module: SeoAssignableModule; assigned_to: string }>).map((row) => ({
+      projectId: row.project_id,
+      module: row.module,
+      assignedTo: row.assigned_to,
+      assignedToName: names.get(row.assigned_to) ?? "Unknown",
+    }));
+  } catch (error) {
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+}
+
+export async function setSeoModuleAssignment(
+  projectId: string,
+  module: SeoAssignableModule,
+  assignedTo: string | null,
+): Promise<void> {
+  const supabase = getSupabase();
+
+  if (assignedTo) {
+    await assertAssigneeMatchesProjectRole(projectId, assignedTo);
+
+    const { error: assignmentError } = await supabase
+      .from("freelance_hq_seo_module_assignments")
+      .upsert(
+        {
+          project_id: projectId,
+          module,
+          assigned_to: assignedTo,
+          updated_at: nowIso(),
+        },
+        { onConflict: "project_id,module" },
+      );
+    if (assignmentError) throw assignmentError;
+
+    // Module ownership should also grant project access. This is additive:
+    // removing a module owner never removes project access that may be needed
+    // for another module or a manual project assignment.
+    const { error: projectAccessError } = await supabase
+      .from("freelance_hq_project_assignments")
+      .upsert(
+        { project_id: projectId, user_id: assignedTo },
+        { onConflict: "project_id,user_id", ignoreDuplicates: true },
+      );
+    if (projectAccessError) throw projectAccessError;
+  } else {
+    const { error } = await supabase
+      .from("freelance_hq_seo_module_assignments")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("module", module);
+    if (error) throw error;
+  }
+
+  const taskOwner = assignedTo ?? null;
+
+  // Re-route any open workflow task already issued for this exact module.
+  const { error: fallbackError } = await supabase
+    .from("freelance_hq_tasks")
+    .update({ assigned_to: taskOwner, updated_at: nowIso() })
+    .eq("project_id", projectId)
+    .neq("status", "done")
+    .like("fallback_template_key", `workflow:${module}:%`);
+  if (fallbackError) throw fallbackError;
+
+  // Also re-route open tasks created from the module before exact module
+  // assignment metadata existed. Their stable title prefixes identify the
+  // workflow module without conflating Social, Local, Web 2.0 and Guest work.
+  const titlePrefix = SEO_ASSIGNMENT_TITLE_PREFIX[module];
+  const { error: taskError } = await supabase
+    .from("freelance_hq_tasks")
+    .update({ assigned_to: taskOwner, updated_at: nowIso() })
+    .eq("project_id", projectId)
+    .neq("status", "done")
+    .like("title", titlePrefix + "%");
+  if (taskError) throw taskError;
 }
 
 export async function listSeoWorkflowItems(projectId: string): Promise<SeoWorkflowItem[]> {
@@ -1198,6 +1301,16 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   const projects = (projectRows ?? []) as Array<{ id: string; name: string }>;
   if (projects.length === 0) return null;
 
+  const { data: moduleAssignmentRows, error: moduleAssignmentError } = await getSupabase()
+    .from("freelance_hq_seo_module_assignments")
+    .select("project_id,module,assigned_to")
+    .in("project_id", projects.map((project) => project.id));
+  if (moduleAssignmentError && !isMissingTableError(moduleAssignmentError)) throw moduleAssignmentError;
+  const moduleOwnerByKey = new Map(
+    ((moduleAssignmentRows ?? []) as Array<{ project_id: string; module: SeoAssignableModule; assigned_to: string }>)
+      .map((row) => [`${row.project_id}:${row.module}`, row.assigned_to]),
+  );
+
   const { data: todaysRows, error: todaysError } = await getSupabase()
     .from("freelance_hq_tasks")
     .select("project_id, fallback_template_key")
@@ -1226,6 +1339,8 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
 
   for (const workflowModule of moduleOrder) {
     for (const project of projects) {
+      const moduleOwner = moduleOwnerByKey.get(`${project.id}:${workflowModule}`);
+      if (moduleOwner && moduleOwner !== userId) continue;
       if (claimedToday.has(`${project.id}:${workflowModule}`)) continue;
 
       if (workflowModule === "website_pages") {
