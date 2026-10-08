@@ -1011,6 +1011,17 @@
           });
         } catch (error) {
           console.warn("WhatsApp voice-note processing failed:", error);
+          try {
+            await chrome.runtime.sendMessage({
+              type: "WA_AUDIO_FAILURE",
+              audio: {
+                clientId: item.clientId,
+                remoteMessageKey: item.remoteMessageKey,
+                receivedAt: item.receivedAt,
+                error: error?.message || "Voice-note capture failed.",
+              },
+            });
+          } catch {}
           audioTransferState.set(key, {
             status: "failed",
             attempts,
