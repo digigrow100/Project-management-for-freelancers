@@ -676,6 +676,8 @@
   }
 
   function extractMessage(node, target) {
+    if (node.querySelector("audio")) return null;
+
     const textNode =
       node.querySelector('[data-testid="msg-text"]') ||
       node.querySelector(".selectable-text") ||
