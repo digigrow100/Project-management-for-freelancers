@@ -331,6 +331,11 @@ export interface WhatsAppChatMessage {
   clientId: string;
   direction: "inbound" | "outbound";
   body: string;
+  /** Cached Roman Urdu display version when translation is enabled for this client. */
+  translatedBody?: string | null;
+  translationSourceLanguage?: string | null;
+  /** Cached on-demand AI explanation. Generated only after the explain button is clicked. */
+  explanation?: string | null;
   status: "queued" | "sending" | "sent" | "failed" | "received";
   senderUserId: string | null;
   senderName: string | null;

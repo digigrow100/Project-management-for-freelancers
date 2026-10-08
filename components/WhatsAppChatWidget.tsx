@@ -5,13 +5,21 @@ import {
   AlertCircle,
   CheckCheck,
   Clock3,
+  Languages,
+  Loader2,
   MessageCircleMore,
   RefreshCw,
   Send,
+  Sparkles,
   X,
 } from "lucide-react";
 import type { WhatsAppChatClient, WhatsAppChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+type TranslationState = {
+  enabled: boolean;
+  detectedLanguage: string;
+};
 
 function messageTime(value: string) {
   const date = new Date(value);
@@ -35,9 +43,19 @@ export function WhatsAppChatWidget({
   const [messages, setMessages] = useState<WhatsAppChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
+  const [translation, setTranslation] = useState<TranslationState>({
+    enabled: false,
+    detectedLanguage: "",
+  });
+  const [translationBusy, setTranslationBusy] = useState(false);
+  const [translationError, setTranslationError] = useState("");
+  const [showOriginalIds, setShowOriginalIds] = useState<Set<string>>(new Set());
+  const [explainingId, setExplainingId] = useState("");
+  const [explanations, setExplanations] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  const messagesLoadingRef = useRef(false);
   const notificationBaseline = useRef<Record<string, Set<string>>>({});
 
   const selected = useMemo(
@@ -69,26 +87,41 @@ export function WhatsAppChatWidget({
   }
 
   async function loadMessages(clientId = selectedId) {
+    if (messagesLoadingRef.current) return;
     if (!clientId) {
       setMessages([]);
       return;
     }
 
+    messagesLoadingRef.current = true;
     try {
       const response = await fetch(
         "/api/client-chat/" + encodeURIComponent(clientId) + "/messages",
         { cache: "no-store" },
       );
-      const data = await response.json();
+      const data = (await response.json()) as {
+        messages?: WhatsAppChatMessage[];
+        translation?: TranslationState;
+        translationError?: string;
+        error?: string;
+      };
 
       if (!response.ok) {
         setError(data.error || "Could not load messages.");
         return;
       }
 
-      const nextMessages = Array.isArray(data.messages)
-        ? (data.messages as WhatsAppChatMessage[])
-        : [];
+      const nextMessages = Array.isArray(data.messages) ? data.messages : [];
+      if (data.translation) setTranslation(data.translation);
+      setTranslationError(data.translationError || "");
+
+      setExplanations((current) => {
+        const next = { ...current };
+        for (const item of nextMessages) {
+          if (item.explanation) next[item.id] = item.explanation;
+        }
+        return next;
+      });
 
       const inboundIds = new Set<string>(
         nextMessages
@@ -106,7 +139,7 @@ export function WhatsAppChatWidget({
           const client = clients.find((entry) => entry.clientId === clientId);
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification(client?.clientName || "New WhatsApp message", {
-              body: item.body,
+              body: data.translation?.enabled && item.translatedBody ? item.translatedBody : item.body,
               tag: "widget-whatsapp-" + item.id,
             });
           }
@@ -117,6 +150,8 @@ export function WhatsAppChatWidget({
       setError("");
     } catch {
       setError("Could not refresh messages.");
+    } finally {
+      messagesLoadingRef.current = false;
     }
   }
 
@@ -151,7 +186,11 @@ export function WhatsAppChatWidget({
   function selectClient(client: WhatsAppChatClient) {
     setSelectedId(client.clientId);
     setError("");
+    setTranslationError("");
+    setTranslation({ enabled: false, detectedLanguage: "" });
     setMessages([]);
+    setShowOriginalIds(new Set());
+    setExplanations({});
     stickToBottomRef.current = true;
 
     void fetch("/api/client-chat/" + encodeURIComponent(client.clientId) + "/open", {
@@ -169,6 +208,83 @@ export function WhatsAppChatWidget({
             : "Could not open this chat in WhatsApp Web.",
         );
       });
+  }
+
+  async function toggleTranslation() {
+    if (!selected || translationBusy) return;
+
+    const enabled = !translation.enabled;
+    setTranslationBusy(true);
+    setTranslationError("");
+    messagesLoadingRef.current = true;
+
+    try {
+      const response = await fetch(
+        "/api/client-chat/" + encodeURIComponent(selected.clientId) + "/translation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        },
+      );
+      const data = (await response.json()) as {
+        setting?: TranslationState;
+        translationError?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !data.setting) {
+        setTranslationError(data.error || "Could not change translation setting.");
+        return;
+      }
+
+      setTranslation(data.setting);
+      setTranslationError(data.translationError || "");
+      setShowOriginalIds(new Set());
+    } catch {
+      setTranslationError("Could not change translation setting.");
+    } finally {
+      messagesLoadingRef.current = false;
+      setTranslationBusy(false);
+    }
+
+    await loadMessages(selected.clientId);
+  }
+
+  async function explainMessage(message: WhatsAppChatMessage) {
+    if (!selected || explainingId) return;
+    if (explanations[message.id]) return;
+
+    setExplainingId(message.id);
+    try {
+      const response = await fetch(
+        "/api/client-chat/" + encodeURIComponent(selected.clientId) + "/explain",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ messageId: message.id }),
+        },
+      );
+      const data = (await response.json()) as { explanation?: string; error?: string };
+      if (!response.ok || !data.explanation) {
+        setTranslationError(data.error || "Could not explain this message.");
+        return;
+      }
+      setExplanations((current) => ({ ...current, [message.id]: data.explanation! }));
+    } catch {
+      setTranslationError("Could not explain this message.");
+    } finally {
+      setExplainingId("");
+    }
+  }
+
+  function toggleOriginal(messageId: string) {
+    setShowOriginalIds((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
   }
 
   function sendMessage() {
@@ -354,14 +470,49 @@ export function WhatsAppChatWidget({
 
                   {selected ? (
                     <>
-                      <div className="shrink-0 border-b border-base-700/50 px-4 py-3">
-                        <p className="truncate text-sm font-semibold text-neutral-100">
-                          {selected.clientName}
-                        </p>
-                        <p className="mt-0.5 truncate text-[10px] text-neutral-600">
-                          WhatsApp · {selected.chatLabel || selected.phone || selected.chatKey}
-                        </p>
+                      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-base-700/50 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-neutral-100">
+                            {selected.clientName}
+                          </p>
+                          <p className="mt-0.5 truncate text-[10px] text-neutral-600">
+                            WhatsApp · {selected.chatLabel || selected.phone || selected.chatKey}
+                            {translation.enabled && translation.detectedLanguage
+                              ? " · Client: " + translation.detectedLanguage
+                              : ""}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => void toggleTranslation()}
+                          disabled={translationBusy}
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition",
+                            translation.enabled
+                              ? "border-accent-500/40 bg-accent-500/10 text-accent-300"
+                              : "border-base-700 bg-base-950 text-neutral-500 hover:text-neutral-300",
+                          )}
+                          title="Translate this conversation to Roman Urdu"
+                        >
+                          {translationBusy ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Languages size={12} />
+                          )}
+                          {translationBusy
+                            ? "Translating…"
+                            : translation.enabled
+                              ? "Roman Urdu ON"
+                              : "Roman Urdu"}
+                        </button>
                       </div>
+
+                      {(translationError || error) && (
+                        <div className="shrink-0 border-b border-base-700/40 bg-rose-500/5 px-4 py-2 text-[10px] text-rose-300">
+                          {translationError || error}
+                        </div>
+                      )}
 
                       <div
                         ref={messageViewportRef}
@@ -375,6 +526,14 @@ export function WhatsAppChatWidget({
                       >
                         {messages.map((message) => {
                           const outbound = message.direction === "outbound";
+                          const hasTranslation = Boolean(message.translatedBody);
+                          const showOriginal = showOriginalIds.has(message.id);
+                          const displayBody =
+                            translation.enabled && hasTranslation && !showOriginal
+                              ? message.translatedBody
+                              : message.body;
+                          const explanation = explanations[message.id];
+
                           return (
                             <div
                               key={message.id}
@@ -388,7 +547,45 @@ export function WhatsAppChatWidget({
                                     : "rounded-bl-md bg-base-800 text-neutral-200",
                                 )}
                               >
-                                <p className="whitespace-pre-wrap break-words text-sm">{message.body}</p>
+                                <p className="whitespace-pre-wrap break-words text-sm">
+                                  {displayBody}
+                                </p>
+
+                                {translation.enabled && (
+                                  <div className="mt-1.5 flex items-center gap-2">
+                                    {hasTranslation && message.translatedBody !== message.body && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleOriginal(message.id)}
+                                        className="text-[9px] font-medium text-accent-300 hover:text-accent-200"
+                                      >
+                                        {showOriginal ? "Roman Urdu" : "View original"}
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => void explainMessage(message)}
+                                      disabled={Boolean(explainingId)}
+                                      className="inline-flex items-center gap-1 text-[9px] font-medium text-neutral-500 hover:text-accent-300 disabled:opacity-50"
+                                      title="AI se short explanation"
+                                    >
+                                      {explainingId === message.id ? (
+                                        <Loader2 size={9} className="animate-spin" />
+                                      ) : (
+                                        <Sparkles size={9} />
+                                      )}
+                                      Explain
+                                    </button>
+                                  </div>
+                                )}
+
+                                {explanation && (
+                                  <div className="mt-2 rounded-lg border border-accent-500/15 bg-base-950/45 px-2.5 py-2 text-[11px] leading-relaxed text-neutral-400">
+                                    <span className="mr-1 font-semibold text-accent-300">AI:</span>
+                                    {explanation}
+                                  </div>
+                                )}
+
                                 <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[9px] text-neutral-600">
                                   {outbound && message.senderName && (
                                     <span className="mr-auto">{message.senderName}</span>
@@ -429,7 +626,6 @@ export function WhatsAppChatWidget({
                       </div>
 
                       <footer className="shrink-0 border-t border-base-700/50 bg-base-900 p-3">
-                        {error && <p className="mb-2 text-xs text-rose-300">{error}</p>}
                         <div className="flex items-end gap-2">
                           <textarea
                             value={draft}
@@ -444,7 +640,9 @@ export function WhatsAppChatWidget({
                             disabled={!selected.canSend}
                             placeholder={
                               selected.canSend
-                                ? "Write a message to " + selected.clientName + "…"
+                                ? translation.enabled
+                                  ? "Roman Urdu mein reply likhein…"
+                                  : "Write a message to " + selected.clientName + "…"
                                 : "You have read-only access"
                             }
                             className="min-h-[48px] flex-1 resize-none rounded-xl border border-base-700 bg-base-950 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-accent-500 disabled:opacity-60"
@@ -456,9 +654,14 @@ export function WhatsAppChatWidget({
                             className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-accent-500 text-base-950 transition hover:bg-accent-400 disabled:opacity-40"
                             aria-label="Send message"
                           >
-                            <Send size={17} />
+                            {isPending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
                           </button>
                         </div>
+                        {isPending && translation.enabled && (
+                          <p className="mt-1.5 text-[9px] text-neutral-600">
+                            Translating to {translation.detectedLanguage || "client language"} and sending…
+                          </p>
+                        )}
                       </footer>
                     </>
                   ) : (
