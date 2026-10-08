@@ -99,13 +99,36 @@
 
   function canonicalRow(node) {
     if (!(node instanceof HTMLElement)) return null;
-    return (
+
+    const semantic =
       node.closest('[data-testid="cell-frame-container"]') ||
+      node.closest('[role="option"]') ||
       node.closest('[role="listitem"]') ||
       node.closest('[role="row"]') ||
-      node.closest('div[tabindex="-1"]') ||
-      node
-    );
+      node.closest('div[tabindex="-1"]');
+
+    if (semantic instanceof HTMLElement) return semantic;
+
+    // WhatsApp frequently changes the search result markup and sometimes removes
+    // semantic roles entirely. Walk upward and pick the first visible row-sized
+    // container instead of depending only on data-testid/role selectors.
+    let current = node;
+    for (let depth = 0; depth < 7 && current; depth += 1) {
+      const rect = current.getBoundingClientRect();
+      const text = String(current.textContent || "").replace(/\s+/g, " ").trim();
+      if (
+        current.offsetParent &&
+        rect.width >= 180 &&
+        rect.height >= 42 &&
+        rect.height <= 130 &&
+        text.length >= 2
+      ) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return node;
   }
 
   function candidateRows() {
@@ -137,12 +160,33 @@
 
     const seen = new Set();
     const fallback = [];
-    for (const titleNode of document.querySelectorAll('#pane-side [title], [aria-label*="Search results" i] [title]')) {
-      const row = canonicalRow(titleNode);
-      if (!(row instanceof HTMLElement) || !row.offsetParent || seen.has(row)) continue;
-      seen.add(row);
-      fallback.push(row);
+    const roots = [
+      document.querySelector('[data-testid="search-results-list"]'),
+      document.querySelector('[aria-label*="Search results" i]'),
+      document.querySelector('#pane-side'),
+    ].filter(Boolean);
+
+    for (const root of roots) {
+      const nodes = root.querySelectorAll(
+        '[title], [aria-label], span[dir="auto"], span[dir="ltr"], div[dir="auto"], div[dir="ltr"]'
+      );
+      for (const node of nodes) {
+        if (!(node instanceof HTMLElement) || !node.offsetParent) continue;
+        const text = String(
+          node.getAttribute("title") ||
+          node.getAttribute("aria-label") ||
+          node.textContent ||
+          ""
+        ).replace(/\s+/g, " ").trim();
+        if (!text || text.length > 160 || looksLikeIconLabel(text) || looksLikeMessagePreview(text)) continue;
+        const row = canonicalRow(node);
+        if (!(row instanceof HTMLElement) || !row.offsetParent || seen.has(row)) continue;
+        seen.add(row);
+        fallback.push(row);
+      }
+      if (fallback.length) break;
     }
+
     return fallback;
   }
 
@@ -303,16 +347,16 @@
     setEditableText(search, String(query || "").trim());
 
     let rows = [];
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      await sleep(attempt === 0 ? 700 : 350);
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleep(attempt === 0 ? 800 : 300);
       rows = candidateRows();
-      const hasNeedle = rows.some((row) => normalize(rowLabel(row)).includes(needle) || normalize(row.textContent).includes(needle));
-      if (rows.length && hasNeedle) break;
+      if (rows.length) break;
     }
 
-    const results = buildChatResults(rows).filter((item) =>
-      !needle || normalize(item.chatLabel).includes(needle) || normalize(item.secondary).includes(needle)
-    );
+    // WhatsApp search can return a saved display name that differs from the
+    // literal query (for example a local contact alias). Keep the visible result
+    // rows instead of filtering them out just because the label differs.
+    const results = buildChatResults(rows);
 
     setEditableText(search, "");
     await sleep(250);
