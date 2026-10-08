@@ -6,6 +6,7 @@ import { canAccessClient, listWhatsAppMessages } from "@/lib/whatsappBridge";
 export interface WhatsAppTranslationSetting {
   enabled: boolean;
   detectedLanguage: string;
+  languageSourceMessageId: string;
 }
 
 export interface WhatsAppMessageTranslation {
@@ -42,13 +43,14 @@ async function requireClientAccess(profile: Profile, clientId: string, requireSe
 async function readSetting(clientId: string): Promise<WhatsAppTranslationSetting> {
   const { data, error } = await getSupabase()
     .from("freelance_hq_whatsapp_translation_settings")
-    .select("enabled,detected_language")
+    .select("enabled,detected_language,language_source_message_id")
     .eq("client_id", clientId)
     .maybeSingle();
   if (error) throw error;
   return {
     enabled: Boolean(data?.enabled),
     detectedLanguage: clean(data?.detected_language, 80),
+    languageSourceMessageId: clean(data?.language_source_message_id, 100),
   };
 }
 
@@ -118,20 +120,25 @@ async function translateBatch(
   }));
 
   const prompt = [
-    "You are translating a WhatsApp business conversation for a Pakistani support team.",
+    "You translate a WhatsApp business conversation for a Pakistani support team.",
     "Return JSON only with this exact shape:",
-    '{"clientLanguage":"language or writing style used by the client","items":[{"id":"message id","romanUrdu":"clear Roman Urdu","sourceLanguage":"source language"}]}',
+    '{"clientLanguage":"current language used by the client","items":[{"id":"message id","romanUrdu":"clear Roman Urdu","sourceLanguage":"source language"}]}',
     "",
-    "Rules:",
-    "- Convert every message into natural, easy Roman Urdu written with Latin letters.",
-    "- Translate for meaning, not word-for-word. If wording is vague, make the likely meaning clearer without inventing facts.",
+    "STRICT RULES:",
+    "- romanUrdu MUST be natural Roman Urdu written with LATIN letters. Never return Urdu/Arabic script in romanUrdu.",
+    "- Translate the meaning, not word-for-word, and make awkward wording easier to understand without inventing facts.",
+    "- English sentences must also be translated into Roman Urdu. Example: 'What is this?' => 'Yeh kya hai?'. Do not simply copy an English sentence.",
+    "- Arabic, Spanish, French, German and every other non-Roman-Urdu language must be converted to Roman Urdu meaning.",
+    "- If a message is already Roman Urdu or Roman Punjabi, keep it close to the original and only clarify unclear wording.",
     "- Keep names, company names, phone numbers, amounts, dates, URLs, email addresses, passwords/codes, product names and technical terms unchanged.",
-    "- If a message is already understandable Roman Urdu/Roman Punjabi, keep it close to the original and only clarify awkward wording.",
-    "- clientLanguage means the language/style the CLIENT uses in inbound messages, e.g. Spanish, Arabic, Urdu, Punjabi, Roman Urdu, English.",
-    "- A previously detected client language is supplied below. Keep it unless new inbound messages clearly show a different language.",
+    "- sourceLanguage is the language of THAT individual message.",
+    "- clientLanguage is determined ONLY from messages whose direction is 'inbound'. Outbound messages are team replies and MUST NEVER change clientLanguage.",
+    "- The most recent inbound messages matter most. If the client clearly switches language, clientLanguage must switch too.",
+    "- Distinguish Arabic from Urdu carefully even though both can use similar script. Arabic words/syntax such as ما, ماذا, هذا, اسم, اسمي, أنا are Arabic; Urdu words/syntax such as کیا, ہے, آپ, میرا, نہیں are Urdu.",
+    "- If a new inbound message is misspelled or script-ambiguous, keep the previously detected language unless there is clear evidence of a language switch.",
     "",
     "Previously detected client language: " + (knownLanguage || "unknown"),
-    "Messages:",
+    "Messages in chronological order:",
     JSON.stringify(payload),
   ].join("\n");
 
@@ -208,17 +215,28 @@ export async function ensureWhatsAppMessageTranslations(
         }
       }
 
-      if (translated.clientLanguage && translated.clientLanguage !== setting.detectedLanguage) {
-        const { error } = await getSupabase()
-          .from("freelance_hq_whatsapp_translation_settings")
-          .update({
-            detected_language: translated.clientLanguage,
-            updated_by: profile.id,
-            updated_at: now,
-          })
-          .eq("client_id", clientId);
-        if (error) throw error;
-        setting = { ...setting, detectedLanguage: translated.clientLanguage };
+      const inbound = batch.filter((message) => message.direction === "inbound");
+      const latestInbound = inbound[inbound.length - 1];
+      if (latestInbound) {
+        const latestItem = translated.items.find((item) => item.id === latestInbound.id);
+        const activeLanguage = translated.clientLanguage || latestItem?.sourceLanguage || setting.detectedLanguage;
+        if (activeLanguage) {
+          const { error } = await getSupabase()
+            .from("freelance_hq_whatsapp_translation_settings")
+            .update({
+              detected_language: activeLanguage,
+              language_source_message_id: latestInbound.id,
+              updated_by: profile.id,
+              updated_at: now,
+            })
+            .eq("client_id", clientId);
+          if (error) throw error;
+          setting = {
+            ...setting,
+            detectedLanguage: activeLanguage,
+            languageSourceMessageId: latestInbound.id,
+          };
+        }
       }
     } catch (error) {
       translationError = error instanceof Error ? error.message : "Translation is temporarily unavailable.";
@@ -226,23 +244,133 @@ export async function ensureWhatsAppMessageTranslations(
     }
   }
 
+  const recentInbound = messages
+    .filter((message) => message.direction === "inbound")
+    .slice(-8);
+  const latestInbound = recentInbound[recentInbound.length - 1];
+
+  // Older cached translations may have been created before language-source
+  // tracking existed. Re-detect once from recent CLIENT messages so the next
+  // reply cannot inherit a stale language from an outbound/team message.
+  if (
+    latestInbound &&
+    setting.languageSourceMessageId !== latestInbound.id
+  ) {
+    try {
+      const detectedLanguage = await detectClientLanguage(recentInbound, setting.detectedLanguage);
+      if (detectedLanguage) {
+        const now = new Date().toISOString();
+        const { error } = await getSupabase()
+          .from("freelance_hq_whatsapp_translation_settings")
+          .update({
+            detected_language: detectedLanguage,
+            language_source_message_id: latestInbound.id,
+            updated_by: profile.id,
+            updated_at: now,
+          })
+          .eq("client_id", clientId);
+        if (error) throw error;
+        setting = {
+          ...setting,
+          detectedLanguage,
+          languageSourceMessageId: latestInbound.id,
+        };
+      }
+    } catch (error) {
+      if (!translationError) {
+        translationError = error instanceof Error ? error.message : "Could not confirm client language.";
+      }
+    }
+  }
+
   return { setting, translations: cached, error: translationError };
+}
+
+async function detectClientLanguage(
+  recentInbound: WhatsAppChatMessage[],
+  previousLanguage: string,
+) {
+  const client = getOpenAiClient();
+  const prompt = [
+    "Detect the CURRENT language used by the client in these recent inbound WhatsApp messages.",
+    'Return JSON only: {"language":"language name"}',
+    "",
+    "STRICT RULES:",
+    "- These are CLIENT messages only. Determine the language of the most recent messages, not the team's language.",
+    "- If the client clearly switched language, return the new language.",
+    "- Use conversation continuity for short, misspelled or ambiguous messages.",
+    "- Distinguish Arabic from Urdu carefully. Arabic examples: ما, ماذا, هذا, اسم, اسمي, أنا. Urdu examples: کیا, ہے, آپ, میرا, نہیں.",
+    "- If the newest message is ambiguous, keep the previous language unless the recent context clearly shows a switch.",
+    "- Return concise names such as Arabic, English, Urdu, Spanish, French, German, Punjabi, Roman Urdu.",
+    "",
+    "Previous detected language: " + (previousLanguage || "unknown"),
+    "Recent inbound messages, oldest to newest:",
+    JSON.stringify(recentInbound.map((message) => ({ id: message.id, body: message.body }))),
+  ].join("\n");
+
+  const response = await client.responses.create({
+    model: AI_MODEL_DEFAULT,
+    input: [{ role: "user", content: prompt }],
+    max_output_tokens: 120,
+    store: false,
+  });
+  const parsed = parseJsonObject(response.output_text);
+  return clean(parsed.language, 80);
 }
 
 async function detectLanguageIfNeeded(profile: Profile, clientId: string) {
   let setting = await readSetting(clientId);
-  if (!setting.enabled || setting.detectedLanguage) return setting;
+  if (!setting.enabled) return setting;
 
   const messages = await listWhatsAppMessages(profile, clientId);
   const recentInbound = messages
     .filter((message) => message.direction === "inbound")
-    .slice(-6);
+    .slice(-8);
 
-  if (!recentInbound.length) return setting;
+  const latestInbound = recentInbound.at(-1);
+  if (!latestInbound) return setting;
 
-  const result = await ensureWhatsAppMessageTranslations(profile, clientId, recentInbound);
-  setting = result.setting;
-  return setting;
+  if (
+    setting.detectedLanguage &&
+    setting.languageSourceMessageId === latestInbound.id
+  ) {
+    return setting;
+  }
+
+  // First reuse the normal translation path. A newly arrived inbound message
+  // is normally translated there already, so this costs no additional AI call.
+  const ensured = await ensureWhatsAppMessageTranslations(profile, clientId, recentInbound);
+  setting = ensured.setting;
+  if (
+    setting.detectedLanguage &&
+    setting.languageSourceMessageId === latestInbound.id
+  ) {
+    return setting;
+  }
+
+  // Fallback only when the newest inbound message was already cached by an
+  // older ruleset or the language marker is stale. This runs once for that
+  // inbound message, then the result is cached.
+  const detectedLanguage = await detectClientLanguage(recentInbound, setting.detectedLanguage);
+  if (!detectedLanguage) return setting;
+
+  const now = new Date().toISOString();
+  const { error } = await getSupabase()
+    .from("freelance_hq_whatsapp_translation_settings")
+    .update({
+      detected_language: detectedLanguage,
+      language_source_message_id: latestInbound.id,
+      updated_by: profile.id,
+      updated_at: now,
+    })
+    .eq("client_id", clientId);
+  if (error) throw error;
+
+  return {
+    ...setting,
+    detectedLanguage,
+    languageSourceMessageId: latestInbound.id,
+  };
 }
 
 function isRomanUrduLanguage(language: string) {
@@ -285,12 +413,19 @@ export async function prepareWhatsAppOutgoingMessage(
 
   const client = getOpenAiClient();
   const prompt = [
-    "Translate this support reply from Roman Urdu into the client's language.",
-    "Client language: " + setting.detectedLanguage,
-    "Return JSON only: {\"translated\":\"final message\"}",
-    "Write naturally and professionally, but keep the same meaning and level of certainty.",
-    "Do not add promises, facts, greetings or details that are not in the original.",
-    "Keep names, company names, phone numbers, amounts, dates, URLs, email addresses, passwords/codes, product names and technical terms unchanged.",
+    "Translate this support reply from Roman Urdu into EXACTLY the target client language.",
+    "Target client language: " + setting.detectedLanguage,
+    'Return JSON only: {"translated":"final message"}',
+    "",
+    "STRICT RULES:",
+    "- Use the normal native writing system of the target language.",
+    "- If target is Arabic, write Arabic and NEVER Urdu.",
+    "- If target is Urdu, write Urdu and NEVER Arabic.",
+    "- If target is English, write natural English.",
+    "- If target is Spanish, French, German or another language, write only that target language.",
+    "- Do not transliterate into Roman script unless the target itself is Roman Urdu/Roman Punjabi.",
+    "- Preserve the same meaning and level of certainty. Do not add promises, facts, greetings or details.",
+    "- Keep names, company names, phone numbers, amounts, dates, URLs, email addresses, passwords/codes, product names and technical terms unchanged.",
     "",
     "Roman Urdu reply:",
     romanUrduBody,
