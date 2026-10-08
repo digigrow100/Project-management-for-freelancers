@@ -243,9 +243,11 @@ export function WhatsAppBridgeManager({
         const logicalIndex = next.findIndex((existing) => sameLogicalMessage(existing, item));
         if (logicalIndex >= 0) {
           const existing = next[logicalIndex];
-          const existingIsOptimistic = existing.remoteMessageKey.startsWith("direct:");
-          const incomingIsReal = !item.remoteMessageKey.startsWith("direct:");
-          next[logicalIndex] = existingIsOptimistic && incomingIsReal ? item : existing;
+          if (existing) {
+            const existingIsOptimistic = existing.remoteMessageKey.startsWith("direct");
+            const incomingIsReal = !item.remoteMessageKey.startsWith("direct");
+            next[logicalIndex] = existingIsOptimistic && incomingIsReal ? item : existing;
+          }
           continue;
         }
 

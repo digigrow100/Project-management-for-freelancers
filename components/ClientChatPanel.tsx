@@ -55,10 +55,10 @@ export function ClientChatPanel({ initialClients }: { initialClients: WhatsAppCh
         return;
       }
       const nextMessages = Array.isArray(data.messages) ? data.messages : [];
-      const inboundIds = new Set(
-        nextMessages
-          .filter((message: WhatsAppChatMessage) => message.direction === "inbound")
-          .map((message: WhatsAppChatMessage) => message.id),
+      const inboundIds = new Set<string>(
+        (nextMessages as WhatsAppChatMessage[])
+          .filter((message) => message.direction === "inbound")
+          .map((message) => message.id),
       );
       const previous = notificationBaseline.current[clientId];
 
