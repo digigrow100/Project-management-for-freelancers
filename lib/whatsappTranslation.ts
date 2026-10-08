@@ -244,6 +244,45 @@ export async function ensureWhatsAppMessageTranslations(
     }
   }
 
+  const recentInbound = messages
+    .filter((message) => message.direction === "inbound")
+    .slice(-8);
+  const latestInbound = recentInbound[recentInbound.length - 1];
+
+  // Older cached translations may have been created before language-source
+  // tracking existed. Re-detect once from recent CLIENT messages so the next
+  // reply cannot inherit a stale language from an outbound/team message.
+  if (
+    latestInbound &&
+    setting.languageSourceMessageId !== latestInbound.id
+  ) {
+    try {
+      const detectedLanguage = await detectClientLanguage(recentInbound, setting.detectedLanguage);
+      if (detectedLanguage) {
+        const now = new Date().toISOString();
+        const { error } = await getSupabase()
+          .from("freelance_hq_whatsapp_translation_settings")
+          .update({
+            detected_language: detectedLanguage,
+            language_source_message_id: latestInbound.id,
+            updated_by: profile.id,
+            updated_at: now,
+          })
+          .eq("client_id", clientId);
+        if (error) throw error;
+        setting = {
+          ...setting,
+          detectedLanguage,
+          languageSourceMessageId: latestInbound.id,
+        };
+      }
+    } catch (error) {
+      if (!translationError) {
+        translationError = error instanceof Error ? error.message : "Could not confirm client language.";
+      }
+    }
+  }
+
   return { setting, translations: cached, error: translationError };
 }
 
