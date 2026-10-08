@@ -1,5 +1,7 @@
 const CONFIG_REFRESH_MS = 30000;
 const HEARTBEAT_MS = 30000;
+const FAST_POLL_MS = 1000;
+const KEEPALIVE_MS = 20000;
 
 function storageGet(keys) {
   return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -222,6 +224,52 @@ async function disconnect() {
   });
 }
 
+let fastPollRunning = false;
+
+async function fastBridgePoll() {
+  if (fastPollRunning) return;
+  fastPollRunning = true;
+  try {
+    const state = await authState();
+    if (!state.deviceToken) return;
+
+    const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+    const tab = tabs.find((item) => item.active) || tabs[0];
+    if (!tab?.id) return;
+
+    let ready = false;
+    try {
+      const result = await chrome.tabs.sendMessage(tab.id, { type: "WA_READY_CHECK" });
+      ready = result?.ready === true;
+    } catch {
+      ready = false;
+    }
+
+    if (ready) {
+      await bridgeTick(tab.id, true);
+    }
+  } finally {
+    fastPollRunning = false;
+  }
+}
+
+function startFastPolling() {
+  // Content-script timers are throttled by Chrome when WhatsApp Web sits in a
+  // background tab, which caused bridge requests to be picked up only on the
+  // next minute boundary. Poll from the extension worker instead.
+  setInterval(() => {
+    void fastBridgePoll();
+  }, FAST_POLL_MS);
+
+  // Keep this private bridge worker alive while Chrome is running so the
+  // one-second poll is not suspended with the background WhatsApp tab.
+  setInterval(() => {
+    void chrome.runtime.getPlatformInfo().catch(() => {});
+  }, KEEPALIVE_MS);
+
+  void fastBridgePoll();
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   void (async () => {
     try {
@@ -281,3 +329,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 void ensureIdentity();
+startFastPolling();

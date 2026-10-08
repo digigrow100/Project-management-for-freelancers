@@ -930,6 +930,11 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || typeof message.type !== "string") return false;
 
+    if (message.type === "WA_READY_CHECK") {
+      sendResponse({ ok: true, ready: whatsappReady() });
+      return false;
+    }
+
     if (message.type === "WA_CONFIG") {
       clients = Array.isArray(message.clients) ? message.clients : [];
       sendResponse({ ok: true, clientCount: clients.length });
