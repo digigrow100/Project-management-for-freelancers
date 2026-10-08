@@ -330,6 +330,12 @@ export function WhatsAppBridgeManager({
   }
 
   useEffect(() => {
+    void refreshHealth();
+    const timer = window.setInterval(() => void refreshHealth(), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (activeTab !== "chats" || !selectedChat) return;
     const chat = selectedChat;
     void peekSelectedChat(chat);
