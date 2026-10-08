@@ -885,9 +885,8 @@
       }
 
       if (!target) {
-        target = clients[cycleIndex % clients.length];
-        cycleIndex = (cycleIndex + 1) % clients.length;
-        await openClient(target);
+        lastSyncAt = Date.now();
+        return;
       }
 
       const messages = extractRecentInbound(target);
