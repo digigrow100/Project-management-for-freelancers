@@ -176,15 +176,28 @@ async function bridgeTick(tabId, whatsappReady) {
     }
 
     if (!whatsappReady) return;
-    const config = await loadConfig(false);
+
+    // Outbox delivery is the critical path for team messages. Process it first
+    // so a temporary config refresh or admin remote-request failure cannot block
+    // queued team messages from being sent.
     try {
-      await chrome.tabs.sendMessage(tabId, { type: "WA_CONFIG", clients: config });
-    } catch {
-      return;
+      await processOutbox(tabId);
+    } catch (error) {
+      await heartbeat(true, "problem", error?.message || "WhatsApp outbox processing failed.");
     }
 
-    await processRemoteRequest(tabId);
-    await processOutbox(tabId);
+    try {
+      const config = await loadConfig(false);
+      await chrome.tabs.sendMessage(tabId, { type: "WA_CONFIG", clients: config });
+    } catch {
+      // Keep outbox delivery working even if config refresh/content messaging fails.
+    }
+
+    try {
+      await processRemoteRequest(tabId);
+    } catch {
+      // A failed admin bridge request must not block the next outbox tick.
+    }
   } finally {
     tickRunning = false;
   }
