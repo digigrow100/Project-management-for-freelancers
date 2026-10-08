@@ -107,7 +107,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
       )}
       {profile && <PresenceHeartbeat />}
-      {profile && <WhatsAppChatWidget initialClients={whatsappClients} />}
+      {profile && <WhatsAppChatWidget initialClients={whatsappClients} isAdmin={isAdmin} />}
     </div>
   );
 }
