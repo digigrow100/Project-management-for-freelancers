@@ -343,7 +343,7 @@ export async function completeWhatsAppBridgeRequest(
   const supabase = getSupabase();
   const { data: request, error: readError } = await supabase
     .from("freelance_hq_whatsapp_bridge_requests")
-    .select("id,request_type,client_id,status,claimed_by")
+    .select("id,request_type,client_id,status,claimed_by,payload")
     .eq("id", id)
     .eq("claimed_by", device.id)
     .maybeSingle();
@@ -357,6 +357,38 @@ export async function completeWhatsAppBridgeRequest(
   }
 
   const now = nowIso();
+
+  if (request.request_type === "direct_send") {
+    const payload = request.payload && typeof request.payload === "object"
+      ? request.payload as Record<string, unknown>
+      : {};
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : "";
+
+    if (messageId) {
+      const remoteMessageKey =
+        result && typeof result === "object" && typeof (result as Record<string, unknown>).remoteMessageKey === "string"
+          ? clean((result as Record<string, unknown>).remoteMessageKey, 500)
+          : "";
+
+      const messageUpdate: Record<string, unknown> = {
+        status: ok ? "sent" : "failed",
+        bridge_id: device.id,
+        error_text: ok ? "" : clean(input.error, 1000),
+        updated_at: now,
+      };
+      if (ok) {
+        messageUpdate.sent_at = now;
+        if (remoteMessageKey) messageUpdate.remote_message_key = remoteMessageKey;
+      }
+
+      const { error: messageUpdateError } = await supabase
+        .from("freelance_hq_whatsapp_messages")
+        .update(messageUpdate)
+        .eq("id", messageId)
+        .eq("client_id", request.client_id);
+      if (messageUpdateError) throw messageUpdateError;
+    }
+  }
   const { error } = await supabase
     .from("freelance_hq_whatsapp_bridge_requests")
     .update({
