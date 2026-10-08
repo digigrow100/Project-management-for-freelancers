@@ -110,12 +110,16 @@
 
   function candidateRows() {
     const selectorGroups = [
-      '#pane-side [data-testid="cell-frame-container"]',
       '[data-testid="search-results-list"] [data-testid="cell-frame-container"]',
-      '#pane-side [role="listitem"]',
-      '[data-testid="search-results-list"] [role="listitem"]',
-      '#pane-side [role="row"]',
+      '[aria-label*="Search results" i] [data-testid="cell-frame-container"]',
+      '[role="listbox"] [role="option"]',
+      '[role="listbox"] [role="listitem"]',
+      '[aria-label*="Search results" i] [role="listitem"]',
       '[aria-label*="Search results" i] [role="row"]',
+      '[role="grid"] [role="row"]',
+      '#pane-side [data-testid="cell-frame-container"]',
+      '#pane-side [role="listitem"]',
+      '#pane-side [role="row"]',
       '#pane-side div[tabindex="-1"]',
     ];
 
@@ -333,39 +337,58 @@
     return candidates[0] || "";
   }
 
-  function clickChatRow(row, target) {
+  async function clickChatRow(row, target) {
     const wanted = normalize(target.chatLabel || "");
-    const titleNode = Array.from(row.querySelectorAll("span[title], div[title]"))
-      .find((node) => normalize(node.getAttribute("title")) === wanted);
+    const titleNode = Array.from(row.querySelectorAll("span[title], div[title], [aria-label]"))
+      .find((node) => {
+        const label = node.getAttribute("title") || node.getAttribute("aria-label") || "";
+        return normalize(label) === wanted;
+      });
 
-    const candidates = [
-      titleNode,
+    const clickable = [
+      titleNode?.closest('[data-testid="cell-frame-container"]'),
+      titleNode?.closest('[role="option"]'),
+      titleNode?.closest('[role="listitem"]'),
+      titleNode?.closest('[role="row"]'),
       titleNode?.closest('[role="button"]'),
       titleNode?.closest('[tabindex]'),
       row.querySelector('[role="button"]'),
       row.querySelector('[tabindex="0"]'),
+      row.querySelector('[tabindex="-1"]'),
       row,
-    ].filter(Boolean);
+    ].find((node) => node instanceof HTMLElement && node.offsetParent);
 
-    for (const candidate of candidates) {
-      if (!(candidate instanceof HTMLElement)) continue;
-      try {
-        candidate.scrollIntoView({ block: "center", inline: "nearest" });
-      } catch {}
-      const rect = candidate.getBoundingClientRect();
-      const init = {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + Math.min(12, Math.max(1, rect.width / 2)),
-        clientY: rect.top + Math.min(12, Math.max(1, rect.height / 2)),
-        button: 0,
-      };
-      candidate.dispatchEvent(new PointerEvent("pointerdown", init));
-      candidate.dispatchEvent(new MouseEvent("mousedown", init));
-      candidate.dispatchEvent(new PointerEvent("pointerup", init));
-      candidate.dispatchEvent(new MouseEvent("mouseup", init));
-      candidate.click();
-    }
+    if (!(clickable instanceof HTMLElement)) return false;
+
+    try {
+      clickable.scrollIntoView({ block: "center", inline: "nearest" });
+    } catch {}
+
+    try {
+      clickable.focus({ preventScroll: true });
+    } catch {}
+
+    const rect = clickable.getBoundingClientRect();
+    const x = rect.left + Math.max(4, Math.min(rect.width / 2, 40));
+    const y = rect.top + Math.max(4, Math.min(rect.height / 2, 24));
+    const pointer = { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 };
+
+    clickable.dispatchEvent(new PointerEvent("pointerdown", pointer));
+    clickable.dispatchEvent(new MouseEvent("mousedown", pointer));
+    clickable.dispatchEvent(new PointerEvent("pointerup", pointer));
+    clickable.dispatchEvent(new MouseEvent("mouseup", pointer));
+    clickable.dispatchEvent(new MouseEvent("click", pointer));
+    clickable.click();
+
+    await sleep(350);
+    if (composerBox() || activeChatMatches(target)) return true;
+
+    // Some current WhatsApp Web builds require keyboard activation of a
+    // focused search result rather than a synthetic mouse click.
+    clickable.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    clickable.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    await sleep(350);
+    return Boolean(composerBox() || activeChatMatches(target));
   }
 
   function activeChatMatches(target) {
@@ -448,7 +471,7 @@
       throw new Error("The exact WhatsApp chat could not be found. Re-scan and add the chat again.");
     }
 
-    clickChatRow(row, target);
+    await clickChatRow(row, target);
 
     const opened = await waitForOpenedChat(target, 7000);
     if (!opened) {
