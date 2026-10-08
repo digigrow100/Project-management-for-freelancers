@@ -15,10 +15,18 @@
   }
 
   function whatsappReady() {
+    // WhatsApp removes/replaces #pane-side while search is active in current
+    // builds. Treat a visible chat search box or message composer as a logged-in
+    // session too; otherwise the bridge incorrectly reports "QR/login required".
+    const search = searchBox();
+    const composer = composerBox();
     return Boolean(
+      (search instanceof HTMLElement && search.offsetParent) ||
+      (composer instanceof HTMLElement && composer.offsetParent) ||
       document.querySelector("#pane-side") ||
       document.querySelector('[data-testid="chat-list"]') ||
-      document.querySelector('[aria-label*="Chat list"]')
+      document.querySelector('[aria-label*="Chat list" i]') ||
+      document.querySelector('[aria-label*="Chats" i]')
     );
   }
 
@@ -129,6 +137,44 @@
     }
 
     return node;
+  }
+
+  function visibleSearchResultRows(query) {
+    const needle = normalize(query);
+    const search = searchBox();
+    const nodes = Array.from(document.querySelectorAll(
+      'span[title], div[title], [aria-label], span[dir="auto"], span[dir="ltr"], div[dir="auto"], div[dir="ltr"]'
+    ));
+    const seen = new Set();
+    const rows = [];
+
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement) || !node.offsetParent) continue;
+      if (search && (node === search || node.contains(search) || search.contains(node))) continue;
+      if (node.closest("#main")) continue;
+
+      const raw = String(
+        node.getAttribute("title") ||
+        node.getAttribute("aria-label") ||
+        node.textContent ||
+        ""
+      ).replace(/\s+/g, " ").trim();
+
+      if (!raw || raw.length > 180 || looksLikeIconLabel(raw) || looksLikeMessagePreview(raw)) continue;
+      const normalized = normalize(raw);
+      if (needle && !normalized.includes(needle)) continue;
+
+      const row = canonicalRow(node);
+      if (!(row instanceof HTMLElement) || !row.offsetParent || seen.has(row)) continue;
+
+      const rect = row.getBoundingClientRect();
+      if (rect.width < 160 || rect.height < 35 || rect.height > 150) continue;
+
+      seen.add(row);
+      rows.push(row);
+    }
+
+    return rows;
   }
 
   function candidateRows() {
@@ -350,12 +396,17 @@
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(attempt === 0 ? 800 : 300);
       rows = candidateRows();
+
+      // Current WhatsApp Web search can render contacts outside #pane-side and
+      // without stable list roles/testids. Fall back to visible result text.
+      if (!rows.length || !rows.some((row) => normalize(row.textContent).includes(needle))) {
+        const visibleRows = visibleSearchResultRows(query);
+        if (visibleRows.length) rows = visibleRows;
+      }
+
       if (rows.length) break;
     }
 
-    // WhatsApp search can return a saved display name that differs from the
-    // literal query (for example a local contact alias). Keep the visible result
-    // rows instead of filtering them out just because the label differs.
     const results = buildChatResults(rows);
 
     setEditableText(search, "");
