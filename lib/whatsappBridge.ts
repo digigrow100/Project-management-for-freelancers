@@ -450,7 +450,7 @@ export async function saveWhatsAppClientLink(input: {
   }
 }
 
-async function canAccessClient(profile: Profile, clientId: string) {
+export async function canAccessClient(profile: Profile, clientId: string) {
   if (profile.role === "admin") return { allowed: true, canSend: true, liveFrom: null as string | null };
   const { data, error } = await getSupabase()
     .from("freelance_hq_whatsapp_chat_access")
