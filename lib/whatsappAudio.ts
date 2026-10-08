@@ -6,7 +6,7 @@ import {
   type AuthenticatedWhatsAppBridge,
 } from "@/lib/whatsappBridge";
 
-const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 2_500_000;
 const MAX_TRANSCRIPT_CHARS = 12000;
 const AUDIO_RETRY_AFTER_MS = 2 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
