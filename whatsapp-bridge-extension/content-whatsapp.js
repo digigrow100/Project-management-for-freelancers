@@ -1245,6 +1245,13 @@
       return false;
     }
 
+    if (message.type === "WA_SYNC_NOW") {
+      syncOneClient()
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => sendResponse({ ok: false, error: error?.message || "Inbound sync failed." }));
+      return true;
+    }
+
     if (message.type === "WA_SEND_MESSAGE") {
       sendToChat(message.message, message.message?.body || "", "outbound:")
         .then((result) => sendResponse({ ok: true, remoteMessageKey: result.remoteMessageKey || ("outbound:" + message.message?.id) }))
