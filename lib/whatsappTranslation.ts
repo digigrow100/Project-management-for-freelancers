@@ -219,7 +219,7 @@ export async function ensureWhatsAppMessageTranslations(
       const latestInbound = inbound[inbound.length - 1];
       if (latestInbound) {
         const latestItem = translated.items.find((item) => item.id === latestInbound.id);
-        const activeLanguage = translated.clientLanguage || latestItem?.sourceLanguage || setting.detectedLanguage;
+        const activeLanguage = latestItem?.sourceLanguage || translated.clientLanguage || setting.detectedLanguage;
         if (activeLanguage) {
           const { error } = await getSupabase()
             .from("freelance_hq_whatsapp_translation_settings")
