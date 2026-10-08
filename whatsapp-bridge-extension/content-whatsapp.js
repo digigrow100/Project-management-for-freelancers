@@ -44,12 +44,15 @@
     ];
     for (const selector of selectors) {
       const node = document.querySelector(selector);
-      if (node && !node.closest("footer")) return node;
+      if (node instanceof HTMLElement && node.offsetParent && !node.closest("footer")) return node;
     }
 
-    const genericInputs = Array.from(document.querySelectorAll('input, [contenteditable="true"][role="textbox"]'));
-    return genericInputs.find((node) => {
-      if (node.closest("footer")) return false;
+    const genericInputs = Array.from(document.querySelectorAll(
+      'input, textarea, [contenteditable="true"], [role="textbox"]'
+    ));
+
+    const hinted = genericInputs.find((node) => {
+      if (!(node instanceof HTMLElement) || !node.offsetParent || node.closest("footer")) return false;
       const hint = [
         node.getAttribute?.("placeholder"),
         node.getAttribute?.("aria-label"),
@@ -57,6 +60,20 @@
         node.getAttribute?.("aria-placeholder"),
       ].filter(Boolean).join(" ");
       return /search/i.test(hint);
+    });
+    if (hinted) return hinted;
+
+    return genericInputs.find((node) => {
+      if (!(node instanceof HTMLElement) || !node.offsetParent || node.closest("footer")) return false;
+      if (node.closest("#main")) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 180 &&
+        rect.height >= 28 &&
+        rect.height <= 80 &&
+        rect.top >= 20 &&
+        rect.top <= 180 &&
+        rect.left >= 0 &&
+        rect.left < window.innerWidth * 0.6;
     }) || null;
   }
 
@@ -390,6 +407,8 @@
     if (!search) throw new Error("WhatsApp search box was not found.");
 
     const needle = normalize(query);
+    setEditableText(search, "");
+    await sleep(80);
     setEditableText(search, String(query || "").trim());
 
     let rows = [];
