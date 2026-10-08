@@ -14,7 +14,6 @@ const NAV = [
   { href: "/seo/pages", label: "SEO Pages", icon: PanelsTopLeft },
   { href: "/projects/closed", label: "Closed Projects", icon: Archive },
   { href: "/notes", label: "Notes", icon: FileText },
-  { href: "/client-chat", label: "Client Chat", icon: MessageCircleMore },
 ];
 
 export function Sidebar({

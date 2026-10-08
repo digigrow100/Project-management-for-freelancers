@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
-import { AiAssistant } from "@/components/AiAssistant";
+import { WhatsAppChatWidget } from "@/components/WhatsAppChatWidget";
 import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
 import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
 import { ExtensionHealthBanner } from "@/components/ExtensionHealthBanner";
@@ -21,6 +21,7 @@ import {
   listDomains,
   listRenewals,
 } from "@/lib/store";
+import { listAccessibleWhatsAppClients } from "@/lib/whatsappBridge";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     renewals,
     clients,
     adminWorkflowSettings,
+    whatsappClients,
   ] = await Promise.all([
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     profile ? countUnseenProjects(profile.id, isAdmin) : Promise.resolve(0),
@@ -49,6 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     isAdmin ? listRenewals() : Promise.resolve([]),
     canSeeClients ? listClients() : Promise.resolve([]),
     isAdmin && profile ? getAdminWorkflowSettings(profile.id) : Promise.resolve(null),
+    profile ? listAccessibleWhatsAppClients(profile) : Promise.resolve([]),
   ]);
 
   if (isAdmin && profile) {
@@ -104,7 +107,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
       )}
       {profile && <PresenceHeartbeat />}
-      {profile && <AiAssistant projects={projects} clients={clients} hasTicker={false} />}
+      {profile && <WhatsAppChatWidget initialClients={whatsappClients} />}
     </div>
   );
 }
