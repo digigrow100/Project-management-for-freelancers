@@ -191,6 +191,9 @@ async function bridgeTick(tabId, whatsappReady) {
     try {
       const config = await loadConfig(false);
       await chrome.tabs.sendMessage(tabId, { type: "WA_CONFIG", clients: config });
+      // Chrome throttles background-tab timers. Trigger inbound sync from the
+      // service worker so new WhatsApp text/voice reaches the app promptly.
+      await chrome.tabs.sendMessage(tabId, { type: "WA_SYNC_NOW" });
     } catch {
       // Keep outbox delivery working even if config refresh/content messaging fails.
     }
@@ -222,6 +225,18 @@ async function uploadInboundAudio(audio) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || "Voice note processing failed.");
   return data;
+}
+
+async function reportInboundAudioFailure(audio) {
+  if (!audio || typeof audio !== "object") return;
+  try {
+    await apiFetch("/api/whatsapp-bridge/audio/failure", {
+      method: "POST",
+      body: JSON.stringify(audio),
+    });
+  } catch {
+    // Diagnostic reporting must never affect normal bridge traffic.
+  }
 }
 
 async function disconnect() {
@@ -340,6 +355,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     uploadInboundAudio(message.audio)
       .then((data) => sendResponse({ ok: true, result: data }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Voice note processing failed." }));
+    return true;
+  }
+
+  if (message.type === "WA_AUDIO_FAILURE") {
+    reportInboundAudioFailure(message.audio)
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: true }));
     return true;
   }
 

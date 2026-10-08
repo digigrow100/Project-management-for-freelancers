@@ -1011,6 +1011,17 @@
           });
         } catch (error) {
           console.warn("WhatsApp voice-note processing failed:", error);
+          try {
+            await chrome.runtime.sendMessage({
+              type: "WA_AUDIO_FAILURE",
+              audio: {
+                clientId: item.clientId,
+                remoteMessageKey: item.remoteMessageKey,
+                receivedAt: item.receivedAt,
+                error: error?.message || "Voice-note capture failed.",
+              },
+            });
+          } catch {}
           audioTransferState.set(key, {
             status: "failed",
             attempts,
@@ -1243,6 +1254,13 @@
       clients = Array.isArray(message.clients) ? message.clients : [];
       sendResponse({ ok: true, clientCount: clients.length });
       return false;
+    }
+
+    if (message.type === "WA_SYNC_NOW") {
+      syncOneClient()
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => sendResponse({ ok: false, error: error?.message || "Inbound sync failed." }));
+      return true;
     }
 
     if (message.type === "WA_SEND_MESSAGE") {

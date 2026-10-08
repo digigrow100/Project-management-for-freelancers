@@ -320,3 +320,76 @@ export async function ingestWhatsAppAudio(
     throw error;
   }
 }
+
+
+export async function reportWhatsAppAudioFailure(
+  device: AuthenticatedWhatsAppBridge,
+  rawInput: unknown,
+) {
+  const input = rawInput && typeof rawInput === "object"
+    ? (rawInput as Record<string, unknown>)
+    : {};
+
+  const clientId = clean(input.clientId, 100);
+  const remoteMessageKey = clean(input.remoteMessageKey, 500);
+  const receivedAtRaw = clean(input.receivedAt, 100);
+  const errorText = clean(input.error, 1200) || "Voice-note capture failed before upload.";
+
+  if (!clientId || !remoteMessageKey || !receivedAtRaw) {
+    throw new Error("Voice-note failure data is incomplete.");
+  }
+
+  const receivedTime = new Date(receivedAtRaw).getTime();
+  if (!Number.isFinite(receivedTime)) throw new Error("Voice-note timestamp is invalid.");
+  const receivedAt = new Date(receivedTime).toISOString();
+
+  const config = await getBridgeClientConfig(device);
+  if (!config.some((item) => item.clientId === clientId)) {
+    throw new Error("Voice note client is not mapped to this bridge.");
+  }
+
+  const supabase = getSupabase();
+  const { data: existing, error: existingError } = await supabase
+    .from("freelance_hq_whatsapp_audio_jobs")
+    .select("id,status,attempts")
+    .eq("client_id", clientId)
+    .eq("remote_message_key", remoteMessageKey)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing?.status === "done") return { recorded: false, reason: "already_done" };
+
+  const now = nowIso();
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("freelance_hq_whatsapp_audio_jobs")
+      .update({
+        status: "failed",
+        attempts: Math.min(MAX_ATTEMPTS, Number(existing.attempts || 0) + 1),
+        bridge_id: device.id,
+        error_text: errorText,
+        updated_at: now,
+        completed_at: now,
+      })
+      .eq("id", existing.id);
+    if (error) throw error;
+    return { recorded: true };
+  }
+
+  const { error } = await supabase
+    .from("freelance_hq_whatsapp_audio_jobs")
+    .insert({
+      client_id: clientId,
+      bridge_id: device.id,
+      remote_message_key: remoteMessageKey,
+      received_at: receivedAt,
+      mime_type: "",
+      byte_size: 0,
+      status: "failed",
+      attempts: 1,
+      error_text: errorText,
+      updated_at: now,
+      completed_at: now,
+    });
+  if (error && error.code !== "23505") throw error;
+  return { recorded: true };
+}
