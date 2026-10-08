@@ -1,4 +1,4 @@
 Production deployment trigger
-Date: 2026-10-07
-Base: e7772d58a47972e16c7189e1baef4f74d12431a0
-Reason: WhatsApp incoming message notifications
+Date: 2026-10-08
+Reason: retry production deploy after Vercel rate-limit window
+Retry: 1
