@@ -187,7 +187,35 @@ export function WhatsAppBridgeManager({
     const next = draft.accessUserIds.includes(userId)
       ? draft.accessUserIds.filter((id) => id !== userId)
       : [...draft.accessUserIds, userId];
+    const nextDraft: Draft = { ...draft, accessUserIds: next };
+
+    // Persist access immediately when the admin clicks a team member. Requiring
+    // a second "Save Access" click made the UI look assigned while nothing was
+    // actually written to the database.
     updateDraft(link.clientId, { accessUserIds: next });
+    setMessage("");
+
+    startTransition(async () => {
+      const response = await fetch("/api/admin/whatsapp-bridge/configure", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: link.clientId, ...nextDraft }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        updateDraft(link.clientId, { accessUserIds: draft.accessUserIds });
+        setMessage(data.error || "Could not update team access.");
+        return;
+      }
+
+      setLinks((current) => current.map((item) => item.clientId === link.clientId
+        ? { ...item, ...nextDraft, accessUserIds: next }
+        : item));
+      setMessage(next.includes(userId)
+        ? "Team access granted."
+        : "Team access removed.");
+    });
   }
 
   async function createRequest(payload: Record<string, unknown>) {
@@ -632,13 +660,11 @@ export function WhatsAppBridgeManager({
         });
         const request = await waitForRequest(id);
         if (request.status !== "done") throw new Error(request.error || "Message was not sent.");
-        const remoteMessageKey = request.result?.remoteMessageKey || ("direct-ui:" + Date.now());
-        mergeVisibleHistory([{
-          direction: "outbound",
-          body,
-          remoteMessageKey,
-          remoteTimestamp: new Date().toISOString(),
-        }]);
+        // Do not add a second optimistic copy here. The live WhatsApp peek will
+        // read back the real sent bubble with its real key, so inserting a local
+        // copy first can make one actual send appear twice in the app.
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        await peekSelectedChat(selectedChat);
         setMessage("Message sent through WhatsApp Web.");
       } catch (error) {
         setDirectDraft(body);
