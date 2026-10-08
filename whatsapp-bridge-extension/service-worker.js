@@ -213,6 +213,17 @@ async function uploadInbound(messages) {
   });
 }
 
+async function uploadInboundAudio(audio) {
+  if (!audio || typeof audio !== "object") throw new Error("Voice note data is missing.");
+  const response = await apiFetch("/api/whatsapp-bridge/audio", {
+    method: "POST",
+    body: JSON.stringify(audio),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || "Voice note processing failed.");
+  return data;
+}
+
 async function disconnect() {
   await storageSet({
     appOrigin: null,
@@ -322,6 +333,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     uploadInbound(message.messages)
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Inbound sync failed." }));
+    return true;
+  }
+
+  if (message.type === "WA_AUDIO_INBOUND") {
+    uploadInboundAudio(message.audio)
+      .then((data) => sendResponse({ ok: true, result: data }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || "Voice note processing failed." }));
     return true;
   }
 

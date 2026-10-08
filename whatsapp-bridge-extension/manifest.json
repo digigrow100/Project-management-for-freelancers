@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Freelance HQ WhatsApp Bridge",
-  "version": "1.2.7",
-  "description": "Admin WhatsApp bridge with manual mapping, date history sharing, and controlled team access.",
+  "version": "1.2.8",
+  "description": "Admin WhatsApp bridge with manual mapping, controlled team access, date history sharing, and voice-to-text support.",
   "permissions": [
     "storage",
     "tabs",
