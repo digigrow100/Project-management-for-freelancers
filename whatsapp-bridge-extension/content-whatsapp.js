@@ -675,8 +675,19 @@
     return null;
   }
 
+  function isVoiceNoteNode(node) {
+    return Boolean(
+      node.querySelector("audio") ||
+      node.querySelector('[data-icon="ptt-status"]') ||
+      node.querySelector('[data-icon*="audio" i]') ||
+      node.querySelector('[data-icon*="voice" i]') ||
+      node.querySelector('[aria-label*="voice message" i]') ||
+      node.querySelector('[aria-label*="play voice message" i]')
+    );
+  }
+
   function extractMessage(node, target) {
-    if (node.querySelector("audio")) return null;
+    if (isVoiceNoteNode(node)) return null;
 
     const textNode =
       node.querySelector('[data-testid="msg-text"]') ||
@@ -754,11 +765,149 @@
     return outbound;
   }
 
-  function extractAudioDescriptor(node, target) {
-    if (isOutboundMessageNode(node)) return null;
+  const AUDIO_PAGE_CHANNEL = "__fhq_wa_audio__";
+  let audioBridgeSeq = 0;
+  const audioBridgePending = new Map();
 
-    const audio = node.querySelector("audio");
-    if (!(audio instanceof HTMLAudioElement)) return null;
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (
+      event.source !== window ||
+      !data ||
+      data.channel !== AUDIO_PAGE_CHANNEL ||
+      data.direction !== "response"
+    ) {
+      return;
+    }
+    const resolve = audioBridgePending.get(data.id);
+    if (resolve) {
+      audioBridgePending.delete(data.id);
+      resolve(data);
+    }
+  });
+
+  function askAudioPage(action, timeout = 5000) {
+    return new Promise((resolve) => {
+      const id = ++audioBridgeSeq;
+      audioBridgePending.set(id, resolve);
+      window.postMessage({
+        channel: AUDIO_PAGE_CHANNEL,
+        direction: "request",
+        id,
+        action,
+      }, "*");
+      window.setTimeout(() => {
+        if (!audioBridgePending.has(id)) return;
+        audioBridgePending.delete(id);
+        resolve({ ok: false, error: "Voice-note capture timed out." });
+      }, timeout);
+    });
+  }
+
+  function pressElement(element) {
+    if (!(element instanceof HTMLElement)) return;
+    const opts = { bubbles: true, cancelable: true, composed: true };
+    try {
+      element.dispatchEvent(new PointerEvent("pointerdown", opts));
+      element.dispatchEvent(new MouseEvent("mousedown", opts));
+      element.dispatchEvent(new PointerEvent("pointerup", opts));
+      element.dispatchEvent(new MouseEvent("mouseup", opts));
+    } catch {}
+    try {
+      element.click();
+    } catch {}
+  }
+
+  function controlIconText(element) {
+    if (!(element instanceof HTMLElement)) return "";
+    const iconNames = Array.from(element.querySelectorAll("[data-icon]"))
+      .map((node) => String(node.getAttribute("data-icon") || ""))
+      .join(" ");
+    return normalize([
+      iconNames,
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.textContent,
+    ].filter(Boolean).join(" "));
+  }
+
+  function findVoiceTransportButton(node) {
+    const buttons = Array.from(node.querySelectorAll("button"))
+      .filter((button) => button instanceof HTMLElement && button.offsetParent);
+    if (!buttons.length) return null;
+
+    const slider = node.querySelector('[role="slider"]');
+    if (slider) {
+      const before = buttons.filter(
+        (button) => button.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+      if (before.length) return before[before.length - 1];
+    }
+
+    return buttons.find((button) => {
+      const label = controlIconText(button);
+      return !/\b\d+(?:[.,]\d+)?\s*[x×]\b/i.test(label);
+    }) || null;
+  }
+
+  function isDownloadVoiceControl(element) {
+    return /download/.test(controlIconText(element));
+  }
+
+  async function waitForVoiceTransport(node, timeoutMs = 25000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const button = findVoiceTransportButton(node);
+      if (button && !isDownloadVoiceControl(button)) return button;
+      await sleep(200);
+    }
+    return null;
+  }
+
+  async function captureVoiceBlob(node) {
+    const pageReady = await askAudioPage("ping", 2000);
+    if (!pageReady?.ok) {
+      throw new Error("WhatsApp audio capture hook is not active. Reload WhatsApp Web.");
+    }
+
+    let transport = findVoiceTransportButton(node);
+    if (!transport) throw new Error("Voice-note control was not found.");
+
+    if (isDownloadVoiceControl(transport)) {
+      pressElement(transport);
+      transport = await waitForVoiceTransport(node);
+      if (!transport) throw new Error("WhatsApp did not finish downloading this voice note.");
+    }
+
+    const id = ++audioBridgeSeq;
+    const capturedPromise = new Promise((resolve) => {
+      audioBridgePending.set(id, resolve);
+      window.postMessage({
+        channel: AUDIO_PAGE_CHANNEL,
+        direction: "request",
+        id,
+        action: "arm",
+      }, "*");
+      window.setTimeout(() => {
+        if (!audioBridgePending.has(id)) return;
+        audioBridgePending.delete(id);
+        resolve({ ok: false, error: "Voice-note capture timed out." });
+      }, 30000);
+    });
+
+    await sleep(60);
+    pressElement(transport);
+    const captured = await capturedPromise;
+    void askAudioPage("disarm", 1500);
+
+    if (!captured?.ok || !(captured.blob instanceof Blob) || !captured.blob.size) {
+      throw new Error(captured?.error || "Could not capture WhatsApp voice note.");
+    }
+    return captured.blob;
+  }
+
+  function extractAudioDescriptor(node, target) {
+    if (isOutboundMessageNode(node) || !isVoiceNoteNode(node)) return null;
 
     const prePlain = messagePrePlain(node);
     const remoteTimestamp = parseWhatsAppTimestamp(prePlain);
@@ -770,23 +919,15 @@
       "";
     const remoteMessageKey = rawId
       ? "wa:" + rawId
-      : "wa-audio:" + simpleHash(String(target.chatKey || target.chatLabel || "") + "|" + prePlain);
-
-    const sourceNode = audio.querySelector("source");
-    const audioSrc = String(audio.currentSrc || audio.src || sourceNode?.src || "").trim();
-    const mimeType = String(
-      sourceNode?.getAttribute("type") ||
-      audio.getAttribute("type") ||
-      "audio/ogg"
-    ).trim();
+      : "wa-audio:" + simpleHash(
+          String(target.chatKey || target.chatLabel || "") + "|" + prePlain
+        );
 
     return {
       clientId: target.clientId,
       remoteMessageKey,
       receivedAt: remoteTimestamp,
-      mimeType,
-      audioSrc,
-      audioElement: audio,
+      node,
     };
   }
 
@@ -816,24 +957,11 @@
   }
 
   async function uploadAudioDescriptor(item) {
-    let audioSrc = String(item.audioSrc || "").trim();
-    const audio = item.audioElement;
-    if (!audioSrc && audio instanceof HTMLAudioElement) {
-      try {
-        audio.load();
-      } catch {}
-      for (let attempt = 0; attempt < 8 && !audioSrc; attempt += 1) {
-        await sleep(200);
-        audioSrc = String(audio.currentSrc || audio.src || "").trim();
-      }
-    }
-    if (!audioSrc) throw new Error("WhatsApp voice note audio is not loaded yet.");
-
-    const response = await fetch(audioSrc, { credentials: "include" });
-    if (!response.ok) throw new Error("Could not read WhatsApp voice note.");
-    const blob = await response.blob();
+    const blob = await captureVoiceBlob(item.node);
     if (!blob.size) throw new Error("WhatsApp voice note is empty.");
-    if (blob.size > 2500000) throw new Error("WhatsApp voice note is too large to process safely.");
+    if (blob.size > 2500000) {
+      throw new Error("WhatsApp voice note is too large to process safely.");
+    }
 
     const dataBase64 = await blobToBase64(blob);
     const result = await chrome.runtime.sendMessage({
@@ -842,7 +970,7 @@
         clientId: item.clientId,
         remoteMessageKey: item.remoteMessageKey,
         receivedAt: item.receivedAt,
-        mimeType: blob.type || item.mimeType || "audio/ogg",
+        mimeType: blob.type || "audio/ogg",
         dataBase64,
       },
     });
@@ -858,8 +986,7 @@
         if (!key) continue;
 
         const previous = audioTransferState.get(key);
-        if (previous?.status === "done") continue;
-        if (previous?.status === "uploading") continue;
+        if (previous?.status === "done" || previous?.status === "uploading") continue;
         if (
           previous?.status === "failed" &&
           Date.now() - Number(previous.lastAttempt || 0) < 120000
@@ -868,9 +995,10 @@
         }
         if (Number(previous?.attempts || 0) >= 3) continue;
 
+        const attempts = Number(previous?.attempts || 0) + 1;
         audioTransferState.set(key, {
           status: "uploading",
-          attempts: Number(previous?.attempts || 0) + 1,
+          attempts,
           lastAttempt: Date.now(),
         });
 
@@ -878,13 +1006,14 @@
           await uploadAudioDescriptor(item);
           audioTransferState.set(key, {
             status: "done",
-            attempts: Number(previous?.attempts || 0) + 1,
+            attempts,
             lastAttempt: Date.now(),
           });
-        } catch {
+        } catch (error) {
+          console.warn("WhatsApp voice-note processing failed:", error);
           audioTransferState.set(key, {
             status: "failed",
-            attempts: Number(previous?.attempts || 0) + 1,
+            attempts,
             lastAttempt: Date.now(),
           });
         }
