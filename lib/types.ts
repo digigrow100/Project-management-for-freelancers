@@ -530,6 +530,24 @@ export interface ProjectPage {
   updatedAt: string;
 }
 
+export type SeoAssignableModule =
+  | "website_pages"
+  | "full_website"
+  | "social_media"
+  | "local_listing"
+  | "blog_onsite"
+  | "web_2_0"
+  | "guest_blogging"
+  | "recurring"
+  | "reporting";
+
+export interface SeoModuleAssignment {
+  projectId: string;
+  module: SeoAssignableModule;
+  assignedTo: string;
+  assignedToName: string;
+}
+
 export type SeoWorkflowModule =
   | "full_website"
   | "social_media"

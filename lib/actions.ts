@@ -48,6 +48,7 @@ import type {
   Role,
   SearchIntent,
   SeoModule,
+  SeoAssignableModule,
   SeoWorkflowApprovalStatus,
   SeoWorkflowLoginMethod,
   SeoWorkflowOutreachStatus,
@@ -264,6 +265,16 @@ export async function updateWebDetailsAction(formData: FormData) {
 
   await store.updateProjectDetails(projectId, { webDetails, websiteUrl: webDetails.websiteUrl });
   refresh(projectId);
+}
+
+export async function setSeoModuleAssignmentAction(input: {
+  projectId: string;
+  module: SeoAssignableModule;
+  assignedTo: string | null;
+}) {
+  await requireAdmin();
+  await store.setSeoModuleAssignment(input.projectId, input.module, input.assignedTo);
+  refresh(input.projectId);
 }
 
 export async function createTaskAction(formData: FormData) {

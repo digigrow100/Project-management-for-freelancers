@@ -10,6 +10,7 @@ import {
   listPageAuditChecks,
   listProjectAttachments,
   listSeoReports,
+  listSeoModuleAssignments,
   listSeoWorkflowItems,
   getReportPreferences,
   getProject,
@@ -38,6 +39,7 @@ import { PaymentsCard } from "@/components/PaymentsCard";
 import { SeoReportingPanel } from "@/components/SeoReportingPanel";
 import { ProjectAttachments } from "@/components/ProjectAttachments";
 import { SeoWorkflowPanel } from "@/components/SeoWorkflowPanel";
+import { SeoModuleAssignmentBar } from "@/components/SeoModuleAssignmentBar";
 import { WebAppFeaturesPanel } from "@/components/WebAppFeaturesPanel";
 import { WebsitePagesPanel } from "@/components/WebsitePagesPanel";
 import { PROJECT_THEME } from "@/lib/projectTheme";
@@ -92,6 +94,9 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const pageAuditChecks =
     project.type === "seo" ? await listPageAuditChecks(project.id, pageAuditMonth) : [];
   const seoWorkflowItems = project.type === "seo" ? await listSeoWorkflowItems(project.id) : [];
+  const seoModuleAssignments = project.type === "seo" ? await listSeoModuleAssignments(project.id) : [];
+  const moduleOwner = (module: import("@/lib/types").SeoAssignableModule) =>
+    seoModuleAssignments.find((assignment) => assignment.module === module)?.assignedTo ?? "";
 
   const completed = tasks
     .filter((t) => t.status === "done")
@@ -225,79 +230,169 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
       {project.type === "seo" ? (
         <SeoProjectTabs
           pages={
-            <WebsitePagesPanel
-              projectId={project.id}
-              pages={projectPages}
-              checks={pageAuditChecks}
-              periodMonth={pageAuditMonth}
-              keywords={keywords}
-              keywordPages={Object.values(keywordPagesByGroup).flat()}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="website_pages"
+                title="Website Pages"
+                assignedTo={moduleOwner("website_pages")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <WebsitePagesPanel
+                projectId={project.id}
+                pages={projectPages}
+                checks={pageAuditChecks}
+                periodMonth={pageAuditMonth}
+                keywords={keywords}
+                keywordPages={Object.values(keywordPagesByGroup).flat()}
+              />
+            </div>
           }
           website={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="full_website"
-              title="Full Website"
-              items={seoWorkflowItems.filter((item) => item.module === "full_website")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="full_website"
+                title="Full Website"
+                assignedTo={moduleOwner("full_website")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="full_website"
+                title="Full Website"
+                items={seoWorkflowItems.filter((item) => item.module === "full_website")}
+              />
+            </div>
           }
           social={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="social_media"
-              title="Social Media"
-              items={seoWorkflowItems.filter((item) => item.module === "social_media")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="social_media"
+                title="Social Media"
+                assignedTo={moduleOwner("social_media")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="social_media"
+                title="Social Media"
+                items={seoWorkflowItems.filter((item) => item.module === "social_media")}
+              />
+            </div>
           }
           local={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="local_listing"
-              title="Local Listing"
-              items={seoWorkflowItems.filter((item) => item.module === "local_listing")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="local_listing"
+                title="Local Listing"
+                assignedTo={moduleOwner("local_listing")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="local_listing"
+                title="Local Listing"
+                items={seoWorkflowItems.filter((item) => item.module === "local_listing")}
+              />
+            </div>
           }
           blog={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="blog_onsite"
-              title="Blog Onsite"
-              items={seoWorkflowItems.filter((item) => item.module === "blog_onsite")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="blog_onsite"
+                title="Blog Onsite"
+                assignedTo={moduleOwner("blog_onsite")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="blog_onsite"
+                title="Blog Onsite"
+                items={seoWorkflowItems.filter((item) => item.module === "blog_onsite")}
+              />
+            </div>
           }
           web2={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="web_2_0"
-              title="Web 2.0"
-              items={seoWorkflowItems.filter((item) => item.module === "web_2_0")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="web_2_0"
+                title="Web 2.0"
+                assignedTo={moduleOwner("web_2_0")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="web_2_0"
+                title="Web 2.0"
+                items={seoWorkflowItems.filter((item) => item.module === "web_2_0")}
+              />
+            </div>
           }
           guest={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="guest_blogging"
-              title="Guest Blogging"
-              items={seoWorkflowItems.filter((item) => item.module === "guest_blogging")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="guest_blogging"
+                title="Guest Blogging"
+                assignedTo={moduleOwner("guest_blogging")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="guest_blogging"
+                title="Guest Blogging"
+                items={seoWorkflowItems.filter((item) => item.module === "guest_blogging")}
+              />
+            </div>
           }
           recurring={
-            <SeoWorkflowPanel
-              projectId={project.id}
-              module="recurring"
-              title="Recurring SEO"
-              items={seoWorkflowItems.filter((item) => item.module === "recurring")}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="recurring"
+                title="Recurring SEO"
+                assignedTo={moduleOwner("recurring")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoWorkflowPanel
+                projectId={project.id}
+                module="recurring"
+                title="Recurring SEO"
+                items={seoWorkflowItems.filter((item) => item.module === "recurring")}
+              />
+            </div>
           }
           reporting={
-            <SeoReportingPanel
-              projectId={project.id}
-              projectName={project.name}
-              companyName={businessProfile.companyName}
-              reports={seoReports}
-              preferences={reportPreferences}
-            />
+            <div>
+              <SeoModuleAssignmentBar
+                projectId={project.id}
+                module="reporting"
+                title="Reporting"
+                assignedTo={moduleOwner("reporting")}
+                members={assignableMembers}
+                canEdit={isAdmin}
+              />
+              <SeoReportingPanel
+                projectId={project.id}
+                projectName={project.name}
+                companyName={businessProfile.companyName}
+                reports={seoReports}
+                preferences={reportPreferences}
+              />
+            </div>
           }
           clientDetails={clientDetailsTab}
         />
