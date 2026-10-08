@@ -48,8 +48,19 @@ async function pair(payload) {
       deviceLabel: payload.deviceLabel || navigator.platform || "WhatsApp Bridge Chrome",
     }),
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Pairing failed.");
+  const contentType = response.headers.get("content-type") || "";
+  let data = null;
+  if (contentType.includes("application/json")) {
+    data = await response.json();
+  } else {
+    const text = await response.text();
+    const preview = text.replace(/\s+/g, " ").slice(0, 120);
+    throw new Error(
+      "Pairing API returned a web page instead of JSON. Generate a fresh pairing code from the live production app." +
+      (preview ? " Response: " + preview : "")
+    );
+  }
+  if (!response.ok) throw new Error(data?.error || "Pairing failed.");
   await storageSet({
     appOrigin: data.appOrigin || payload.appOrigin,
     deviceToken: data.deviceToken,
