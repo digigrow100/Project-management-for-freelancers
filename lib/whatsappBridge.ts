@@ -690,10 +690,22 @@ export async function claimWhatsAppOutbox(device: AuthenticatedWhatsAppBridge) {
     .eq("status", "queued");
   if (claimError) throw claimError;
 
+  // Multiple paired Chrome profiles can poll the outbox at the same time.
+  // Re-read only rows actually claimed by this bridge so a losing poller does
+  // not send the same message a second time.
+  const { data: claimedRows, error: claimedRowsError } = await supabase
+    .from("freelance_hq_whatsapp_messages")
+    .select("id,client_id,body,created_at")
+    .in("id", ids)
+    .eq("status", "sending")
+    .eq("bridge_id", device.id);
+  if (claimedRowsError) throw claimedRowsError;
+  if (!claimedRows?.length) return [];
+
   const config = await getBridgeClientConfig(device);
   const configByClient = new Map(config.map((item) => [item.clientId, item]));
 
-  return rows
+  return claimedRows
     .map((row) => {
       const target = configByClient.get(String(row.client_id));
       if (!target) return null;
