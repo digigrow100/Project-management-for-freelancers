@@ -191,6 +191,9 @@ async function bridgeTick(tabId, whatsappReady) {
     try {
       const config = await loadConfig(false);
       await chrome.tabs.sendMessage(tabId, { type: "WA_CONFIG", clients: config });
+      // Chrome throttles background-tab timers. Trigger inbound sync from the
+      // service worker so new WhatsApp text/voice reaches the app promptly.
+      await chrome.tabs.sendMessage(tabId, { type: "WA_SYNC_NOW" });
     } catch {
       // Keep outbox delivery working even if config refresh/content messaging fails.
     }
