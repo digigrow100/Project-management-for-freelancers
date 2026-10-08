@@ -58,6 +58,22 @@ function messageEffectiveTimestamp(row: Record<string, unknown>) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function messageCreatedTimestamp(row: Record<string, unknown>) {
+  const time = new Date(String(row.created_at || "")).getTime();
+  return Number.isFinite(time) ? time : messageEffectiveTimestamp(row);
+}
+
+function compareMessagesChronologically(a: Record<string, unknown>, b: Record<string, unknown>) {
+  const aEffective = messageEffectiveTimestamp(a);
+  const bEffective = messageEffectiveTimestamp(b);
+  const aMinute = Math.floor(aEffective / 60000);
+  const bMinute = Math.floor(bEffective / 60000);
+  if (aMinute !== bMinute) return aMinute - bMinute;
+  const createdDelta = messageCreatedTimestamp(a) - messageCreatedTimestamp(b);
+  if (createdDelta !== 0) return createdDelta;
+  return aEffective - bEffective;
+}
+
 function parsePairingCode(code: string): { origin: string; rawToken: string } | null {
   const [version, originPart, rawToken] = code.trim().split(".");
   if (version !== "FHQW1" || !originPart || !rawToken) return null;
@@ -532,7 +548,7 @@ export async function listAccessibleWhatsAppClients(profile: Profile): Promise<W
           if (profile.role === "admin") return true;
           return sharedIdSet.has(String(message.id)) || messageEffectiveTimestamp(message) >= liveFrom;
         })
-        .sort((a, b) => messageEffectiveTimestamp(b) - messageEffectiveTimestamp(a));
+        .sort((a, b) => compareMessagesChronologically(b, a));
 
       const last = visible[0];
       return {
@@ -602,7 +618,7 @@ export async function listWhatsAppMessages(profile: Profile, clientId: string): 
       if (profile.role === "admin") return true;
       return sharedIdSet.has(String(row.id)) || messageEffectiveTimestamp(row) >= liveFrom;
     })
-    .sort((a, b) => messageEffectiveTimestamp(a) - messageEffectiveTimestamp(b));
+    .sort(compareMessagesChronologically);
 
   const nameById = new Map((profiles ?? []).map((row) => [String(row.id), String(row.name || row.email || "Team")]));
 
