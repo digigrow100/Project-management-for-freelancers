@@ -65,6 +65,32 @@ export async function createAdminWhatsAppRequest(
     throw new Error("Message cannot be empty.");
   }
 
+  // Admin-only direct chat actions must still point to a chat that is currently
+  // saved in My WhatsApp Chats. This prevents an old browser tab/state from
+  // continuing to enqueue peek/history/send requests for a chat the admin has
+  // already removed.
+  if (!clientId && (requestType === "history" || requestType === "direct_send" || requestType === "peek_chat")) {
+    const supabase = getSupabase();
+    let queryBuilder = supabase
+      .from("freelance_hq_whatsapp_admin_chats")
+      .select("id,chat_key,chat_label,phone")
+      .eq("owner_user_id", adminUserId);
+
+    if (chatKey) {
+      queryBuilder = queryBuilder.eq("chat_key", chatKey);
+    } else if (phone) {
+      queryBuilder = queryBuilder.eq("phone", phone);
+    } else {
+      queryBuilder = queryBuilder.eq("chat_label", chatLabel);
+    }
+
+    const { data: savedChat, error: savedChatError } = await queryBuilder.maybeSingle();
+    if (savedChatError) throw savedChatError;
+    if (!savedChat) {
+      throw new Error("This admin WhatsApp chat is no longer saved. Refresh My WhatsApp Chats before continuing.");
+    }
+  }
+
   if (requestType === "history" && clientId) {
     const { data: link, error: linkError } = await getSupabase()
       .from("freelance_hq_whatsapp_client_links")
@@ -189,7 +215,23 @@ export async function getAdminWhatsAppRequest(adminUserId: string, requestId: st
 
 export async function claimWhatsAppBridgeRequest(device: AuthenticatedWhatsAppBridge) {
   const supabase = getSupabase();
+  const now = nowIso();
   const staleBefore = new Date(Date.now() - PROCESSING_STALE_MS).toISOString();
+
+  // Expire old queued requests before the extension can pick them up after a
+  // reload/reconnect. Otherwise a stale peek/open request can unexpectedly type
+  // an old contact name into WhatsApp minutes later.
+  await supabase
+    .from("freelance_hq_whatsapp_bridge_requests")
+    .update({
+      status: "failed",
+      error_text: "Request expired before the extension processed it.",
+      completed_at: now,
+      updated_at: now,
+    })
+    .eq("status", "queued")
+    .eq("created_by", device.ownerUserId)
+    .lte("expires_at", now);
 
   await supabase
     .from("freelance_hq_whatsapp_bridge_requests")
