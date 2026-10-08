@@ -629,28 +629,68 @@ export async function queueWhatsAppMessage(profile: Profile, clientId: string, b
   const body = sanitizeText(bodyRaw);
   if (!body) throw new Error("Message cannot be empty.");
 
-  const { data: link, error: linkError } = await getSupabase()
+  const supabase = getSupabase();
+  const { data: link, error: linkError } = await supabase
     .from("freelance_hq_whatsapp_client_links")
-    .select("is_enabled")
+    .select("is_enabled,chat_key,chat_label,phone,created_by")
     .eq("client_id", clientId)
     .maybeSingle();
   if (linkError) throw linkError;
   if (!link?.is_enabled) throw new Error("WhatsApp chat is not enabled for this client.");
 
-  const { data, error } = await getSupabase()
+  const ownerUserId = String(link.created_by || "");
+  if (!ownerUserId) throw new Error("WhatsApp bridge owner is missing.");
+
+  const now = nowIso();
+  const { data: message, error: messageError } = await supabase
     .from("freelance_hq_whatsapp_messages")
     .insert({
       client_id: clientId,
       direction: "outbound",
       body,
-      status: "queued",
+      status: "sending",
       sender_user_id: profile.id,
-      updated_at: nowIso(),
+      claimed_at: now,
+      updated_at: now,
     })
     .select("id")
     .single();
-  if (error) throw error;
-  return { id: String(data.id) };
+  if (messageError) throw messageError;
+
+  const messageId = String(message.id);
+  const { error: requestError } = await supabase
+    .from("freelance_hq_whatsapp_bridge_requests")
+    .insert({
+      created_by: ownerUserId,
+      request_type: "direct_send",
+      chat_key: sanitizeText(link.chat_key, 300),
+      chat_label: sanitizeText(link.chat_label, 240),
+      phone: sanitizeText(link.phone, 80),
+      client_id: clientId,
+      payload: {
+        body,
+        messageId,
+        senderUserId: profile.id,
+        source: "team_chat",
+      },
+      status: "queued",
+      expires_at: new Date(Date.now() + 4 * 60 * 1000).toISOString(),
+      updated_at: now,
+    });
+
+  if (requestError) {
+    await supabase
+      .from("freelance_hq_whatsapp_messages")
+      .update({
+        status: "failed",
+        error_text: "Could not queue WhatsApp bridge request.",
+        updated_at: nowIso(),
+      })
+      .eq("id", messageId);
+    throw requestError;
+  }
+
+  return { id: messageId };
 }
 
 export async function getBridgeClientConfig(device: AuthenticatedWhatsAppBridge) {
