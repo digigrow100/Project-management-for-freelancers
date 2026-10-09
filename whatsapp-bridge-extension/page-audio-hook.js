@@ -4,6 +4,7 @@
   let capture = null;
   let suppressUntil = 0;
   let requestSeq = 0;
+  const seenMedia = new Set();
 
   const CHANNEL = "__fhq_wa_audio__";
 
@@ -13,6 +14,29 @@
 
   function shouldSuppress() {
     return Date.now() < suppressUntil;
+  }
+
+  function rememberMedia(node) {
+    if (!(node instanceof HTMLMediaElement)) return;
+    seenMedia.add(node);
+    while (seenMedia.size > 30) {
+      const first = seenMedia.values().next().value;
+      seenMedia.delete(first);
+    }
+  }
+
+  function silenceAll() {
+    let stopped = 0;
+    for (const node of seenMedia) {
+      try {
+        if (!node.paused) stopped += 1;
+        originalPause.call(node);
+        node.currentTime = 0;
+        node.muted = true;
+        node.volume = 0;
+      } catch {}
+    }
+    return stopped;
   }
 
   async function tryCaptureFromUrl(url) {
@@ -47,11 +71,14 @@
 
   HTMLMediaElement.prototype.play = function () {
     try {
+      rememberMedia(this);
       void tryCaptureFromUrl(this.currentSrc || this.src || "");
     } catch {}
 
     if (shouldSuppress()) {
       try {
+        this.muted = true;
+        this.volume = 0;
         originalPause.call(this);
         this.currentTime = 0;
       } catch {}
@@ -72,6 +99,7 @@
         },
         set(value) {
           try {
+            rememberMedia(this);
             void tryCaptureFromUrl(value);
           } catch {}
           return descriptor.set.call(this, value);
@@ -85,6 +113,7 @@
     const WrappedAudio = function (src) {
       const audio = new OriginalAudio(src);
       try {
+        rememberMedia(audio);
         if (src) void tryCaptureFromUrl(src);
       } catch {}
       return audio;
@@ -119,10 +148,21 @@
       return;
     }
 
+    if (action === "hold") {
+      suppressUntil = Date.now() + 2500;
+      respond(id, { ok: true });
+      return;
+    }
+
+    if (action === "silence") {
+      respond(id, { ok: true, stopped: silenceAll() });
+      return;
+    }
+
     if (action === "disarm") {
       suppressUntil = 0;
       capture = null;
-      respond(id, { ok: true });
+      respond(id, { ok: true, stopped: silenceAll() });
     }
   });
 })();

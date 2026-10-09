@@ -610,9 +610,39 @@
   }
 
   function allMessageContainers() {
-    const direct = Array.from(document.querySelectorAll("#main div.message-in, #main div.message-out"));
-    if (direct.length) return direct;
-    return Array.from(document.querySelectorAll('#main [data-testid="msg-container"]'));
+    const main = document.querySelector("#main");
+    if (!main) return [];
+
+    const legacy = Array.from(
+      main.querySelectorAll('div.message-in, div.message-out, [data-testid="msg-container"]')
+    );
+    const modern = Array.from(main.querySelectorAll('div[role="row"], div[data-id]'));
+    const candidates = legacy.length ? [...legacy, ...modern] : modern;
+    const seen = new Set();
+    const rows = [];
+
+    for (const node of candidates) {
+      if (!(node instanceof HTMLElement) || !node.offsetParent) continue;
+      const hasMessageEvidence = Boolean(
+        node.matches("[data-id]") ||
+        node.querySelector("[data-id]") ||
+        node.querySelector("[data-pre-plain-text]") ||
+        node.querySelector('[data-icon="ptt-status"]') ||
+        node.querySelector('[aria-label="Voice message"]') ||
+        node.querySelector('[aria-label="Play voice message"]')
+      );
+      if (!hasMessageEvidence) continue;
+
+      const idNode = node.matches("[data-id]") ? node : node.querySelector("[data-id]");
+      const stableId = idNode?.getAttribute("data-id") || "";
+      const pre = messagePrePlain(node);
+      const key = stableId || pre || String(rows.length);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(node);
+    }
+
+    return rows;
   }
 
   function messagePrePlain(node) {
@@ -679,10 +709,10 @@
     return Boolean(
       node.querySelector("audio") ||
       node.querySelector('[data-icon="ptt-status"]') ||
-      node.querySelector('[data-icon*="audio" i]') ||
-      node.querySelector('[data-icon*="voice" i]') ||
+      node.querySelector('[aria-label="Voice message"]') ||
+      node.querySelector('[aria-label="Play voice message"]') ||
       node.querySelector('[aria-label*="voice message" i]') ||
-      node.querySelector('[aria-label*="play voice message" i]')
+      node.querySelector('[aria-label*="voice note" i]')
     );
   }
 
@@ -715,9 +745,16 @@
       const panel = document.querySelector("#main");
       if (panel) {
         const panelRect = panel.getBoundingClientRect();
-        const nodeRect = node.getBoundingClientRect();
-        if (nodeRect.width > 0 && panelRect.width > 0) {
-          outbound = nodeRect.left + nodeRect.width / 2 > panelRect.left + panelRect.width * 0.58;
+        const anchor =
+          node.querySelector("[data-pre-plain-text]") ||
+          node.querySelector('[data-icon="ptt-status"]') ||
+          node.querySelector('[aria-label="Voice message"]') ||
+          node;
+        const anchorRect = anchor.getBoundingClientRect();
+        if (anchorRect.width > 0 && panelRect.width > 0) {
+          outbound =
+            anchorRect.left + anchorRect.width / 2 >
+            panelRect.left + panelRect.width * 0.58;
         }
       }
     }
@@ -836,7 +873,7 @@
       .filter((button) => button instanceof HTMLElement && button.offsetParent);
     if (!buttons.length) return null;
 
-    const slider = node.querySelector('[role="slider"]');
+    const slider = node.querySelector('input[type="range"], [role="slider"]');
     if (slider) {
       const before = buttons.filter(
         (button) => button.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING
@@ -895,10 +932,19 @@
       }, 30000);
     });
 
-    await sleep(60);
+    await sleep(0);
     pressElement(transport);
-    const captured = await capturedPromise;
-    void askAudioPage("disarm", 1500);
+
+    let captured;
+    try {
+      captured = await capturedPromise;
+    } finally {
+      await askAudioPage("hold", 2000);
+      await askAudioPage("silence", 2000);
+      await sleep(1000);
+      await askAudioPage("silence", 2000);
+      await askAudioPage("disarm", 2000);
+    }
 
     if (!captured?.ok || !(captured.blob instanceof Blob) || !captured.blob.size) {
       throw new Error(captured?.error || "Could not capture WhatsApp voice note.");
