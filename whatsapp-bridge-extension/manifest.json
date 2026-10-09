@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Freelance HQ WhatsApp Bridge",
-  "version": "1.3.2",
-  "description": "Admin WhatsApp bridge with manual mapping, controlled team access, date history sharing, and voice-to-text support.",
+  "version": "1.3.3",
+  "description": "Admin WhatsApp bridge with manual mapping, date history sharing, controlled team access, and voice-note notices.",
   "permissions": [
     "storage",
     "tabs",
@@ -24,17 +24,6 @@
     "default_title": "WhatsApp Bridge"
   },
   "content_scripts": [
-    {
-      "matches": [
-        "https://web.whatsapp.com/*"
-      ],
-      "js": [
-        "page-audio-hook.js"
-      ],
-      "world": "MAIN",
-      "run_at": "document_start",
-      "all_frames": false
-    },
     {
       "matches": [
         "https://web.whatsapp.com/*"
