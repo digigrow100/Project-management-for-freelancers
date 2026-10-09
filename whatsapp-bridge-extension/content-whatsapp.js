@@ -5,8 +5,6 @@
   let lastSyncAt = 0;
   let lastOpenedChatKey = "";
   let activeTarget = null;
-  let audioQueueRunning = false;
-  const audioTransferState = new Map();
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -610,39 +608,112 @@
   }
 
   function allMessageContainers() {
+    const direct = Array.from(document.querySelectorAll("#main div.message-in, #main div.message-out"));
+    if (direct.length) return direct;
+    return Array.from(document.querySelectorAll('#main [data-testid="msg-container"]'));
+  }
+
+  function isVoiceNoteNode(node) {
+    return Boolean(
+      node?.querySelector?.("audio") ||
+      node?.querySelector?.('[data-icon="ptt-status"]') ||
+      node?.querySelector?.('[aria-label="Voice message"]') ||
+      node?.querySelector?.('[aria-label="Play voice message"]') ||
+      node?.querySelector?.('[aria-label*="voice message" i]') ||
+      node?.querySelector?.('[aria-label*="voice note" i]')
+    );
+  }
+
+  function voiceMessageContainers() {
     const main = document.querySelector("#main");
     if (!main) return [];
 
-    const legacy = Array.from(
-      main.querySelectorAll('div.message-in, div.message-out, [data-testid="msg-container"]')
+    const candidates = Array.from(
+      main.querySelectorAll(
+        'div.message-in, div.message-out, [data-testid="msg-container"], div[role="row"], div[data-id]'
+      )
     );
-    const modern = Array.from(main.querySelectorAll('div[role="row"], div[data-id]'));
-    const candidates = legacy.length ? [...legacy, ...modern] : modern;
     const seen = new Set();
     const rows = [];
 
     for (const node of candidates) {
-      if (!(node instanceof HTMLElement) || !node.offsetParent) continue;
-      const hasMessageEvidence = Boolean(
-        node.matches("[data-id]") ||
-        node.querySelector("[data-id]") ||
-        node.querySelector("[data-pre-plain-text]") ||
-        node.querySelector('[data-icon="ptt-status"]') ||
-        node.querySelector('[aria-label="Voice message"]') ||
-        node.querySelector('[aria-label="Play voice message"]')
-      );
-      if (!hasMessageEvidence) continue;
+      if (!(node instanceof HTMLElement) || !node.offsetParent || !isVoiceNoteNode(node)) continue;
 
       const idNode = node.matches("[data-id]") ? node : node.querySelector("[data-id]");
-      const stableId = idNode?.getAttribute("data-id") || "";
-      const pre = messagePrePlain(node);
-      const key = stableId || pre || String(rows.length);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const stableId = String(idNode?.getAttribute("data-id") || "").trim();
+      const prePlain = messagePrePlain(node);
+      const signature = stableId || prePlain || String(node.textContent || "").trim();
+      if (!signature || seen.has(signature)) continue;
+
+      seen.add(signature);
       rows.push(node);
     }
 
     return rows;
+  }
+
+  function voiceDirection(node) {
+    const classText = [
+      String(node.className || ""),
+      ...Array.from(node.parentElement ? [node.parentElement, node.parentElement.parentElement].filter(Boolean) : [])
+        .map((item) => String(item.className || "")),
+    ].join(" ");
+
+    if (
+      /message-out|outgoing|from-me|sent/i.test(classText) ||
+      node.closest(".message-out, [data-testid*='outgoing'], [data-testid*='sent']")
+    ) {
+      return "outbound";
+    }
+
+    const prePlain = messagePrePlain(node);
+    if (/\]\s*(you|me)\s*:/i.test(prePlain) || /\byou\s*:/.test(prePlain.toLowerCase())) {
+      return "outbound";
+    }
+
+    const panel = document.querySelector("#main");
+    const anchor =
+      node.querySelector('[data-icon="ptt-status"]') ||
+      node.querySelector('[aria-label*="voice message" i]') ||
+      node.querySelector("[data-pre-plain-text]") ||
+      node;
+
+    if (panel && anchor instanceof HTMLElement) {
+      const panelRect = panel.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      if (anchorRect.width > 0 && panelRect.width > 0) {
+        return anchorRect.left + anchorRect.width / 2 > panelRect.left + panelRect.width * 0.58
+          ? "outbound"
+          : "inbound";
+      }
+    }
+
+    return "inbound";
+  }
+
+  function extractVoiceNotice(node, target) {
+    if (!isVoiceNoteNode(node)) return null;
+
+    const remoteTimestamp = parseWhatsAppTimestamp(messagePrePlain(node));
+    if (!remoteTimestamp) return null;
+
+    const rawId =
+      node.getAttribute("data-id") ||
+      node.querySelector("[data-id]")?.getAttribute("data-id") ||
+      "";
+    const direction = voiceDirection(node);
+    const remoteMessageKey = rawId
+      ? "wa:" + rawId
+      : "wa-voice-notice:" + simpleHash(
+          String(target.chatKey || target.chatLabel || "") + "|" + messagePrePlain(node) + "|" + direction
+        );
+
+    return {
+      direction,
+      body: "Client ny audio bajhi ha. Hamza sy pochy es k about.",
+      remoteMessageKey,
+      remoteTimestamp,
+    };
   }
 
   function messagePrePlain(node) {
@@ -705,17 +776,6 @@
     return null;
   }
 
-  function isVoiceNoteNode(node) {
-    return Boolean(
-      node.querySelector("audio") ||
-      node.querySelector('[data-icon="ptt-status"]') ||
-      node.querySelector('[aria-label="Voice message"]') ||
-      node.querySelector('[aria-label="Play voice message"]') ||
-      node.querySelector('[aria-label*="voice message" i]') ||
-      node.querySelector('[aria-label*="voice note" i]')
-    );
-  }
-
   function extractMessage(node, target) {
     if (isVoiceNoteNode(node)) return null;
 
@@ -745,16 +805,9 @@
       const panel = document.querySelector("#main");
       if (panel) {
         const panelRect = panel.getBoundingClientRect();
-        const anchor =
-          node.querySelector("[data-pre-plain-text]") ||
-          node.querySelector('[data-icon="ptt-status"]') ||
-          node.querySelector('[aria-label="Voice message"]') ||
-          node;
-        const anchorRect = anchor.getBoundingClientRect();
-        if (anchorRect.width > 0 && panelRect.width > 0) {
-          outbound =
-            anchorRect.left + anchorRect.width / 2 >
-            panelRect.left + panelRect.width * 0.58;
+        const nodeRect = node.getBoundingClientRect();
+        if (nodeRect.width > 0 && panelRect.width > 0) {
+          outbound = nodeRect.left + nodeRect.width / 2 > panelRect.left + panelRect.width * 0.58;
         }
       }
     }
@@ -772,312 +825,6 @@
       remoteMessageKey,
       remoteTimestamp,
     };
-  }
-
-  function isOutboundMessageNode(node) {
-    const classText = [
-      String(node.className || ""),
-      ...Array.from(node.parentElement ? [node.parentElement, node.parentElement.parentElement].filter(Boolean) : [])
-        .map((item) => String(item.className || "")),
-    ].join(" ");
-    let outbound =
-      /message-out|outgoing|from-me|sent/i.test(classText) ||
-      Boolean(node.closest(".message-out, [data-testid*='outgoing'], [data-testid*='sent']"));
-
-    const prePlain = messagePrePlain(node);
-    if (!outbound && (/\]\s*(you|me)\s*:/i.test(prePlain) || /\byou\s*:/.test(prePlain.toLowerCase()))) {
-      outbound = true;
-    }
-
-    if (!outbound) {
-      const panel = document.querySelector("#main");
-      if (panel) {
-        const panelRect = panel.getBoundingClientRect();
-        const nodeRect = node.getBoundingClientRect();
-        if (nodeRect.width > 0 && panelRect.width > 0) {
-          outbound = nodeRect.left + nodeRect.width / 2 > panelRect.left + panelRect.width * 0.58;
-        }
-      }
-    }
-    return outbound;
-  }
-
-  const AUDIO_PAGE_CHANNEL = "__fhq_wa_audio__";
-  let audioBridgeSeq = 0;
-  const audioBridgePending = new Map();
-
-  window.addEventListener("message", (event) => {
-    const data = event.data;
-    if (
-      event.source !== window ||
-      !data ||
-      data.channel !== AUDIO_PAGE_CHANNEL ||
-      data.direction !== "response"
-    ) {
-      return;
-    }
-    const resolve = audioBridgePending.get(data.id);
-    if (resolve) {
-      audioBridgePending.delete(data.id);
-      resolve(data);
-    }
-  });
-
-  function askAudioPage(action, timeout = 5000) {
-    return new Promise((resolve) => {
-      const id = ++audioBridgeSeq;
-      audioBridgePending.set(id, resolve);
-      window.postMessage({
-        channel: AUDIO_PAGE_CHANNEL,
-        direction: "request",
-        id,
-        action,
-      }, "*");
-      window.setTimeout(() => {
-        if (!audioBridgePending.has(id)) return;
-        audioBridgePending.delete(id);
-        resolve({ ok: false, error: "Voice-note capture timed out." });
-      }, timeout);
-    });
-  }
-
-  function pressElement(element) {
-    if (!(element instanceof HTMLElement)) return;
-    const opts = { bubbles: true, cancelable: true, composed: true };
-    try {
-      element.dispatchEvent(new PointerEvent("pointerdown", opts));
-      element.dispatchEvent(new MouseEvent("mousedown", opts));
-      element.dispatchEvent(new PointerEvent("pointerup", opts));
-      element.dispatchEvent(new MouseEvent("mouseup", opts));
-    } catch {}
-    try {
-      element.click();
-    } catch {}
-  }
-
-  function controlIconText(element) {
-    if (!(element instanceof HTMLElement)) return "";
-    const iconNames = Array.from(element.querySelectorAll("[data-icon]"))
-      .map((node) => String(node.getAttribute("data-icon") || ""))
-      .join(" ");
-    return normalize([
-      iconNames,
-      element.getAttribute("aria-label"),
-      element.getAttribute("title"),
-      element.textContent,
-    ].filter(Boolean).join(" "));
-  }
-
-  function findVoiceTransportButton(node) {
-    const buttons = Array.from(node.querySelectorAll("button"))
-      .filter((button) => button instanceof HTMLElement && button.offsetParent);
-    if (!buttons.length) return null;
-
-    const slider = node.querySelector('input[type="range"], [role="slider"]');
-    if (slider) {
-      const before = buttons.filter(
-        (button) => button.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING
-      );
-      if (before.length) return before[before.length - 1];
-    }
-
-    return buttons.find((button) => {
-      const label = controlIconText(button);
-      return !/\b\d+(?:[.,]\d+)?\s*[x×]\b/i.test(label);
-    }) || null;
-  }
-
-  function isDownloadVoiceControl(element) {
-    return /download/.test(controlIconText(element));
-  }
-
-  async function waitForVoiceTransport(node, timeoutMs = 25000) {
-    const started = Date.now();
-    while (Date.now() - started < timeoutMs) {
-      const button = findVoiceTransportButton(node);
-      if (button && !isDownloadVoiceControl(button)) return button;
-      await sleep(200);
-    }
-    return null;
-  }
-
-  async function captureVoiceBlob(node) {
-    const pageReady = await askAudioPage("ping", 2000);
-    if (!pageReady?.ok) {
-      throw new Error("WhatsApp audio capture hook is not active. Reload WhatsApp Web.");
-    }
-
-    let transport = findVoiceTransportButton(node);
-    if (!transport) throw new Error("Voice-note control was not found.");
-
-    if (isDownloadVoiceControl(transport)) {
-      pressElement(transport);
-      transport = await waitForVoiceTransport(node);
-      if (!transport) throw new Error("WhatsApp did not finish downloading this voice note.");
-    }
-
-    const id = ++audioBridgeSeq;
-    const capturedPromise = new Promise((resolve) => {
-      audioBridgePending.set(id, resolve);
-      window.postMessage({
-        channel: AUDIO_PAGE_CHANNEL,
-        direction: "request",
-        id,
-        action: "arm",
-      }, "*");
-      window.setTimeout(() => {
-        if (!audioBridgePending.has(id)) return;
-        audioBridgePending.delete(id);
-        resolve({ ok: false, error: "Voice-note capture timed out." });
-      }, 30000);
-    });
-
-    await sleep(0);
-    pressElement(transport);
-
-    let captured;
-    try {
-      captured = await capturedPromise;
-    } finally {
-      await askAudioPage("hold", 2000);
-      await askAudioPage("silence", 2000);
-      await sleep(1000);
-      await askAudioPage("silence", 2000);
-      await askAudioPage("disarm", 2000);
-    }
-
-    if (!captured?.ok || !(captured.blob instanceof Blob) || !captured.blob.size) {
-      throw new Error(captured?.error || "Could not capture WhatsApp voice note.");
-    }
-    return captured.blob;
-  }
-
-  function extractAudioDescriptor(node, target) {
-    if (isOutboundMessageNode(node) || !isVoiceNoteNode(node)) return null;
-
-    const prePlain = messagePrePlain(node);
-    const remoteTimestamp = parseWhatsAppTimestamp(prePlain);
-    if (!remoteTimestamp) return null;
-
-    const rawId =
-      node.getAttribute("data-id") ||
-      node.querySelector("[data-id]")?.getAttribute("data-id") ||
-      "";
-    const remoteMessageKey = rawId
-      ? "wa:" + rawId
-      : "wa-audio:" + simpleHash(
-          String(target.chatKey || target.chatLabel || "") + "|" + prePlain
-        );
-
-    return {
-      clientId: target.clientId,
-      remoteMessageKey,
-      receivedAt: remoteTimestamp,
-      node,
-    };
-  }
-
-  function extractRecentAudio(target) {
-    const syncFrom = target.syncFrom ? new Date(target.syncFrom).getTime() : Date.now();
-    return allMessageContainers()
-      .slice(-60)
-      .map((node) => extractAudioDescriptor(node, target))
-      .filter(Boolean)
-      .filter((item) => {
-        const time = new Date(item.receivedAt).getTime();
-        return Number.isFinite(time) && time >= syncFrom;
-      });
-  }
-
-  function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("Could not read WhatsApp voice note."));
-      reader.onload = () => {
-        const value = String(reader.result || "");
-        const comma = value.indexOf(",");
-        resolve(comma >= 0 ? value.slice(comma + 1) : value);
-      };
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  async function uploadAudioDescriptor(item) {
-    const blob = await captureVoiceBlob(item.node);
-    if (!blob.size) throw new Error("WhatsApp voice note is empty.");
-    if (blob.size > 2500000) {
-      throw new Error("WhatsApp voice note is too large to process safely.");
-    }
-
-    const dataBase64 = await blobToBase64(blob);
-    const result = await chrome.runtime.sendMessage({
-      type: "WA_AUDIO_INBOUND",
-      audio: {
-        clientId: item.clientId,
-        remoteMessageKey: item.remoteMessageKey,
-        receivedAt: item.receivedAt,
-        mimeType: blob.type || "audio/ogg",
-        dataBase64,
-      },
-    });
-    if (!result?.ok) throw new Error(result?.error || "Voice note processing failed.");
-  }
-
-  async function processAudioCandidates(items) {
-    if (audioQueueRunning || !Array.isArray(items) || !items.length) return;
-    audioQueueRunning = true;
-    try {
-      for (const item of items.slice(-4)) {
-        const key = String(item.remoteMessageKey || "");
-        if (!key) continue;
-
-        const previous = audioTransferState.get(key);
-        if (previous?.status === "done" || previous?.status === "uploading") continue;
-        if (
-          previous?.status === "failed" &&
-          Date.now() - Number(previous.lastAttempt || 0) < 120000
-        ) {
-          continue;
-        }
-        if (Number(previous?.attempts || 0) >= 3) continue;
-
-        const attempts = Number(previous?.attempts || 0) + 1;
-        audioTransferState.set(key, {
-          status: "uploading",
-          attempts,
-          lastAttempt: Date.now(),
-        });
-
-        try {
-          await uploadAudioDescriptor(item);
-          audioTransferState.set(key, {
-            status: "done",
-            attempts,
-            lastAttempt: Date.now(),
-          });
-        } catch (error) {
-          console.warn("WhatsApp voice-note processing failed:", error);
-          try {
-            await chrome.runtime.sendMessage({
-              type: "WA_AUDIO_FAILURE",
-              audio: {
-                clientId: item.clientId,
-                remoteMessageKey: item.remoteMessageKey,
-                receivedAt: item.receivedAt,
-                error: error?.message || "Voice-note capture failed.",
-              },
-            });
-          } catch {}
-          audioTransferState.set(key, {
-            status: "failed",
-            attempts,
-            lastAttempt: Date.now(),
-          });
-        }
-      }
-    } finally {
-      audioQueueRunning = false;
-    }
   }
 
   function scrollContainer() {
@@ -1217,7 +964,8 @@
 
   function extractRecentInbound(target) {
     const syncFrom = target.syncFrom ? new Date(target.syncFrom).getTime() : Date.now();
-    return allMessageContainers().slice(-60).map((node) => {
+
+    const textMessages = allMessageContainers().slice(-60).map((node) => {
       const message = extractMessage(node, target);
       if (!message || message.direction !== "inbound" || !message.remoteTimestamp) return null;
       const receivedTime = new Date(message.remoteTimestamp).getTime();
@@ -1229,12 +977,30 @@
         receivedAt: message.remoteTimestamp,
       };
     }).filter(Boolean);
+
+    const voiceNotices = voiceMessageContainers().slice(-60).map((node) => {
+      const notice = extractVoiceNotice(node, target);
+      if (!notice || notice.direction !== "inbound" || !notice.remoteTimestamp) return null;
+      const receivedTime = new Date(notice.remoteTimestamp).getTime();
+      if (!Number.isFinite(receivedTime) || receivedTime < syncFrom) return null;
+      return {
+        clientId: target.clientId,
+        body: notice.body,
+        remoteMessageKey: notice.remoteMessageKey,
+        receivedAt: notice.remoteTimestamp,
+      };
+    }).filter(Boolean);
+
+    const unique = new Map();
+    for (const message of [...textMessages, ...voiceNotices]) {
+      unique.set(message.remoteMessageKey, message);
+    }
+    return Array.from(unique.values());
   }
 
   async function syncOneClient() {
     if (busy || !whatsappReady() || !clients.length) return;
     if (Date.now() - lastSyncAt < 1000) return;
-    let audioCandidates = [];
     busy = true;
     try {
       let target = null;
@@ -1249,7 +1015,6 @@
       }
 
       const messages = extractRecentInbound(target);
-      audioCandidates = extractRecentAudio(target);
       if (messages.length) {
         await chrome.runtime.sendMessage({ type: "WA_INBOUND_BATCH", messages });
       }
@@ -1258,17 +1023,24 @@
       lastSyncAt = Date.now();
     } finally {
       busy = false;
-      if (audioCandidates.length) void processAudioCandidates(audioCandidates);
     }
   }
 
   async function peekChat(request) {
     await openClient(request);
-    const messages = allMessageContainers()
+    const textMessages = allMessageContainers()
       .slice(-120)
       .map((node) => extractMessage(node, request))
       .filter(Boolean);
-    return { messages };
+    const voiceNotices = voiceMessageContainers()
+      .slice(-120)
+      .map((node) => extractVoiceNotice(node, request))
+      .filter(Boolean);
+    const unique = new Map();
+    for (const message of [...textMessages, ...voiceNotices]) {
+      unique.set(message.remoteMessageKey, message);
+    }
+    return { messages: Array.from(unique.values()) };
   }
 
   async function processBridgeRequest(request) {
@@ -1300,13 +1072,6 @@
       clients = Array.isArray(message.clients) ? message.clients : [];
       sendResponse({ ok: true, clientCount: clients.length });
       return false;
-    }
-
-    if (message.type === "WA_SYNC_NOW") {
-      syncOneClient()
-        .then(() => sendResponse({ ok: true }))
-        .catch((error) => sendResponse({ ok: false, error: error?.message || "Inbound sync failed." }));
-      return true;
     }
 
     if (message.type === "WA_SEND_MESSAGE") {
