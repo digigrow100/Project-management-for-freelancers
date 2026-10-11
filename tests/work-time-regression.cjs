@@ -41,6 +41,9 @@ async function run() {
   assert.equal(uploads,1,'Only one upload may run at once');
   assert.equal(storage.activityQueue.length,1,'New activity during upload must survive');
   assert.equal(storage.activityQueue[0].durationSeconds,5);
+  storage.currentInterval={activityType:'active',startedAt:new Date(Date.now()-8593000).toISOString()};
+  await vm.runInContext('track(() => closeCurrentInterval(Date.now(), "heartbeat_checkpoint"))',context);
+  assert.equal(storage.activityQueue.at(-1).durationSeconds,90,'A long unobserved gap must not become hours of work');
   console.log('Passed: pagination, partial failure, concurrent pause, concurrent upload, preservation of queued work.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});

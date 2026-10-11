@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { confirmedActivityTime } from "./activityIntervals";
 import { readAllActivityRows } from "./activityPagination";
 import { getSupabase } from "./supabaseClient";
 import type {
@@ -484,7 +485,10 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
       }
     }
 
+    const eventIdentity = createHash("sha256").update(JSON.stringify([device.id, sessionId, activityType, startedAt, endedAt])).digest("hex");
+    const eventId = `${eventIdentity.slice(0,8)}-${eventIdentity.slice(8,12)}-4${eventIdentity.slice(13,16)}-a${eventIdentity.slice(17,20)}-${eventIdentity.slice(20,32)}`;
     rows.push({
+      id: eventId,
       employee_id: device.employeeId,
       device_id: device.id,
       session_id: sessionId,
@@ -508,7 +512,7 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
   }
 
   if (rows.length > 0) {
-    const { error } = await supabase.from("freelance_hq_activity_logs").insert(rows);
+    const { error } = await supabase.from("freelance_hq_activity_logs").upsert(rows, { onConflict: "id", ignoreDuplicates: true });
     if (error) throw error;
   }
 
@@ -643,7 +647,7 @@ export async function getEmployeeActivitySummaries(employeeIdFilter?: string): P
       let query = supabase
         .from("freelance_hq_activity_logs")
         .select("id,employee_id,project_id,activity_type,duration_seconds,started_at,ended_at")
-        .gte("started_at", monthStart)
+        .gte("started_at", new Date(Date.parse(monthStart) - 90000).toISOString())
         .lt("started_at", tomorrowStart)
         .order("started_at")
         .order("id")
@@ -692,14 +696,14 @@ export async function getEmployeeActivitySummaries(employeeIdFilter?: string): P
     const todayIdleRows = todayActivities.filter((row) => row.activity_type === "idle");
     const monthActiveRows = employeeActivities.filter((row) => row.activity_type === "active");
 
-    const todayActiveSeconds = todayActiveRows.reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
-    const todayIdleSeconds = todayIdleRows.reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
-    const thisMonthActiveSeconds = monthActiveRows.reduce((sum, row) => sum + clampDuration(row.duration_seconds), 0);
-
-    const todayByProject: Record<string, number> = {};
-    const monthByProject: Record<string, number> = {};
-    addSecondsByProject(todayByProject, todayActiveRows);
-    addSecondsByProject(monthByProject, monthActiveRows);
+    const todayActiveTime = confirmedActivityTime(monthActiveRows, Date.parse(todayStart), Math.min(now, Date.parse(tomorrowStart)));
+    const todayIdleTime = confirmedActivityTime(employeeActivities.filter(row => row.activity_type === "idle"), Date.parse(todayStart), Math.min(now, Date.parse(tomorrowStart)));
+    const monthActiveTime = confirmedActivityTime(monthActiveRows, Date.parse(monthStart), now);
+    const todayActiveSeconds = todayActiveTime.seconds;
+    const todayIdleSeconds = todayIdleTime.seconds;
+    const thisMonthActiveSeconds = monthActiveTime.seconds;
+    const todayByProject = todayActiveTime.byProject;
+    const monthByProject = monthActiveTime.byProject;
 
     const employeeSessions = (sessions ?? []).filter((session) => String(session.employee_id) === employeeId);
     const startedTodayAt =
