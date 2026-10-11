@@ -1,5 +1,7 @@
 "use client";
 
+import extensionManifest from "@/chrome-extension/manifest.json";
+
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Chrome, Download, Link2, X } from "lucide-react";
 import type { ExtensionHealth } from "@/lib/types";
@@ -58,9 +60,9 @@ export function ExtensionHealthBanner() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {missing && (
-            <a href="/downloads/freelance-hq-chrome-extension.zip" download className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-400">
+            <a href={`/downloads/freelance-hq-chrome-extension.zip?v=${extensionManifest.version}`} download className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-400">
               <Download size={13} />
-              Download Chrome Extension
+              Download Chrome Extension v{extensionManifest.version}
             </a>
           )}
           <button type="button" onClick={createPairingCode} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-base-600 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300">
