@@ -42,9 +42,11 @@ The extension does not capture keystrokes, passwords, form fields, screenshots, 
 - If no new meaningful work starts during that grace period, the extension sends Offline and ends the current work session.
 
 
-## Multi-profile pairing (v1.2.1)
+## Multi-profile pairing (v1.2.2)
 - One signed-in Freelance HQ user can pair multiple Chrome profiles.
 - Every Chrome profile gets a different one-time pairing code and its own device/install identity.
 - Codes stay valid independently until used or until their ~10 minute expiry.
 - Activity from those profiles is stored under the same employee/admin account.
 - Reporting remains work/website/project focused; Chrome profile identity is only a device-level technical detail.
+- When Chrome shows the host-permission **Allow** dialog, the extension saves the pending code before opening that dialog.
+- If Chrome closes the extension popup during permission approval, reopening the extension restores the code and automatically finishes pairing when permission has already been granted. The user should not need to paste the same code twice.
