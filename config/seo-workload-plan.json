@@ -17,7 +17,10 @@
     "listings_and_backlinks": "Junaid"
   },
   "reporting": {
-    "workEvidence": ["Maaz", "Junaid"],
+    "workEvidence": [
+      "Maaz",
+      "Junaid"
+    ],
     "finalReview": "Hamza Farooq"
   },
   "releaseRequirements": [
@@ -25,5 +28,11 @@
     "Split recurring responsibility without assigning the complete module twice",
     "Resolve members by verified profile IDs before database writes",
     "Do not trigger Vercel until explicitly authorized"
-  ]
+  ],
+  "reviewTabOwners": {
+    "gsc": "Maaz",
+    "gbp": "Junaid",
+    "recurring_general": "Junaid"
+  },
+  "reviewAssignmentStatus": "Saved in production for eight existing team SEO projects; matching inactive open tasks rerouted; app routing release pending."
 }

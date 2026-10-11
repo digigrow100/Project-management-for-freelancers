@@ -321,6 +321,8 @@ Do not weaken URL sanitization, token checks, privacy controls, or retention beh
 
 # SEO Module
 
+GSC, GBP and remaining recurring checks have independent assignment groups (`gsc`, `gbp`, `recurring_general`). `seoAssignmentRouting.ts` resolves original workflow items to these groups, preserving original IDs and legacy module-owner fallback. Migration 099 extends allowed groups. Eight existing team SEO projects have GSC owned by Maaz and GBP/general recurring owned by Junaid; AI Ranko/MakeInvo remain unassigned. Matching inactive open tasks were rerouted; active timers/admin requests and completed tasks were preserved. New group routing/UI requires this release; structured review records still do not automatically create focus tasks.
+
 GSC and GBP have separate tabs (`seoTab=gsc/gbp`): SeoReviewPanel, lib/seoReviewConfig.ts, lib/seoReviews.ts and lib/seoReviewActions.ts. Migration 098 was applied to production on 2026-10-11. Reviews save with optimistic revision checks in a transactional RPC. Saving a fully checked cycle archives a snapshot and resets only review checkboxes; rows/notes (including unresolved URLs) carry forward. Prior cycles are read-only. Current-cycle review rows can be removed; removal does not alter archived snapshots. Manual entry only: no Google APIs, automated indexing/disavow, or focus-task generation is implemented. Existing GSC recurring and GBP setup records are shown in their respective tabs with original identities preserved.
 
 Technical SEO has a dedicated tab (`seoTab=technical`) grouping page technical checks, sitewide technical setup and recurring technical reviews. `lib/seoTechnical.ts` defines grouping. Website Pages retains content/headings/meta/keywords; Full Website retains tracking and business setup; Recurring SEO retains nontechnical reviews. Grouping preserves existing database IDs, progress, module owners and task routing; it does not introduce independent technical ownership. Sitewide/recurring assignment controls still assign their original complete modules. No migration is required.
@@ -701,6 +703,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Applied the approved three-tab split in production for eight team SEO projects (24 owner records). Added independent assignment bars and item-level automatic routing. Existing inactive matching tasks reassigned; active/completed/admin-request tasks retained. Migration 099 applied; code deployment not yet confirmed.
 - Work-time correction prepared: duplicate/overlapping intervals count once, unattended checkpoint gaps are capped at 90 seconds, and repeated uploads use stable event IDs. Raw historical logs are preserved. Extension closure has the same gap cap; release not yet confirmed.
 - Timer-deferral follow-up now scopes closure by both task and acting member; regression coverage includes an open previous-assignee session.
 - Release follow-up: deferring a queued task closes only that task’s time entries, keeping a different active timer running. GSC/GBP rows can be removed from the current cycle without changing archived history.

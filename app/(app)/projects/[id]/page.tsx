@@ -391,9 +391,9 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             <div>
               <SeoModuleAssignmentBar
                 projectId={project.id}
-                module="recurring"
+                module="recurring_general"
                 title="Recurring SEO"
-                assignedTo={moduleOwner("recurring")}
+                assignedTo={moduleOwner("recurring_general")}
                 members={assignableMembers}
                 canEdit={isAdmin}
               />
@@ -406,6 +406,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             </div>
           }
           gsc={gscReview && <div className="space-y-5">
+            <SeoModuleAssignmentBar projectId={project.id} module="gsc" title="Google Search Console" assignedTo={moduleOwner("gsc")} members={assignableMembers} canEdit={isAdmin} />
             <SeoReviewPanel projectId={project.id} kind="gsc" snapshot={gscReview} />
             <details><summary className="cursor-pointer text-sm text-neutral-400">Existing GSC review checklist and progress</summary>
               <SeoWorkflowPanel projectId={project.id} module="recurring" title="Existing GSC Reviews"
@@ -413,6 +414,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             </details>
           </div>}
           gbp={gbpReview && <div className="space-y-5">
+            <SeoModuleAssignmentBar projectId={project.id} module="gbp" title="Google Business Profile" assignedTo={moduleOwner("gbp")} members={assignableMembers} canEdit={isAdmin} />
             <SeoReviewPanel projectId={project.id} kind="gbp" snapshot={gbpReview} />
             <details><summary className="cursor-pointer text-sm text-neutral-400">Existing Google Business Profile setup and progress</summary>
               <SeoWorkflowPanel projectId={project.id} module="local_listing" title="Google Business Profile Setup"
