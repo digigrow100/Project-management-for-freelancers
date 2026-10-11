@@ -5,16 +5,19 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BarChart3, FileText, Globe2, ListChecks, MessageSquareText, RefreshCw, Search, Share2, User, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "pages" | "website" | "social" | "local" | "blog" | "web2" | "guest" | "recurring" | "reporting" | "client";
+type TabKey = "gsc" | "gbp" | "pages" | "technical" | "website" | "social" | "local" | "blog" | "web2" | "guest" | "recurring" | "reporting" | "client";
 
 const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
   { key: "pages", label: "Website Pages", icon: FileText },
+  { key: "technical", label: "Technical SEO", icon: Wrench },
   { key: "website", label: "Full Website", icon: Wrench },
   { key: "social", label: "Social Media", icon: Share2 },
   { key: "local", label: "Local Listing", icon: Globe2 },
   { key: "blog", label: "Blog Onsite", icon: MessageSquareText },
   { key: "web2", label: "Web 2.0", icon: ListChecks },
   { key: "guest", label: "Guest Blogging", icon: Search },
+  { key: "gsc", label: "Google Search Console", icon: Search },
+  { key: "gbp", label: "Google Business Profile", icon: Globe2 },
   { key: "recurring", label: "Recurring SEO", icon: RefreshCw },
   { key: "reporting", label: "Reporting", icon: BarChart3 },
   { key: "client", label: "Client Details", icon: User },
@@ -28,6 +31,9 @@ const TABS: { key: TabKey; label: string; icon: typeof Search }[] = [
  */
 export function SeoProjectTabs({
   pages,
+  technical,
+  gsc,
+  gbp,
   website,
   social,
   local,
@@ -39,6 +45,9 @@ export function SeoProjectTabs({
   clientDetails,
 }: {
   pages: ReactNode;
+  technical: ReactNode;
+  gsc: ReactNode;
+  gbp: ReactNode;
   website: ReactNode;
   social: ReactNode;
   local: ReactNode;
@@ -64,6 +73,9 @@ export function SeoProjectTabs({
 
   const panels: Record<TabKey, ReactNode | undefined> = {
     pages,
+    technical,
+    gsc,
+    gbp,
     website,
     social,
     local,

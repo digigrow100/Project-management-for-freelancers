@@ -1,3 +1,7 @@
+import { SeoReviewPanel } from "@/components/SeoReviewPanel";
+import { getSeoReview } from "@/lib/seoReviews";
+import { GSC_RECURRING_KEYS } from "@/lib/seoReviewConfig";
+import { isTechnicalWorkflow } from "@/lib/seoTechnical";
 import { notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth";
 import {
@@ -94,6 +98,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   const pageAuditChecks =
     project.type === "seo" ? await listPageAuditChecks(project.id, pageAuditMonth) : [];
   const seoWorkflowItems = project.type === "seo" ? await listSeoWorkflowItems(project.id) : [];
+  const [gscReview, gbpReview] = project.type === "seo" ? await Promise.all([getSeoReview(project.id, "gsc"), getSeoReview(project.id, "gbp")]) : [null, null];
   const seoModuleAssignments = project.type === "seo" ? await listSeoModuleAssignments(project.id) : [];
   const moduleOwner = (module: import("@/lib/types").SeoAssignableModule) =>
     seoModuleAssignments.find((assignment) => assignment.module === module)?.assignedTo ?? "";
@@ -249,6 +254,31 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
               />
             </div>
           }
+          technical={
+            <div className="space-y-5">
+              <h2 className="text-lg font-semibold text-neutral-100">Technical SEO</h2>
+              <p className="text-xs text-neutral-500">Assignments remain shared with the original Website Pages, Full Website and Recurring SEO modules.</p>
+              <p className="text-xs text-neutral-500">Page checks are shown per URL. Full Website checks apply across the site; recurring reviews repeat on their existing schedule.</p>
+              <WebsitePagesPanel
+                projectId={project.id} pages={projectPages} checks={pageAuditChecks}
+                periodMonth={pageAuditMonth} keywords={[]} keywordPages={[]} view="technical"
+              />
+              <div>
+                <SeoModuleAssignmentBar projectId={project.id} module="full_website"
+                  title="Full Website" assignedTo={moduleOwner("full_website")}
+                  members={assignableMembers} canEdit={isAdmin} />
+                <SeoWorkflowPanel projectId={project.id} module="full_website" title="Full Website Technical SEO"
+                  items={seoWorkflowItems.filter((item) => item.module === "full_website" && isTechnicalWorkflow(item))} />
+              </div>
+              <div>
+                <SeoModuleAssignmentBar projectId={project.id} module="recurring"
+                  title="Recurring SEO" assignedTo={moduleOwner("recurring")}
+                  members={assignableMembers} canEdit={isAdmin} />
+                <SeoWorkflowPanel projectId={project.id} module="recurring" title="Full Website — Recurring Technical Reviews"
+                  items={seoWorkflowItems.filter((item) => item.module === "recurring" && isTechnicalWorkflow(item) && !GSC_RECURRING_KEYS.has(item.itemKey))} />
+              </div>
+            </div>
+          }
           website={
             <div>
               <SeoModuleAssignmentBar
@@ -263,7 +293,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                 projectId={project.id}
                 module="full_website"
                 title="Full Website"
-                items={seoWorkflowItems.filter((item) => item.module === "full_website")}
+                items={seoWorkflowItems.filter((item) => item.module === "full_website" && !isTechnicalWorkflow(item))}
               />
             </div>
           }
@@ -299,7 +329,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                 projectId={project.id}
                 module="local_listing"
                 title="Local Listing"
-                items={seoWorkflowItems.filter((item) => item.module === "local_listing")}
+                items={seoWorkflowItems.filter((item) => item.module === "local_listing" && item.itemKey !== "google_business_profile")}
               />
             </div>
           }
@@ -371,10 +401,24 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                 projectId={project.id}
                 module="recurring"
                 title="Recurring SEO"
-                items={seoWorkflowItems.filter((item) => item.module === "recurring")}
+                items={seoWorkflowItems.filter((item) => item.module === "recurring" && !isTechnicalWorkflow(item) && !GSC_RECURRING_KEYS.has(item.itemKey))}
               />
             </div>
           }
+          gsc={gscReview && <div className="space-y-5">
+            <SeoReviewPanel projectId={project.id} kind="gsc" snapshot={gscReview} />
+            <details><summary className="cursor-pointer text-sm text-neutral-400">Existing GSC review checklist and progress</summary>
+              <SeoWorkflowPanel projectId={project.id} module="recurring" title="Existing GSC Reviews"
+                items={seoWorkflowItems.filter(item => item.module === "recurring" && GSC_RECURRING_KEYS.has(item.itemKey))} />
+            </details>
+          </div>}
+          gbp={gbpReview && <div className="space-y-5">
+            <SeoReviewPanel projectId={project.id} kind="gbp" snapshot={gbpReview} />
+            <details><summary className="cursor-pointer text-sm text-neutral-400">Existing Google Business Profile setup and progress</summary>
+              <SeoWorkflowPanel projectId={project.id} module="local_listing" title="Google Business Profile Setup"
+                items={seoWorkflowItems.filter(item => item.module === "local_listing" && item.itemKey === "google_business_profile")} />
+            </details>
+          </div>}
           reporting={
             <div>
               <SeoModuleAssignmentBar

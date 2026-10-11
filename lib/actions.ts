@@ -391,6 +391,8 @@ export async function startFocusTaskAction(taskId: string) {
   await store.startTaskFocus(taskId, profile.id);
   revalidatePath("/my-tasks");
   revalidatePath("/");
+  revalidatePath("/admin");
+  revalidatePath("/admin/my-tasks");
   revalidatePath("/admin/time-tracking");
 }
 
@@ -404,7 +406,7 @@ export async function pauseFocusTaskAction(taskId: string) {
 
 export async function setPausedTaskPendingModeAction(
   taskId: string,
-  mode: "tomorrow" | "keep_pending",
+  mode: "tomorrow" | "30m" | "1h",
 ) {
   const profile = await requireProfile();
   await store.setPausedTaskPendingMode(taskId, profile.id, mode);

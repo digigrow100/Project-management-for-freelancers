@@ -1247,7 +1247,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   for (const existingFallback of (existingFallbackRows ?? []) as TaskRow[]) {
     const { data: focusRow, error: focusError } = await getSupabase()
       .from("freelance_hq_task_focus")
-      .select("state,resume_after_completions,available_on,keep_pending")
+      .select("state,resume_after_completions,available_on,keep_pending,resume_at")
       .eq("task_id", existingFallback.id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -1257,7 +1257,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     const taskDate = templateParts.length > 0 ? templateParts[templateParts.length - 1] ?? null : null;
     const isPausedUnavailable =
       focusRow?.state === "paused" &&
-      (focusRow.keep_pending === true || Boolean(focusRow.available_on && focusRow.available_on > today));
+      (focusRow.keep_pending === true || Boolean(focusRow.available_on && focusRow.available_on > today) || Boolean(focusRow.resume_at && Date.parse(focusRow.resume_at) > Date.now()));
     if (isPausedUnavailable) continue;
 
     // Older unfinished workflow tasks are carryovers. Keep them in the member's
@@ -1449,6 +1449,7 @@ interface TaskFocusRow {
   skip_reason: import("./types").TaskSkipReason | null;
   available_on: string | null;
   keep_pending: boolean;
+  resume_at?: string | null;
   updated_at: string;
 }
 
@@ -1463,6 +1464,7 @@ function toTaskFocusState(row: TaskFocusRow): TaskFocusState {
     skipReason: row.skip_reason ?? null,
     availableOn: row.available_on ?? null,
     keepPending: row.keep_pending ?? false,
+    resumeAt: row.resume_at ?? null,
     updatedAt: row.updated_at,
   };
 }
@@ -1865,6 +1867,19 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
   if (task.status === "done") return;
 
   const now = nowIso();
+  if (task.waitingForAdmin) {
+    // Only the assigned member may recall their request; leave its history intact.
+    const { error } = await getSupabase().from("freelance_hq_admin_work_items")
+      .update({ status: "done", completed_at: now, updated_at: now,
+        details: "Member resumed this task; admin action is no longer requested." })
+      .eq("team_task_id", taskId).eq("sent_by", userId)
+      .eq("source", "team_request").eq("status", "pending");
+    if (error) throw error;
+    const { error: releaseError } = await getSupabase().from("freelance_hq_tasks")
+      .update({ waiting_for_admin: false, updated_at: now })
+      .eq("id", taskId).eq("assigned_to", userId);
+    if (releaseError) throw releaseError;
+  }
   try {
     const { data: activeRows, error: activeError } = await getSupabase()
       .from("freelance_hq_task_focus")
@@ -1886,7 +1901,8 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
           paused_at: now,
           resume_after_completions: 0,
           skip_reason: null,
-          available_on: businessTomorrowMorningIso().slice(0, 10),
+          available_on: null,
+          resume_at: null,
           keep_pending: false,
           updated_at: now,
         })
@@ -1907,6 +1923,7 @@ export async function startTaskFocus(taskId: string, userId: string): Promise<vo
             paused_at: null,
             resume_after_completions: 0,
             skip_reason: null,
+            resume_at: null,
             available_on: null,
             keep_pending: false,
             updated_at: now,
@@ -1956,10 +1973,12 @@ export async function pauseTaskFocus(taskId: string, userId: string): Promise<vo
           task_id: taskId,
           user_id: userId,
           state: "paused",
+          skip_reason: null,
           started_at: now,
           paused_at: now,
           resume_after_completions: 0,
-          available_on: businessTomorrowMorningIso().slice(0, 10),
+          available_on: null,
+          resume_at: null,
           keep_pending: false,
           updated_at: now,
         },
@@ -2002,6 +2021,7 @@ export async function skipTaskFocus(
         paused_at: now,
         resume_after_completions: 0,
         skip_reason: reason,
+        resume_at: null,
         available_on: businessTomorrowMorningIso().slice(0, 10),
         keep_pending: false,
         updated_at: now,
@@ -2023,36 +2043,24 @@ export async function skipTaskFocus(
 export async function setPausedTaskPendingMode(
   taskId: string,
   userId: string,
-  mode: "tomorrow" | "keep_pending",
+  mode: "tomorrow" | "30m" | "1h",
 ): Promise<void> {
+  if (!["tomorrow", "30m", "1h"].includes(mode)) throw new Error("Invalid return schedule.");
   const task = await requireAssignedTask(taskId, userId);
   if (task.status === "done") return;
 
   const now = nowIso();
-  const update =
-    mode === "keep_pending"
-      ? {
-          state: "paused" as const,
-          paused_at: now,
-          available_on: null,
-          keep_pending: true,
-          resume_after_completions: 0,
-          updated_at: now,
-        }
-      : {
-          state: "paused" as const,
-          paused_at: now,
-          available_on: businessTomorrowMorningIso().slice(0, 10),
-          keep_pending: false,
-          resume_after_completions: 0,
-          updated_at: now,
-        };
+  const update = {
+    state: "paused" as const, paused_at: now, keep_pending: false,
+    resume_after_completions: 0,
+    available_on: mode === "tomorrow" ? businessTomorrowMorningIso().slice(0, 10) : null,
+    resume_at: mode === "tomorrow" ? null : new Date(Date.now() + (mode === "30m" ? 30 : 60) * 60000).toISOString(),
+    updated_at: now,
+  };
 
   const { error } = await getSupabase()
     .from("freelance_hq_task_focus")
-    .update(update)
-    .eq("task_id", taskId)
-    .eq("user_id", userId);
+    .upsert({ ...update, task_id: taskId, user_id: userId, started_at: now }, { onConflict: "task_id" });
   if (error && !isMissingTableError(error)) throw error;
 
   await closeOpenTimeEntries(userId, now, "paused", mode);
@@ -3136,6 +3144,7 @@ export async function sendTaskToAdmin(
       state: "paused",
       started_at: now,
       paused_at: now,
+      available_on: null, resume_at: null, keep_pending: false,
       resume_after_completions: 0,
       skip_reason: "admin_action",
       updated_at: now,
