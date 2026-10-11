@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readAllActivityRows } from "./activityPagination";
 import { getSupabase } from "./supabaseClient";
 import type {
   ActivitySettings,
@@ -500,8 +501,9 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
 
     const status: BrowserDeviceStatus =
       activityType === "idle" ? "idle" : activityType === "offline" || activityType === "session_end" ? "offline" : "active";
-    if (!latest || startedAt > latest.at) {
-      latest = { at: endedAt ?? startedAt, status, url, domain, title, projectId: project?.id ?? null };
+    const eventAt = endedAt ?? startedAt;
+    if (!latest || eventAt >= latest.at) {
+      latest = { at: eventAt, status, url, domain, title, projectId: project?.id ?? null };
     }
   }
 
@@ -621,7 +623,7 @@ function addSecondsByProject(
   }
 }
 
-export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySummary[]> {
+export async function getEmployeeActivitySummaries(employeeIdFilter?: string): Promise<EmployeeActivitySummary[]> {
   const supabase = getSupabase();
   const todayStart = startOfPakistanDay(0).toISOString();
   const tomorrowStart = startOfPakistanDay(1).toISOString();
@@ -637,11 +639,18 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
   ] = await Promise.all([
     supabase.from("freelance_hq_profiles").select("id,name,email,role"),
     supabase.from("freelance_hq_employee_devices").select("*").is("revoked_at", null),
-    supabase
-      .from("freelance_hq_activity_logs")
-      .select("employee_id,project_id,activity_type,duration_seconds,started_at,ended_at")
-      .gte("started_at", monthStart)
-      .lt("started_at", tomorrowStart),
+    readAllActivityRows(async (from, to) => {
+      let query = supabase
+        .from("freelance_hq_activity_logs")
+        .select("id,employee_id,project_id,activity_type,duration_seconds,started_at,ended_at")
+        .gte("started_at", monthStart)
+        .lt("started_at", tomorrowStart)
+        .order("started_at")
+        .order("id")
+        .range(from, to);
+      if (employeeIdFilter) query = query.eq("employee_id", employeeIdFilter);
+      return await query;
+    }),
     supabase
       .from("freelance_hq_ai_prompt_logs")
       .select("employee_id")
@@ -757,7 +766,7 @@ export async function getEmployeeActivitySummaries(): Promise<EmployeeActivitySu
 }
 
 export async function getEmployeeActivitySummary(employeeId: string): Promise<EmployeeActivitySummary | null> {
-  const rows = await getEmployeeActivitySummaries();
+  const rows = await getEmployeeActivitySummaries(employeeId);
   return rows.find((row) => row.employeeId === employeeId) ?? null;
 }
 

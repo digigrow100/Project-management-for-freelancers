@@ -7,6 +7,22 @@ const MAX_QUEUE = 50;
 const AI_OFFLINE_ALARM = "fhq-ai-offline";
 const AI_STOP_GRACE_MS = 60 * 1000;
 
+// Chrome dispatches alarms, tab and idle changes concurrently. Serialize tracking
+// so each interval closes once and a flush cannot overwrite newer queued work.
+let trackingTail = Promise.resolve();
+let flushInFlight = null;
+let queueTail = Promise.resolve();
+function editQueue(operation) {
+  const result = queueTail.then(operation);
+  queueTail = result.catch(() => undefined);
+  return result;
+}
+function track(operation) {
+  const result = trackingTail.then(operation);
+  trackingTail = result.catch(() => undefined);
+  return result;
+}
+
 chrome.idle.setDetectionInterval(IDLE_SECONDS);
 
 async function storageGet(keys) {
@@ -60,21 +76,25 @@ async function focusedActiveTab() {
 }
 
 async function queueEvent(event) {
+  return editQueue(async () => {
   const state = await storageGet(["activityQueue"]);
   const queue = Array.isArray(state.activityQueue) ? state.activityQueue : [];
   queue.push(event);
   if (queue.length > 500) queue.splice(0, queue.length - 500);
   await storageSet({ activityQueue: queue });
   if (queue.length >= MAX_QUEUE) void flushQueues();
+  });
 }
 
 async function queuePrompt(prompt) {
+  return editQueue(async () => {
   const state = await storageGet(["promptQueue"]);
   const queue = Array.isArray(state.promptQueue) ? state.promptQueue : [];
   queue.push(prompt);
   if (queue.length > 100) queue.splice(0, queue.length - 100);
   await storageSet({ promptQueue: queue });
   void flushQueues();
+  });
 }
 
 async function closeCurrentInterval(endMs, reason) {
@@ -196,6 +216,7 @@ async function transition(reason, includeTabSwitch = false, allowWorkStart = fal
     },
     lastHeartbeatAt: startedAt,
   });
+  await flushQueues();
 }
 
 async function heartbeat() {
@@ -428,6 +449,12 @@ async function resetBrowserTracking() {
 }
 
 async function flushQueues() {
+  if (flushInFlight) return flushInFlight;
+  flushInFlight = flushQueuesOnce().finally(() => { flushInFlight = null; });
+  return flushInFlight;
+}
+
+async function flushQueuesOnce() {
   const paired = await authState();
   if (!paired.deviceToken || !paired.appOrigin) return;
   const state = await storageGet(["activityQueue", "promptQueue"]);
@@ -442,7 +469,11 @@ async function flushQueues() {
         body: JSON.stringify({ events: batch }),
       });
       if (response.ok) {
-        await storageSet({ activityQueue: activityQueue.slice(batch.length) });
+        await editQueue(async () => {
+          const latest = await storageGet(["activityQueue"]);
+          const remaining = Array.isArray(latest.activityQueue) ? latest.activityQueue : [];
+          await storageSet({ activityQueue: remaining.slice(batch.length) });
+        });
       } else if (response.status === 401) {
         await storageSet({ deviceToken: null, employee: null });
       }
@@ -459,7 +490,11 @@ async function flushQueues() {
         body: JSON.stringify({ prompts: batch }),
       });
       if (response.ok) {
-        await storageSet({ promptQueue: promptQueue.slice(batch.length) });
+        await editQueue(async () => {
+          const latest = await storageGet(["promptQueue"]);
+          const remaining = Array.isArray(latest.promptQueue) ? latest.promptQueue : [];
+          await storageSet({ promptQueue: remaining.slice(batch.length) });
+        });
       }
     } catch {
       // Keep queue for retry.
@@ -586,29 +621,29 @@ chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(SECURITY_HEALTH_ALARM, { periodInMinutes: 360 });
-  void resetBrowserTracking();
+  void track(() => resetBrowserTracking());
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === FLUSH_ALARM) void flushQueues();
-  if (alarm.name === HEARTBEAT_ALARM) void heartbeat();
-  if (alarm.name === AI_OFFLINE_ALARM) void markAiInactiveOffline();
+  if (alarm.name === HEARTBEAT_ALARM) void track(() => heartbeat());
+  if (alarm.name === AI_OFFLINE_ALARM) void track(() => markAiInactiveOffline());
   if (alarm.name === SECURITY_HEALTH_ALARM) void securityHealthCheck();
 });
 
-chrome.tabs.onActivated.addListener(() => void transition("tab_switch", true, true));
+chrome.tabs.onActivated.addListener(() => void track(() => transition("tab_switch", true, true)));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!tab.active || !changeInfo.url) return;
-  void transition("navigation", false, true);
+  void track(() => transition("navigation", false, true));
 });
-chrome.windows.onFocusChanged.addListener(() => void transition("window_focus", false, false));
-chrome.idle.onStateChanged.addListener(() => void transition("idle_state", false, false));
+chrome.windows.onFocusChanged.addListener(() => void track(() => transition("window_focus", false, false)));
+chrome.idle.onStateChanged.addListener(() => void track(() => transition("idle_state", false, false)));
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message.type !== "string") return false;
 
   if (message.type === "PAIR") {
-    pair(message)
+    track(() => pair(message))
       .then((data) => sendResponse({ ok: true, employee: data.employee }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Pairing failed." }));
     return true;
@@ -628,23 +663,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "DISCONNECT") {
-    disconnect()
+    track(() => disconnect())
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message || "Disconnect failed." }));
     return true;
   }
 
   if (message.type === "AI_GENERATION_STATE") {
-    setAiGenerationState(message.platform, message.generating === true)
+    track(() => setAiGenerationState(message.platform, message.generating === true))
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }));
     return true;
   }
 
   if (message.type === "AI_PROMPT_SUBMITTED") {
-    chrome.alarms.clear(AI_OFFLINE_ALARM);
-    storageSet({ aiGraceUntil: null });
-    transition("ai_prompt", false, true)
+    track(async () => {
+      await chrome.alarms.clear(AI_OFFLINE_ALARM);
+      await storageSet({ aiGraceUntil: null });
+      await transition("ai_prompt", false, true);
+    })
       .then(() => storageGet(["sessionId"]))
       .then((state) => queuePrompt({
         platform: message.platform,
