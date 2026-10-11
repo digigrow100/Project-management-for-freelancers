@@ -1,3 +1,4 @@
+import { seoAssignmentGroup, seoItemOwner } from "./seoAssignmentRouting";
 import { randomBytes, randomUUID } from "node:crypto";
 import { businessDateKey, businessTomorrowMorningIso } from "./date";
 import { getSupabase } from "./supabaseClient";
@@ -465,6 +466,10 @@ function toSeoWorkflowItem(row: SeoWorkflowItemRow): SeoWorkflowItem {
 }
 
 const SEO_ASSIGNMENT_TITLE_PREFIX: Record<SeoAssignableModule, string> = {
+  gsc: "Google Search Console —",
+  gbp: "Google Business Profile —",
+  recurring_general: "Recurring SEO —",
+  technical_seo: "Technical SEO —",
   website_pages: "Complete SEO checklist —",
   full_website: "Full Website —",
   social_media: "Social Media —",
@@ -543,26 +548,25 @@ export async function setSeoModuleAssignment(
 
   const taskOwner = assignedTo ?? null;
 
-  // Re-route any open workflow task already issued for this exact module.
-  const { error: fallbackError } = await supabase
-    .from("freelance_hq_tasks")
-    .update({ assigned_to: taskOwner, updated_at: nowIso() })
-    .eq("project_id", projectId)
-    .neq("status", "done")
-    .like("fallback_template_key", `workflow:${module}:%`);
-  if (fallbackError) throw fallbackError;
-
-  // Also re-route open tasks created from the module before exact module
-  // assignment metadata existed. Their stable title prefixes identify the
-  // workflow module without conflating Social, Local, Web 2.0 and Guest work.
-  const titlePrefix = SEO_ASSIGNMENT_TITLE_PREFIX[module];
-  const { error: taskError } = await supabase
-    .from("freelance_hq_tasks")
-    .update({ assigned_to: taskOwner, updated_at: nowIso() })
-    .eq("project_id", projectId)
-    .neq("status", "done")
-    .like("title", titlePrefix + "%");
-  if (taskError) throw taskError;
+  const items = (await listSeoWorkflowItems(projectId)).filter(item => seoAssignmentGroup(item) === module);
+  const {data: openTasks, error: openError} = await supabase.from("freelance_hq_tasks")
+    .select("id,title,fallback_template_key,waiting_for_admin").eq("project_id",projectId).neq("status","done");
+  if(openError) throw openError;
+  for(const task of openTasks ?? []) {
+    const matches = module === "website_pages" || module === "reporting"
+      ? task.title.startsWith(SEO_ASSIGNMENT_TITLE_PREFIX[module])
+      : items.some(item => task.fallback_template_key?.startsWith(`workflow:${item.module}:${item.id}:`)
+        || task.title === `${SEO_ASSIGNMENT_TITLE_PREFIX[item.module]} ${item.title}`);
+    if(!matches || task.waiting_for_admin) continue;
+    const [{data:focus,error:focusError},{data:timers,error:timerError}] = await Promise.all([
+      supabase.from("freelance_hq_task_focus").select("state").eq("task_id",task.id).eq("state","active"),
+      supabase.from("freelance_hq_task_time_entries").select("id").eq("task_id",task.id).is("ended_at",null),
+    ]);
+    if(focusError) throw focusError; if(timerError) throw timerError;
+    if(focus?.length || timers?.length) continue;
+    const {error} = await supabase.from("freelance_hq_tasks").update({assigned_to:taskOwner,updated_at:nowIso()}).eq("id",task.id);
+    if(error) throw error;
+  }
 }
 
 export async function listSeoWorkflowItems(projectId: string): Promise<SeoWorkflowItem[]> {
@@ -1340,7 +1344,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   for (const workflowModule of moduleOrder) {
     for (const project of projects) {
       const moduleOwner = moduleOwnerByKey.get(`${project.id}:${workflowModule}`);
-      if (moduleOwner && moduleOwner !== userId) continue;
+      if (workflowModule === "website_pages" && moduleOwner && moduleOwner !== userId) continue;
       if (claimedToday.has(`${project.id}:${workflowModule}`)) continue;
 
       if (workflowModule === "website_pages") {
@@ -1387,6 +1391,9 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       const items = (await listSeoWorkflowItems(project.id))
         .filter((item) => {
           if (item.module !== workflowModule) return false;
+          const owners = new Map(Array.from(moduleOwnerByKey.entries()).filter(([key]) => key.startsWith(`${project.id}:`)).map(([key,value]) => [key.slice(project.id.length+1),value]));
+          const owner = seoItemOwner(item, owners);
+          if (owner && owner !== userId) return false;
           if (openWorkflowRefs.has(`${project.id}:${workflowModule}:${item.id}`)) return false;
           if (workflowModule !== "recurring") return item.status !== "done";
           if (!item.completedAt) return true;

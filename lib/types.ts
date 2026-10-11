@@ -537,6 +537,10 @@ export interface ProjectPage {
 }
 
 export type SeoAssignableModule =
+  | "gsc"
+  | "gbp"
+  | "recurring_general"
+  | "technical_seo"
   | "website_pages"
   | "full_website"
   | "social_media"
