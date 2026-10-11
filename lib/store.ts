@@ -1613,13 +1613,16 @@ async function closeOpenTimeEntriesForTask(
   endedAt: string,
   stopReason: TaskTimeStopReason,
   stopDetail: string | null = null,
+  userId?: string,
 ): Promise<void> {
   try {
-    const { data, error } = await getSupabase()
+    let query = getSupabase()
       .from("freelance_hq_task_time_entries")
       .select("id, started_at")
       .eq("task_id", taskId)
       .is("ended_at", null);
+    if (userId) query = query.eq("user_id", userId);
+    const { data, error } = await query;
     if (error) throw error;
 
     for (const row of (data ?? []) as Array<{ id: string; started_at: string }>) {
@@ -2063,7 +2066,7 @@ export async function setPausedTaskPendingMode(
     .upsert({ ...update, task_id: taskId, user_id: userId, started_at: now }, { onConflict: "task_id" });
   if (error && !isMissingTableError(error)) throw error;
 
-  await closeOpenTimeEntriesForTask(taskId, now, "paused", mode);
+  await closeOpenTimeEntriesForTask(taskId, now, "paused", mode, userId);
   await touchProject(task.projectId);
 }
 
