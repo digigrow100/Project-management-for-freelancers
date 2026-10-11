@@ -2063,7 +2063,7 @@ export async function setPausedTaskPendingMode(
     .upsert({ ...update, task_id: taskId, user_id: userId, started_at: now }, { onConflict: "task_id" });
   if (error && !isMissingTableError(error)) throw error;
 
-  await closeOpenTimeEntries(userId, now, "paused", mode);
+  await closeOpenTimeEntriesForTask(taskId, now, "paused", mode);
   await touchProject(task.projectId);
 }
 

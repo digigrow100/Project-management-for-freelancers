@@ -29,12 +29,12 @@ export function SeoReviewPanel({projectId,kind,snapshot}:{projectId:string;kind:
       </label>
       {section.hint&&<p className="mt-2 text-xs text-neutral-500">{section.hint}</p>}
       <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs">
-        <thead><tr>{section.fields.map(field=><th key={field} className="p-2 font-medium text-neutral-400">{field}</th>)}</tr></thead>
+        <thead><tr>{section.fields.map(field=><th key={field} className="p-2 font-medium text-neutral-400">{field}</th>)}<th className="p-2 font-medium text-neutral-400">Actions</th></tr></thead>
         <tbody>{(data.rows[section.key]??[]).map((row,i)=><tr key={i}>{section.fields.map(field=><td key={field} className="p-1 align-top">
           {field==="Status"&&section.key==="indexing"?<select className={inputClass} aria-label={`${section.title} row ${i+1} ${field}`} value={row[field]??"Pending"} disabled={pending} onChange={e=>{const value=e.target.value;edit(d=>({...d,rows:{...d.rows,[section.key]:(d.rows[section.key]??[]).map((r,j)=>j===i?{...r,[field]:value}:r)}}));}}>{["Pending","Request submitted","Indexed","Intentional noindex"].map(v=><option key={v}>{v}</option>)}</select>:
           ["Original confirmed", "Included in sitemap"].includes(field) ? <input type="checkbox" aria-label={`${section.title} row ${i+1} ${field}`} checked={row[field] === "Yes"} disabled={pending} onChange={e=>{const value=e.target.checked?"Yes":"No";edit(d=>({...d,rows:{...d.rows,[section.key]:(d.rows[section.key]??[]).map((r,j)=>j===i?{...r,[field]:value}:r)}}));}} /> :
           <input className={inputClass} aria-label={`${section.title} row ${i+1} ${field}`} value={row[field]??""} disabled={pending} onChange={e=>{const value=e.target.value;edit(d=>({...d,rows:{...d.rows,[section.key]:(d.rows[section.key]??[]).map((r,j)=>j===i?{...r,[field]:value}:r)}}));}} />}
-        </td>)}</tr>)}</tbody>
+        </td>)}<td className="p-1 align-top"><button type="button" disabled={pending} aria-label={`Remove ${section.title} row ${i+1}`} className="rounded-lg border border-base-600 px-3 py-2 text-xs text-rose-300" onClick={()=>edit(d=>({...d,rows:{...d.rows,[section.key]:(d.rows[section.key]??[]).filter((_,j)=>j!==i)}}))}>Remove</button></td></tr>)}</tbody>
       </table></div>
       <button type="button" disabled={pending} className="mt-2 rounded-lg border border-base-600 px-3 py-2 text-xs text-accent-300" onClick={()=>edit(d=>({...d,rows:{...d.rows,[section.key]:[...(d.rows[section.key]??[]),{}]}}))}>+ {section.key==="indexing"?"Add URL":"Add record"}</button>
       <textarea className={`${inputClass} mt-3`} aria-label={`${section.title} notes`} placeholder="Findings, evidence and next actions" value={data.notes[section.key]??""} disabled={pending} onChange={e=>{const value=e.target.value;edit(d=>({...d,notes:{...d.notes,[section.key]:value}}));}} />
