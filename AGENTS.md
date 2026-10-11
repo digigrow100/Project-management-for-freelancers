@@ -185,6 +185,8 @@ Always enforce permissions server-side, not only by hiding UI.
 
 # Projects and Task Workflow
 
+Deferring a task closes only the acting member’s open time entries for that task; other tasks and members keep their timers. Simple pauses go to the queue tail; scheduled returns and admin requests appear in Pending.
+
 The app supports multiple project types, including:
 - SEO
 - Web Development
@@ -317,7 +319,7 @@ Do not weaken URL sanitization, token checks, privacy controls, or retention beh
 
 # SEO Module
 
-GSC and GBP have separate tabs (`seoTab=gsc/gbp`): SeoReviewPanel, lib/seoReviewConfig.ts, lib/seoReviews.ts and lib/seoReviewActions.ts. Migration 098 was applied to production on 2026-10-11. Reviews save with optimistic revision checks in a transactional RPC. Saving a fully checked cycle archives a snapshot and resets only review checkboxes; rows/notes (including unresolved URLs) carry forward. Prior cycles are read-only. Manual entry only: no Google APIs, automated indexing/disavow, or focus-task generation is implemented. Existing GSC recurring and GBP setup records are shown in their respective tabs with original identities preserved.
+GSC and GBP have separate tabs (`seoTab=gsc/gbp`): SeoReviewPanel, lib/seoReviewConfig.ts, lib/seoReviews.ts and lib/seoReviewActions.ts. Migration 098 was applied to production on 2026-10-11. Reviews save with optimistic revision checks in a transactional RPC. Saving a fully checked cycle archives a snapshot and resets only review checkboxes; rows/notes (including unresolved URLs) carry forward. Prior cycles are read-only. Current-cycle review rows can be removed; removal does not alter archived snapshots. Manual entry only: no Google APIs, automated indexing/disavow, or focus-task generation is implemented. Existing GSC recurring and GBP setup records are shown in their respective tabs with original identities preserved.
 
 Technical SEO has a dedicated tab (`seoTab=technical`) grouping page technical checks, sitewide technical setup and recurring technical reviews. `lib/seoTechnical.ts` defines grouping. Website Pages retains content/headings/meta/keywords; Full Website retains tracking and business setup; Recurring SEO retains nontechnical reviews. Grouping preserves existing database IDs, progress, module owners and task routing; it does not introduce independent technical ownership. Sitewide/recurring assignment controls still assign their original complete modules. No migration is required.
 
@@ -697,6 +699,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Timer-deferral follow-up now scopes closure by both task and acting member; regression coverage includes an open previous-assignee session.
 - Release follow-up: deferring a queued task closes only that task’s time entries, keeping a different active timer running. GSC/GBP rows can be removed from the current cycle without changing archived history.
 - User authorized production release. Database migrations 097/098 applied; rollback verification passed for save, revision conflict, history and carried-forward rows. Review saving now stays disabled for the full asynchronous request; rescheduling clears stale timestamps.
 - Added local GSC/GBP recurring review tabs with structured records, indexing status tracking, original-photo fields, immutable cycle snapshots and carried-forward data. Migration 098 applied and transactional save/history/carry-forward verified with rollback; release authorized by user.
