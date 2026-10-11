@@ -481,8 +481,19 @@ async function pair(payload) {
       deviceLabel: payload.deviceLabel || navigator.platform || "Chrome",
     }),
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Pairing failed.");
+  const contentType = response.headers.get("content-type") || "";
+  let data = null;
+  if (contentType.includes("application/json")) {
+    data = await response.json();
+  } else {
+    const bodyText = await response.text();
+    const preview = bodyText.replace(/\s+/g, " ").slice(0, 120);
+    throw new Error(
+      "Pairing API returned a web page instead of JSON. Generate a fresh code from the same live app URL you are using, then try again." +
+      (preview ? " Response: " + preview : "")
+    );
+  }
+  if (!response.ok) throw new Error(data?.error || "Pairing failed.");
   await storageSet({
     appOrigin: data.appOrigin || origin,
     deviceToken: data.deviceToken,
