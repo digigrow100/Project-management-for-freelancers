@@ -305,7 +305,7 @@ Relevant UI:
 The download button and connection card show the version directly from `chrome-extension/manifest.json`; the download URL includes that version to avoid stale cached ZIP downloads.
 
 Current employee activity extension version:
-- **1.2.2**
+- **1.2.3**
 
 Security and retention logic are in the later activity migrations:
 - `087_employee_activity_extension.sql`
@@ -691,6 +691,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Work-time summaries now read all monthly activity pages and filter individual summaries by employee, preventing totals from disappearing after the API row limit. Empty refreshes retain the last total. Extension v1.2.3 serializes tracking transitions, prevents concurrent uploads, preserves events added during upload, and flushes on pause/tab transitions. Download ZIP refreshed.
 - Employee extension download button and connection card now display the manifest version automatically; refreshed the outdated v1.2.0 download ZIP to v1.2.2.
 - Employee activity extension multi-profile pairing was hardened: each Chrome profile gets an independent one-time code, non-JSON pairing responses now show a readable error, and v1.2.2 persists the code through Chrome's Allow permission popup so pairing can resume without re-pasting.
 - Employee activity extension multi-profile pairing: admins/members can generate a separate one-time code for each Chrome profile; unused codes no longer invalidate each other.

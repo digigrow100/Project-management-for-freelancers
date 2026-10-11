@@ -145,8 +145,8 @@ export function MemberFocusDashboard({
         const response = await fetch("/api/extension/my-work-summary", { cache: "no-store" });
         if (!response.ok) return;
         const data = (await response.json()) as { summary?: EmployeeActivitySummary | null };
-        if (!cancelled) {
-          setExtensionWork(data.summary ?? null);
+        if (!cancelled && data.summary) {
+          setExtensionWork(data.summary);
         }
       } catch {
         // Keep the last known timer state if a refresh fails.

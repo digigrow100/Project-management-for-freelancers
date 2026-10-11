@@ -37,7 +37,7 @@ export function AdminMyWorkTime({ initialSummary }: { initialSummary: EmployeeAc
         const response = await fetch("/api/extension/my-work-summary", { cache: "no-store" });
         if (!response.ok) return;
         const data = (await response.json()) as { summary?: EmployeeActivitySummary | null };
-        if (!cancelled) setSummary(data.summary ?? null);
+        if (!cancelled && data.summary) setSummary(data.summary);
       } catch {
         // Keep the last known totals if a refresh fails.
       }
