@@ -79,6 +79,7 @@ export interface TaskFocusState {
   availableOn?: string | null;
   /** When true, this task stays only in Pending until the member explicitly continues it. Optional for legacy/manual focus objects. */
   keepPending?: boolean;
+  resumeAt?: string | null;
   updatedAt: string;
 }
 

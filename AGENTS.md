@@ -317,6 +317,10 @@ Do not weaken URL sanitization, token checks, privacy controls, or retention beh
 
 # SEO Module
 
+GSC and GBP have separate tabs (`seoTab=gsc/gbp`): SeoReviewPanel, lib/seoReviewConfig.ts, lib/seoReviews.ts and lib/seoReviewActions.ts. Migration 098 was applied to production on 2026-10-11. Reviews save with optimistic revision checks in a transactional RPC. Saving a fully checked cycle archives a snapshot and resets only review checkboxes; rows/notes (including unresolved URLs) carry forward. Prior cycles are read-only. Manual entry only: no Google APIs, automated indexing/disavow, or focus-task generation is implemented. Existing GSC recurring and GBP setup records are shown in their respective tabs with original identities preserved.
+
+Technical SEO has a dedicated tab (`seoTab=technical`) grouping page technical checks, sitewide technical setup and recurring technical reviews. `lib/seoTechnical.ts` defines grouping. Website Pages retains content/headings/meta/keywords; Full Website retains tracking and business setup; Recurring SEO retains nontechnical reviews. Grouping preserves existing database IDs, progress, module owners and task routing; it does not introduce independent technical ownership. Sitewide/recurring assignment controls still assign their original complete modules. No migration is required.
+
 SEO projects include page-level and workflow features such as:
 - SEO pages/checklists
 - page URLs
@@ -594,6 +598,8 @@ Latest relevant migration families in this repo include:
 
 # Deployment and Verification Rules
 
+User hold: do not trigger Vercel or push/merge app changes until the user explicitly authorizes deployment. Prepare and verify changes locally.
+
 Main branch:
 - `main`
 
@@ -691,6 +697,11 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- User authorized production release. Database migrations 097/098 applied; rollback verification passed for save, revision conflict, history and carried-forward rows. Review saving now stays disabled for the full asynchronous request; rescheduling clears stale timestamps.
+- Added local GSC/GBP recurring review tabs with structured records, indexing status tracking, original-photo fields, immutable cycle snapshots and carried-forward data. Migration 098 applied and transactional save/history/carry-forward verified with rollback; release authorized by user.
+- Approved workload plan saved in config/seo-workload-plan.json: Maaz owns pages/technical/blog; Junaid owns remaining Full Website setup, social, local, Web 2.0 and guest work. Recurring is split by work type; both record evidence and Hamza reviews reports. Plan is not yet applied to live assignments; independent technical routing must be implemented first.
+- Local pending update: simple Pause moves to the queue tail; scheduled 30m/1h/tomorrow tasks and admin requests appear in Pending. Assigned members can recall admin requests by resuming. Migration 097 adds resume_at and was applied to production.
+- Added a dedicated Technical SEO tab using existing saved checks and workflow records, removing technical items from their previous panels without resetting history. Verified locally; release authorized by user.
 - Work-time summaries now read all monthly activity pages and filter individual summaries by employee, preventing totals from disappearing after the API row limit. Empty refreshes retain the last total. Extension v1.2.3 serializes tracking transitions, prevents concurrent uploads, preserves events added during upload, and flushes on pause/tab transitions. Download ZIP refreshed.
 - Employee extension download button and connection card now display the manifest version automatically; refreshed the outdated v1.2.0 download ZIP to v1.2.2.
 - Employee activity extension multi-profile pairing was hardened: each Chrome profile gets an independent one-time code, non-JSON pairing responses now show a readable error, and v1.2.2 persists the code through Chrome's Allow permission popup so pairing can resume without re-pasting.

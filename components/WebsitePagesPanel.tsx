@@ -23,23 +23,15 @@ const PAGE_TYPES: Array<[ProjectPageType, string]> = [
   ["other", "Other"],
 ];
 
+import { TECHNICAL_PAGE_KEYS } from "@/lib/seoTechnical";
+
 const ON_PAGE_KEYS = [
-  "page_link",
   "meta_tags",
-  "image_optimization",
-  "internal_linking",
   "heading_structure",
   "unique_content",
 ] as const;
 
-const TECHNICAL_KEYS = [
-  "pagespeed_90",
-  "canonical_url",
-  "google_indexing",
-  "schema_markup",
-  "mobile_friendly",
-  "technical_check",
-] as const;
+const TECHNICAL_KEYS = TECHNICAL_PAGE_KEYS;
 
 const SHORT_LABELS: Record<string, string> = {
   page_link: "Page Link",
@@ -95,6 +87,7 @@ export function WebsitePagesPanel({
   periodMonth,
   keywords,
   keywordPages,
+  view = "on_page",
 }: {
   projectId: string;
   pages: ProjectPage[];
@@ -102,6 +95,7 @@ export function WebsitePagesPanel({
   periodMonth: string;
   keywords: Keyword[];
   keywordPages: KeywordPage[];
+  view?: "on_page" | "technical";
 }) {
   const [adding, setAdding] = useState(false);
   const [addingKeywordForPageId, setAddingKeywordForPageId] = useState<string | null>(null);
@@ -120,8 +114,7 @@ export function WebsitePagesPanel({
 
   const trackedChecks = checks.filter(
     (check) =>
-      (ON_PAGE_KEYS as readonly string[]).includes(check.checkKey) ||
-      (TECHNICAL_KEYS as readonly string[]).includes(check.checkKey),
+      ((view === "technical" ? TECHNICAL_KEYS : ON_PAGE_KEYS) as readonly string[]).includes(check.checkKey),
   );
   const totalChecks = trackedChecks.length;
   const doneChecks = trackedChecks.filter((check) => check.status === "done" || check.status === "not_applicable").length;
@@ -163,18 +156,18 @@ export function WebsitePagesPanel({
       <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-neutral-100">Website Pages</h2>
+            <h2 className="text-base font-semibold text-neutral-100">{view === "technical" ? "Page-wise Technical SEO" : "Website Pages"}</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              On-page SEO, technical SEO, mapped keywords, volume and manual ranking for {periodMonth}.
+              {view === "technical" ? "Technical checks for each website page" : "On-page SEO, mapped keywords, volume and manual ranking"} for {periodMonth}.
             </p>
           </div>
-          <button
+          {view === "on_page" && <button
             type="button"
             onClick={() => setAdding((value) => !value)}
             className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-accent-400"
           >
             <Plus size={14} /> Add Page
-          </button>
+          </button>}
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -232,7 +225,7 @@ export function WebsitePagesPanel({
             .map((key) => allPageChecks.find((check) => check.checkKey === key))
             .filter(Boolean) as PageAuditCheck[];
 
-          const pageChecks = [...onPageChecks, ...technicalChecks];
+          const pageChecks = view === "technical" ? technicalChecks : onPageChecks;
           const completed = pageChecks.filter((check) => check.status === "done" || check.status === "not_applicable").length;
           const pageProgress = pageChecks.length ? Math.round((completed / pageChecks.length) * 100) : 0;
 
@@ -277,7 +270,7 @@ export function WebsitePagesPanel({
                   <p className="text-[10px] text-neutral-600">{completed}/{pageChecks.length} checks</p>
                 </div>
 
-                <button
+                {view === "on_page" && <button
                   type="button"
                   onClick={() => {
                     if (!window.confirm("Delete this page and its checklist history?")) return;
@@ -286,14 +279,14 @@ export function WebsitePagesPanel({
                   className="rounded-md p-2 text-neutral-600 hover:bg-rose-500/10 hover:text-rose-400"
                 >
                   <Trash2 size={14} />
-                </button>
+                </button>}
               </div>
 
-              <div className="mt-4 grid gap-3 xl:grid-cols-3">
-                <ChecklistColumn title="On-Page SEO" checks={onPageChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />
-                <ChecklistColumn title="Technical SEO" checks={technicalChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />
+              <div className={cn("mt-4 grid gap-3", view === "on_page" && "xl:grid-cols-2")}>
+                {view === "on_page" && <ChecklistColumn title="On-Page SEO" checks={onPageChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />}
+                {view === "technical" && <ChecklistColumn title="Technical SEO" checks={technicalChecks} onToggle={toggleCheck} onStatus={setCheckStatus} />}
 
-                <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
+                {view === "on_page" && <div className="rounded-xl border border-base-700/60 bg-base-900/35 p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Keywords</h4>
                     <div className="flex items-center gap-2">
@@ -426,7 +419,7 @@ export function WebsitePagesPanel({
                   <p className="mt-2 text-[9px] text-neutral-700">
                     Ranking saves when you leave the field.
                   </p>
-                </div>
+                </div>}
               </div>
             </section>
           );

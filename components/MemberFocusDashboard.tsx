@@ -32,6 +32,7 @@ import {
   toggleChecklistItemAction,
 } from "@/lib/actions";
 import { MemberTaskDetailModal } from "./MemberTaskDetailModal";
+import { isScheduledFocus, isFocusReady } from "@/lib/taskDeferral";
 import { cn, formatDateKey } from "@/lib/utils";
 
 function localDateKey(date = new Date()): string {
@@ -198,10 +199,7 @@ export function MemberFocusDashboard({
     .filter(
       (state) =>
         state.state === "paused" &&
-        !state.keepPending &&
-        (
-          (state.availableOn ? state.availableOn <= today : state.resumeAfterCompletions === 0)
-        ),
+        isFocusReady(state, today, Date.now()),
     )
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
     .filter(
@@ -218,30 +216,19 @@ export function MemberFocusDashboard({
     .filter((task) => task.id !== activeTask?.id && !pausedIds.has(task.id))
     .sort(sortQueue);
 
-  // A paused/skipped task with resumeAfterCompletions > 0 is deliberately
-  // deferred. Never use it as a fallback current task: doing that makes two
-  // skipped tasks bounce between each other forever when no fresh task exists.
   const waitingPaused = focusStates
-    .filter(
-      (state) =>
-        state.state === "paused" &&
-        (
-          state.keepPending ||
-          (state.availableOn ? state.availableOn > today : state.resumeAfterCompletions > 0)
-        ),
-    )
+    .filter((state) => state.state === "paused" && !isFocusReady(state, today, Date.now()))
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
-    .filter(
-      (item): item is { state: TaskFocusState; task: Task } =>
-        !!item.task && item.task.status !== "done" && !item.task.waitingForAdmin,
-    )
+    .filter((item): item is { state: TaskFocusState; task: Task } => !!item.task && item.task.status !== "done")
     .sort((a, b) => sortQueue(a.task, b.task));
 
-  const naturalCurrent = activeTask ?? readyPaused[0]?.task ?? queuedTasks[0] ?? null;
+  const scheduledReady = readyPaused.filter(({ state }) => isScheduledFocus(state));
+  const queueTail = readyPaused.filter(({ state }) => !isScheduledFocus(state))
+    .sort((a, b) => a.state.updatedAt.localeCompare(b.state.updatedAt));
+  const orderedQueue = [...scheduledReady.map(({ task }) => task), ...queuedTasks, ...queueTail.map(({ task }) => task)];
   const browsePool = [
-    ...(naturalCurrent ? [naturalCurrent] : []),
-    ...readyPaused.map((item) => item.task).filter((task) => task.id !== naturalCurrent?.id),
-    ...queuedTasks.filter((task) => task.id !== naturalCurrent?.id),
+    ...(activeTask ? [activeTask] : []),
+    ...orderedQueue.filter((task) => task.id !== activeTask?.id),
   ];
   const safeOffset = browsePool.length === 0 ? 0 : Math.min(browseOffset, browsePool.length - 1);
   const currentTask = browsePool[safeOffset] ?? null;
@@ -259,17 +246,15 @@ export function MemberFocusDashboard({
   const todayPercent = todayTotal === 0 ? 100 : Math.round((todayCompletedCount / todayTotal) * 100);
 
   const pendingItems = focusStates
-    .filter((state) => state.state === "paused")
+    .filter((state) => state.state === "paused" && (isScheduledFocus(state) || taskById.get(state.taskId)?.waitingForAdmin))
     .map((state) => ({ state, task: taskById.get(state.taskId) }))
     .filter(
       (item): item is { state: TaskFocusState; task: Task } =>
-        !!item.task && item.task.status !== "done" && !item.task.waitingForAdmin,
+        !!item.task && item.task.status !== "done",
     )
     .sort((a, b) => sortQueue(a.task, b.task));
 
-  const upcomingTasks = openTasks
-    .filter((task) => task.id !== activeTask?.id && !pausedIds.has(task.id))
-    .sort(sortQueue);
+  const upcomingTasks = orderedQueue.filter((task) => task.id !== currentTask?.id);
 
   function startTask(task: Task) {
     startTransition(async () => {
@@ -285,7 +270,7 @@ export function MemberFocusDashboard({
     });
   }
 
-  function setPendingMode(task: Task, mode: "tomorrow" | "keep_pending") {
+  function setPendingMode(task: Task, mode: "tomorrow" | "30m" | "1h") {
     startTransition(async () => {
       await setPausedTaskPendingModeAction(task.id, mode);
       router.refresh();
@@ -662,6 +647,14 @@ export function MemberFocusDashboard({
                 </button>
               </div>
 
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(["30m", "1h", "tomorrow"] as const).map((mode) => (
+                  <button key={mode} type="button" disabled={isPending} onClick={() => setPendingMode(currentTask, mode)}
+                    className="rounded-lg border border-base-600 px-3 py-2 text-xs text-neutral-300">
+                    {mode === "30m" ? "After 30 minutes" : mode === "1h" ? "After 1 hour" : "Return Tomorrow"}
+                  </button>
+                ))}
+              </div>
               <div className="mt-3">
                 {!adminRequestOpen ? (
                   <button
@@ -738,7 +731,7 @@ export function MemberFocusDashboard({
             <div>
               <h3 className="text-sm font-semibold text-neutral-100">Today&apos;s Focus</h3>
               <p className="mt-1 text-sm text-neutral-500">
-                Work one task at a time. Paused work leaves today&apos;s rotation, stays in Pending Tasks, and can return as carryover on the next work day.
+                Work one task at a time. Simple pauses move to the end of the queue. Scheduled work and admin requests stay in Pending Tasks.
               </p>
             </div>
           </div>
@@ -829,7 +822,7 @@ export function MemberFocusDashboard({
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-neutral-100">Pending Tasks</p>
-                  <p className="text-[11px] text-neutral-500">Paused work stays here without interrupting the normal queue.</p>
+                  <p className="text-[11px] text-neutral-500">Scheduled tasks and requests sent to admin stay here.</p>
                 </div>
                 <button type="button" onClick={() => setPendingPanelOpen(false)} className="rounded-lg p-2 text-neutral-500 hover:bg-base-800 hover:text-neutral-200">
                   <X size={15} />
@@ -851,20 +844,20 @@ export function MemberFocusDashboard({
                             ? "bg-sky-500/10 text-sky-300"
                             : "bg-amber-500/10 text-amber-300",
                       )}>
-                        {state.keepPending ? "Keep Pending" : state.availableOn && state.availableOn <= today ? "Carryover" : "Tomorrow"}
+                        {task.waitingForAdmin ? "Sent to Admin" : state.resumeAt ? new Date(state.resumeAt).toLocaleString() : state.keepPending ? "Previously Pending" : state.availableOn && state.availableOn <= today ? "Carryover" : "Tomorrow"}
                       </span>
                     </div>
                     {state.skipReason && (
                       <p className="mt-2 text-[11px] text-neutral-500">Reason: {state.skipReason.replaceAll("_", " ")}</p>
                     )}
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         disabled={isPending}
                         onClick={() => startTask(task)}
                         className="rounded-lg bg-accent-400 px-2 py-2 text-[11px] font-semibold text-base-950 hover:bg-accent-300 disabled:opacity-60"
                       >
-                        Continue
+                        {task.waitingForAdmin ? "Resume myself" : "Continue"}
                       </button>
                       <button
                         type="button"
@@ -877,11 +870,13 @@ export function MemberFocusDashboard({
                       <button
                         type="button"
                         disabled={isPending}
-                        onClick={() => setPendingMode(task, "keep_pending")}
+                        onClick={() => setPendingMode(task, "30m")}
                         className="rounded-lg border border-base-600 bg-base-800 px-2 py-2 text-[11px] font-semibold text-neutral-300 disabled:opacity-60"
                       >
-                        Keep Pending
+                        After 30 minutes
                       </button>
+                      <button type="button" disabled={isPending} onClick={() => setPendingMode(task, "1h")}
+                        className="rounded-lg border border-base-600 px-2 py-2 text-[11px] text-neutral-300">After 1 hour</button>
                     </div>
                   </div>
                 ))}

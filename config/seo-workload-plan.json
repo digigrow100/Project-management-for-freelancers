@@ -1,0 +1,29 @@
+{
+  "status": "approved-plan-pending-assignment-integration",
+  "workDaysPerWeek": 6,
+  "scope": "SEO projects; preserve archived projects and existing completed work",
+  "moduleOwners": {
+    "website_pages": "Maaz",
+    "technical_seo": "Maaz",
+    "full_website": "Junaid",
+    "blog_onsite": "Maaz",
+    "social_media": "Junaid",
+    "local_listing": "Junaid",
+    "web_2_0": "Junaid",
+    "guest_blogging": "Junaid"
+  },
+  "recurring": {
+    "technical_and_on_page": "Maaz",
+    "listings_and_backlinks": "Junaid"
+  },
+  "reporting": {
+    "workEvidence": ["Maaz", "Junaid"],
+    "finalReview": "Hamza Farooq"
+  },
+  "releaseRequirements": [
+    "Add independent Technical SEO ownership and task routing before applying assignments",
+    "Split recurring responsibility without assigning the complete module twice",
+    "Resolve members by verified profile IDs before database writes",
+    "Do not trigger Vercel until explicitly authorized"
+  ]
+}
