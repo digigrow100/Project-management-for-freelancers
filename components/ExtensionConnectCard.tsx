@@ -1,5 +1,7 @@
 "use client";
 
+import extensionManifest from "@/chrome-extension/manifest.json";
+
 import { useState } from "react";
 import { Check, Chrome, Copy, Link2, Plus } from "lucide-react";
 
@@ -57,7 +59,7 @@ export function ExtensionConnectCard() {
             <Chrome size={20} />
           </span>
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Chrome Extension</h2>
+            <h2 className="text-sm font-semibold text-neutral-100">Chrome Extension <span className="text-xs font-normal text-sky-300">v{extensionManifest.version}</span></h2>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-neutral-500">
               Pair each Chrome profile separately with this signed-in account. Use a different one-time code for every profile; all paired profiles still report work under the same user.
             </p>

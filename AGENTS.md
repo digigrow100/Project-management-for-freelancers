@@ -302,6 +302,8 @@ Current required behavior:
 Relevant UI:
 - `components/ExtensionConnectCard.tsx`
 
+The download button and connection card show the version directly from `chrome-extension/manifest.json`; the download URL includes that version to avoid stale cached ZIP downloads.
+
 Current employee activity extension version:
 - **1.2.2**
 
@@ -689,6 +691,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Employee extension download button and connection card now display the manifest version automatically; refreshed the outdated v1.2.0 download ZIP to v1.2.2.
 - Employee activity extension multi-profile pairing was hardened: each Chrome profile gets an independent one-time code, non-JSON pairing responses now show a readable error, and v1.2.2 persists the code through Chrome's Allow permission popup so pairing can resume without re-pasting.
 - Employee activity extension multi-profile pairing: admins/members can generate a separate one-time code for each Chrome profile; unused codes no longer invalidate each other.
 - Extension pairing now binds the code to the exact app origin that generated it and reports a readable error if the endpoint returns HTML/non-JSON. Employee extension version is now 1.2.1.
