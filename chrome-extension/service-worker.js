@@ -102,7 +102,7 @@ async function closeCurrentInterval(endMs, reason) {
   const current = state.currentInterval;
   if (!current || !current.startedAt) return;
   const startedMs = new Date(current.startedAt).getTime();
-  const safeEndMs = Math.max(startedMs, endMs);
+  const safeEndMs = Math.max(startedMs, Math.min(endMs, startedMs + 90000));
   const seconds = Math.max(0, Math.floor((safeEndMs - startedMs) / 1000));
   if (seconds > 0) {
     await queueEvent({

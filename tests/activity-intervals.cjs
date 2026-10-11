@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const vm = require('node:vm');
+const box={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/activityIntervals.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,box);
+const total=box.exports.confirmedActivityTime;
+const row=(start,end,seconds,project='a')=>({started_at:new Date(start*1000).toISOString(),ended_at:new Date(end*1000).toISOString(),duration_seconds:seconds,project_id:project});
+assert.equal(total([row(0,60,60),row(0,60,60)],0,100000).seconds,60);
+assert.equal(total([row(0,60,60),row(30,90,60,'b')],0,100000).seconds,90);
+assert.equal(total([row(0,8593,8593),row(0,8593,8593)],0,9000000).seconds,90);
+assert.equal(total([row(0,60,60)],30000,60000).seconds,30);
+assert.equal(total([row(0,60,60)],0,20000).seconds,20);
+const result=total([row(0,60,60),row(30,90,60,'b')],0,100000);
+assert.equal(Object.values(result.byProject).reduce((a,b)=>a+b,0),result.seconds);
+console.log('Passed: duplicate uploads, overlapping devices, stale gaps, midnight clipping and project attribution.');

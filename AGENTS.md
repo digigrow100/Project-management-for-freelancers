@@ -222,6 +222,8 @@ Do not casually reintroduce a separate legacy flow when the current member focus
 
 # Admin Personal Work Time
 
+Confirmed-time summaries merge overlapping device intervals and retry duplicates, clip to Pakistan day/month boundaries and cap unconfirmed checkpoint gaps at 90 seconds. Original logs remain intact; missed checkpoints cannot establish exact work duration. New activity writes use deterministic event IDs to make retries idempotent.
+
 The admin can monitor their own work time.
 
 Primary UI:
@@ -307,7 +309,7 @@ Relevant UI:
 The download button and connection card show the version directly from `chrome-extension/manifest.json`; the download URL includes that version to avoid stale cached ZIP downloads.
 
 Current employee activity extension version:
-- **1.2.3**
+- **1.2.4**
 
 Security and retention logic are in the later activity migrations:
 - `087_employee_activity_extension.sql`
@@ -699,6 +701,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Work-time correction prepared: duplicate/overlapping intervals count once, unattended checkpoint gaps are capped at 90 seconds, and repeated uploads use stable event IDs. Raw historical logs are preserved. Extension closure has the same gap cap; release not yet confirmed.
 - Timer-deferral follow-up now scopes closure by both task and acting member; regression coverage includes an open previous-assignee session.
 - Release follow-up: deferring a queued task closes only that task’s time entries, keeping a different active timer running. GSC/GBP rows can be removed from the current cycle without changing archived history.
 - User authorized production release. Database migrations 097/098 applied; rollback verification passed for save, revision conflict, history and carried-forward rows. Review saving now stays disabled for the full asynchronous request; rescheduling clears stale timestamps.
