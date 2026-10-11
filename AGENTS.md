@@ -284,6 +284,26 @@ The extension tracks browser work state such as:
 - session start/end
 - heartbeat/offline
 
+## Multiple Chrome profiles
+
+A single Freelance HQ user/admin may use the employee activity extension in multiple Chrome profiles on the same or different machines.
+
+Current required behavior:
+- each Chrome profile is paired separately
+- each profile gets its own one-time pairing code
+- generating a new profile code must not invalidate other unused, unexpired profile codes
+- each installed profile keeps its own `deviceId` / `extensionInstallId`
+- all activity still belongs to the same signed-in Freelance HQ user
+- product reporting should focus on work time, websites and projects, not on forcing the user to care which Chrome profile produced the activity
+- pairing codes expire in about 10 minutes and work once
+- the extension must handle non-JSON pairing responses with a readable error instead of surfacing a raw JSON parse error
+
+Relevant UI:
+- `components/ExtensionConnectCard.tsx`
+
+Current employee activity extension version:
+- **1.2.1**
+
 Security and retention logic are in the later activity migrations:
 - `087_employee_activity_extension.sql`
 - `088_extension_security_hardening.sql`
@@ -668,6 +688,8 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Employee activity extension multi-profile pairing: admins/members can generate a separate one-time code for each Chrome profile; unused codes no longer invalidate each other.
+- Extension pairing now binds the code to the exact app origin that generated it and reports a readable error if the endpoint returns HTML/non-JSON. Employee extension version is now 1.2.1.
 - Added root `AGENTS.md` as the canonical AI working-context file.
 - Added the mandatory rule that every future app update must also update `AGENTS.md`.
 - Documented the preferred targeted-investigation workflow so AI agents read known context first instead of doing unnecessary full-repo research.
