@@ -297,12 +297,13 @@ Current required behavior:
 - product reporting should focus on work time, websites and projects, not on forcing the user to care which Chrome profile produced the activity
 - pairing codes expire in about 10 minutes and work once
 - the extension must handle non-JSON pairing responses with a readable error instead of surfacing a raw JSON parse error
+- Chrome's host-permission Allow dialog may close the extension popup; the pairing code must be persisted before requesting permission and restored/auto-resumed afterward so the user does not paste the same code twice
 
 Relevant UI:
 - `components/ExtensionConnectCard.tsx`
 
 Current employee activity extension version:
-- **1.2.1**
+- **1.2.2**
 
 Security and retention logic are in the later activity migrations:
 - `087_employee_activity_extension.sql`
@@ -688,6 +689,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Employee activity extension multi-profile pairing was hardened: each Chrome profile gets an independent one-time code, non-JSON pairing responses now show a readable error, and v1.2.2 persists the code through Chrome's Allow permission popup so pairing can resume without re-pasting.
 - Employee activity extension multi-profile pairing: admins/members can generate a separate one-time code for each Chrome profile; unused codes no longer invalidate each other.
 - Extension pairing now binds the code to the exact app origin that generated it and reports a readable error if the endpoint returns HTML/non-JSON. Employee extension version is now 1.2.1.
 - Added root `AGENTS.md` as the canonical AI working-context file.
