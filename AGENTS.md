@@ -697,6 +697,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- Release follow-up: deferring a queued task closes only that task’s time entries, keeping a different active timer running. GSC/GBP rows can be removed from the current cycle without changing archived history.
 - User authorized production release. Database migrations 097/098 applied; rollback verification passed for save, revision conflict, history and carried-forward rows. Review saving now stays disabled for the full asynchronous request; rescheduling clears stale timestamps.
 - Added local GSC/GBP recurring review tabs with structured records, indexing status tracking, original-photo fields, immutable cycle snapshots and carried-forward data. Migration 098 applied and transactional save/history/carry-forward verified with rollback; release authorized by user.
 - Approved workload plan saved in config/seo-workload-plan.json: Maaz owns pages/technical/blog; Junaid owns remaining Full Website setup, social, local, Web 2.0 and guest work. Recurring is split by work type; both record evidence and Hamza reviews reports. Plan is not yet applied to live assignments; independent technical routing must be implemented first.
