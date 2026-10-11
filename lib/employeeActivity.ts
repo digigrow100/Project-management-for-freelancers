@@ -16,7 +16,7 @@ const DEVICE_TOKEN_TTL_MS = 45 * 24 * 60 * 60 * 1000;
 const DEVICE_TOKEN_ROTATE_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
 const PAIR_RATE_WINDOW_MS = 10 * 60 * 1000;
 const PAIR_RATE_LIMIT = 20;
-const CREATE_PAIR_RATE_LIMIT = 5;
+const CREATE_PAIR_RATE_LIMIT = 10;
 const MAX_ACTIVITY_BATCH = 100;
 const MAX_PROMPT_BATCH = 20;
 const MAX_PROMPT_LENGTH = 8000;
@@ -135,11 +135,16 @@ export async function createExtensionPairingCode(userId: string, origin: string)
   const rawToken = randomBytes(24).toString("base64url");
   const tokenHash = sha256(rawToken);
   const expiresAt = new Date(Date.now() + PAIRING_TTL_MS).toISOString();
+
+  // Keep other still-valid unused codes for this user. Each Chrome profile gets
+  // its own one-time token, so generating a code for profile B must not revoke
+  // the unused code already created for profile A.
   await supabase
     .from("freelance_hq_extension_pairing_tokens")
     .delete()
     .eq("user_id", userId)
-    .is("used_at", null);
+    .is("used_at", null)
+    .lt("expires_at", nowIso());
 
   const { error } = await supabase.from("freelance_hq_extension_pairing_tokens").insert({
     user_id: userId,
