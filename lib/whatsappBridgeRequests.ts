@@ -124,7 +124,7 @@ export async function createAdminWhatsAppRequest(
       date_to: dateTo,
       payload: input.payload ?? {},
       status: "queued",
-      expires_at: new Date(Date.now() + REQUEST_TTL_MS).toISOString(),
+      expires_at: new Date(Date.now() + (requestType === "peek_chat" ? 30000 : requestType === "direct_send" ? 90000 : REQUEST_TTL_MS)).toISOString(),
       updated_at: now,
     })
     .select("id,status,created_at,expires_at")
@@ -225,11 +225,11 @@ export async function claimWhatsAppBridgeRequest(device: AuthenticatedWhatsAppBr
     .from("freelance_hq_whatsapp_bridge_requests")
     .update({
       status: "failed",
-      error_text: "Request expired before the extension processed it.",
+      error_text: "Request expired. For a send request, check WhatsApp before retrying.",
       completed_at: now,
       updated_at: now,
     })
-    .eq("status", "queued")
+    .in("status", ["queued", "processing"])
     .eq("created_by", device.ownerUserId)
     .lte("expires_at", now);
 
@@ -246,17 +246,19 @@ export async function claimWhatsAppBridgeRequest(device: AuthenticatedWhatsAppBr
     .lt("claimed_at", staleBefore)
     .gt("expires_at", nowIso());
 
-  const { data: row, error } = await supabase
-    .from("freelance_hq_whatsapp_bridge_requests")
-    .select("*")
-    .eq("status", "queued")
-    .eq("created_by", device.ownerUserId)
-    .gt("expires_at", nowIso())
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  if (!row) return null;
+  // Explicit actions have priority over background conversation refreshes.
+  const base = () => supabase.from("freelance_hq_whatsapp_bridge_requests")
+    .select("*").eq("status", "queued").eq("created_by", device.ownerUserId)
+    .gt("expires_at", nowIso()).order("created_at", {ascending:true}).limit(1);
+  const explicit = await base().neq("request_type", "peek_chat").maybeSingle();
+  if(explicit.error) throw explicit.error;
+  let row = explicit.data;
+  if(!row) {
+    const peek = await base().eq("request_type", "peek_chat").maybeSingle();
+    if(peek.error) throw peek.error;
+    row=peek.data;
+  }
+  if(!row) return null;
 
   const claimedAt = nowIso();
   const { data: claimed, error: claimError } = await supabase

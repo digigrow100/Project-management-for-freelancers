@@ -131,6 +131,7 @@ export function WhatsAppBridgeManager({
   const [pairExpiresAt, setPairExpiresAt] = useState("");
   const [message, setMessage] = useState("");
   const [scanQuery, setScanQuery] = useState("");
+  const [myChatQuery, setMyChatQuery] = useState("");
   const [scanResults, setScanResults] = useState<ScannedChat[]>([]);
   const [mappingChoice, setMappingChoice] = useState<Record<string, string>>({});
   const [directChats, setDirectChats] = useState<SavedAdminChat[]>(initialSavedChats);
@@ -141,7 +142,12 @@ export function WhatsAppBridgeManager({
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<string[]>([]);
   const [shareUserId, setShareUserId] = useState("");
   const [directDraft, setDirectDraft] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [transitionPending, startTransition] = useTransition();
+  const [manualBusy, setManualBusy] = useState(false);
+  const manualActionRunning = useRef(false);
+  const currentSelectedChatId = useRef<string | null>(null);
+  currentSelectedChatId.current = selectedChat?.id ?? null;
+  const isPending = transitionPending || manualBusy;
   const livePeekRunning = useRef(false);
   const adminNotificationBaseline = useRef<string>("");
   const adminSeenInbound = useRef<Set<string>>(new Set());
@@ -196,7 +202,7 @@ export function WhatsAppBridgeManager({
     updateDraft(link.clientId, { accessUserIds: next });
     setMessage("");
 
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/configure", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -216,6 +222,17 @@ export function WhatsAppBridgeManager({
       setMessage(next.includes(userId)
         ? "Team access granted."
         : "Team access removed.");
+    });
+  }
+
+  function runManualAction(action: () => Promise<void>) {
+    if (manualActionRunning.current) return;
+    manualActionRunning.current = true;
+    setManualBusy(true);
+    startTransition(async () => {
+      try { await action(); }
+      catch(error) {setMessage(error instanceof Error ? error.message : "WhatsApp action failed.");}
+      finally {manualActionRunning.current=false;setManualBusy(false);}
     });
   }
 
@@ -290,7 +307,7 @@ export function WhatsAppBridgeManager({
   }
 
   async function peekSelectedChat(chat: SavedAdminChat) {
-    if (livePeekRunning.current) return;
+    if (manualActionRunning.current || livePeekRunning.current) return;
     livePeekRunning.current = true;
     try {
       const id = await createRequest({
@@ -300,6 +317,7 @@ export function WhatsAppBridgeManager({
         phone: chat.phone,
       });
       const request = await waitForRequest(id);
+      if (manualActionRunning.current || currentSelectedChatId.current !== chat.id) return;
       if (request.status === "done" && Array.isArray(request.result?.messages)) {
         const messages = request.result.messages;
         const baselineKey = chat.id + "|" + selectedDate;
@@ -337,16 +355,16 @@ export function WhatsAppBridgeManager({
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "chats" || !selectedChat) return;
+    if (activeTab !== "chats" || !selectedChat || manualBusy) return;
     const chat = selectedChat;
     void peekSelectedChat(chat);
     const timer = window.setInterval(() => void peekSelectedChat(chat), 3000);
     return () => window.clearInterval(timer);
-  }, [activeTab, selectedChat?.id, selectedDate]);
+  }, [activeTab, selectedChat?.id, selectedDate, manualBusy]);
 
   function generatePairingCode() {
     setMessage("");
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/pairing", { method: "POST" });
       const data = await response.json();
       if (!response.ok) {
@@ -361,7 +379,7 @@ export function WhatsAppBridgeManager({
   function saveClient(link: WhatsAppClientLink) {
     setMessage("");
     const draft = draftFor(link);
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/configure", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -381,7 +399,7 @@ export function WhatsAppBridgeManager({
 
   function removeMapping(link: WhatsAppClientLink) {
     if (!window.confirm("Remove this WhatsApp mapping? Team access will also be removed.")) return;
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/remove-mapping", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -405,7 +423,7 @@ export function WhatsAppBridgeManager({
   function scanWhatsApp() {
     if (!scanQuery.trim()) return;
     setMessage("");
-    startTransition(async () => {
+    runManualAction(async () => {
       try {
         const id = await createRequest({ requestType: "scan", query: scanQuery.trim() });
         const request = await waitForRequest(id);
@@ -433,7 +451,7 @@ export function WhatsAppBridgeManager({
       setMessage("Choose which app client this WhatsApp chat belongs to.");
       return;
     }
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/configure", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -480,7 +498,7 @@ export function WhatsAppBridgeManager({
 
   function refreshSavedChats() {
     setMessage("");
-    startTransition(async () => {
+    runManualAction(async () => {
       try {
         const response = await fetch("/api/admin/whatsapp-bridge/my-chats", { cache: "no-store" });
         const data = await response.json();
@@ -498,14 +516,17 @@ export function WhatsAppBridgeManager({
   }
 
   function searchMyWhatsAppChats() {
-    if (!scanQuery.trim()) return;
+    if (!myChatQuery.trim()) return;
     setMessage("");
-    startTransition(async () => {
+    setDirectSearchResults([]);
+    runManualAction(async () => {
       try {
-        const id = await createRequest({ requestType: "scan", query: scanQuery.trim() });
+        const id = await createRequest({ requestType: "scan", query: myChatQuery.trim() });
         const request = await waitForRequest(id);
         if (request.status !== "done") throw new Error(request.error || "Could not search WhatsApp.");
-        setDirectSearchResults(Array.isArray(request.result?.chats) ? request.result!.chats! : []);
+        const chats = Array.isArray(request.result?.chats) ? request.result!.chats! : [];
+        setDirectSearchResults(chats);
+        if(!chats.length) setMessage("No matching contacts found in WhatsApp.");
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Could not search WhatsApp.");
       }
@@ -517,7 +538,7 @@ export function WhatsAppBridgeManager({
       setMessage(chat.warning || "This WhatsApp chat cannot be safely saved yet.");
       return;
     }
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/my-chats", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -548,7 +569,7 @@ export function WhatsAppBridgeManager({
   }
 
   function removeMyWhatsAppChat(chat: SavedAdminChat) {
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/my-chats?id=" + encodeURIComponent(chat.id), { method: "DELETE" });
       const data = await response.json();
       if (!response.ok) {
@@ -570,7 +591,7 @@ export function WhatsAppBridgeManager({
     setHistory([]);
     setSelectedHistoryKeys([]);
     setMessage("");
-    startTransition(async () => {
+    runManualAction(async () => {
       try {
         const id = await createRequest({
           requestType: "open_chat",
@@ -593,7 +614,7 @@ export function WhatsAppBridgeManager({
       return;
     }
     setMessage("");
-    startTransition(async () => {
+    runManualAction(async () => {
       try {
         const range = dayRange(selectedDate);
         const mapped = mappedByIdentity.get(chatIdentity(selectedChat));
@@ -633,7 +654,7 @@ export function WhatsAppBridgeManager({
       return;
     }
     const range = dayRange(selectedDate);
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/share", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -656,7 +677,7 @@ export function WhatsAppBridgeManager({
     }
     const body = directDraft.trim();
     setDirectDraft("");
-    startTransition(async () => {
+    runManualAction(async () => {
       try {
         const id = await createRequest({
           requestType: "direct_send",
@@ -682,7 +703,7 @@ export function WhatsAppBridgeManager({
 
   function revokeBridge() {
     if (!window.confirm("Disconnect all currently paired WhatsApp Bridge extensions?")) return;
-    startTransition(async () => {
+    runManualAction(async () => {
       const response = await fetch("/api/admin/whatsapp-bridge/revoke", { method: "POST" });
       if (response.ok) {
         setPairingCode("");
@@ -856,8 +877,8 @@ export function WhatsAppBridgeManager({
               </div>
             </div>
             <div className="mt-3 flex gap-2">
-              <input value={scanQuery} onChange={(event) => setScanQuery(event.target.value)} placeholder="Search WhatsApp name…" className="min-w-0 flex-1 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs text-neutral-100 outline-none" />
-              <button type="button" onClick={searchMyWhatsAppChats} disabled={isPending || !scanQuery.trim()} className="rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300">Search WhatsApp</button>
+              <input value={myChatQuery} onChange={(event) => setMyChatQuery(event.target.value)} onKeyDown={(event) => {if(event.key === "Enter") {event.preventDefault();searchMyWhatsAppChats();}}} placeholder="Search WhatsApp name…" className="min-w-0 flex-1 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs text-neutral-100 outline-none" />
+              <button type="button" onClick={searchMyWhatsAppChats} disabled={isPending || !myChatQuery.trim()} className="rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300">{manualBusy ? "Working…" : "Search WhatsApp"}</button>
             </div>
             {directSearchResults.length > 0 && (
               <div className="mt-3 divide-y divide-base-700/40 rounded-xl border border-base-700/60 bg-base-900/40">
