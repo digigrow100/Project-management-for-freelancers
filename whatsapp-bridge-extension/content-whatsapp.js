@@ -411,36 +411,40 @@
     return results;
   }
 
-  async function scanChats(query) {
-    if (!whatsappReady()) throw new Error("WhatsApp Web is not ready.");
-    const search = await ensureSearchBox();
-    if (!search) throw new Error("WhatsApp chat search is unavailable. Open the Chats view in WhatsApp Web and retry.");
-
+  function matchingSearchRows(rows, query) {
     const needle = normalize(query);
+    if (!needle) return [];
+    return rows.filter(row => {
+      const label = normalize(rowLabel(row));
+      const phone = digits(rowPhone(row));
+      const queryPhone = digits(query);
+      return label.includes(needle) || (queryPhone.length >= 5 && phone.includes(queryPhone));
+    });
+  }
+
+  async function searchChatRows(query) {
+    const search = await ensureSearchBox();
+    if (!search) throw new Error("WhatsApp chat search is unavailable. Open Chats and retry.");
     setEditableText(search, "");
     await sleep(80);
     setEditableText(search, String(query || "").trim());
-
-    let rows = [];
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await sleep(attempt === 0 ? 800 : 300);
-      rows = candidateRows();
-
-      // Current WhatsApp Web search can render contacts outside #pane-side and
-      // without stable list roles/testids. Fall back to visible result text.
-      if (!rows.length || !rows.some((row) => normalize(row.textContent).includes(needle))) {
-        const visibleRows = visibleSearchResultRows(query);
-        if (visibleRows.length) rows = visibleRows;
-      }
-
-      if (rows.length) break;
+    const value = search instanceof HTMLInputElement || search instanceof HTMLTextAreaElement ? search.value : search.textContent;
+    if(normalize(value) !== normalize(query)) throw new Error("WhatsApp did not accept the search text. No results were used.");
+    for(let attempt=0;attempt<12;attempt++) {
+      await sleep(attempt===0?800:300);
+      const candidates = [...candidateRows(), ...visibleSearchResultRows(query)];
+      const rows = matchingSearchRows(Array.from(new Set(candidates)),query);
+      if(rows.length) return rows;
     }
+    return [];
+  }
 
+  async function scanChats(query) {
+    if (!whatsappReady()) throw new Error("WhatsApp Web is not ready.");
+    if(!normalize(query)) throw new Error("Enter a chat name or phone to search.");
+    const rows = await searchChatRows(query);
     const results = buildChatResults(rows);
-
-    setEditableText(search, "");
-    await sleep(250);
-    return { chats: results, debug: { rowCount: rows.length } };
+    return {chats:results,debug:{rowCount:rows.length,filteredByQuery:true}};
   }
 
   async function listChats() {
@@ -455,9 +459,10 @@
   function currentChatLabel() {
     const header = document.querySelector("#main header");
     if (!header) return "";
-    const candidates = Array.from(header.querySelectorAll("span[title], div[title], [aria-label]"))
-      .map((node) => String(node.getAttribute("title") || node.getAttribute("aria-label") || "").trim())
-      .filter((value) => value && !looksLikeIconLabel(value) && !looksLikeMessagePreview(value));
+    const candidates = Array.from(header.querySelectorAll('span[title], div[title], span[dir="auto"], span[dir="ltr"]'))
+      .filter(node => !node.closest('button,[role="button"]'))
+      .map(node => String(node.getAttribute("title") || node.textContent || "").trim())
+      .filter(value => value && !looksLikeIconLabel(value) && !/^(online|typing|last seen)/i.test(value));
     return candidates[0] || "";
   }
 
@@ -501,18 +506,17 @@
     clickable.dispatchEvent(new MouseEvent("mousedown", pointer));
     clickable.dispatchEvent(new PointerEvent("pointerup", pointer));
     clickable.dispatchEvent(new MouseEvent("mouseup", pointer));
-    clickable.dispatchEvent(new MouseEvent("click", pointer));
     clickable.click();
 
     await sleep(350);
-    if (composerBox() || activeChatMatches(target)) return true;
+    if (composerBox() && activeChatMatches(target)) return true;
 
     // Some current WhatsApp Web builds require keyboard activation of a
     // focused search result rather than a synthetic mouse click.
     clickable.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
     clickable.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
     await sleep(350);
-    return Boolean(composerBox() || activeChatMatches(target));
+    return Boolean(composerBox() && activeChatMatches(target));
   }
 
   function activeChatMatches(target) {
@@ -520,7 +524,7 @@
     if (!expected) return false;
     const active = normalize(currentChatLabel());
     if (!active) return false;
-    return active === expected || active.includes(expected) || expected.includes(active);
+    return active === expected;
   }
 
   async function waitForOpenedChat(target, timeoutMs = 5000) {
@@ -533,7 +537,7 @@
         // Current WhatsApp builds can hide/remove the search input immediately
         // after the selected row opens. In that state, the visible composer is
         // the strongest signal that the click successfully opened a conversation.
-        if (matches || !search) {
+        if (matches) {
           lastOpenedChatKey = String(target.chatKey || "");
           activeTarget = { ...target };
           return true;
@@ -550,27 +554,13 @@
     if (!query || !chatKey) throw new Error("WhatsApp chat does not have a safe stable mapping.");
 
     const existingComposer = composerBox();
-    if (existingComposer && (lastOpenedChatKey === chatKey || activeChatMatches(target))) {
+    if (existingComposer && activeChatMatches(target)) {
       lastOpenedChatKey = chatKey;
       activeTarget = { ...target };
       return true;
     }
 
-    const search = await ensureSearchBox();
-    if (!search) {
-      // If the app just opened this chat, WhatsApp may remove the search box
-      // from the DOM while leaving the conversation composer active.
-      if (existingComposer && lastOpenedChatKey === chatKey) return true;
-      throw new Error("WhatsApp search box was not found.");
-    }
-    setEditableText(search, query);
-
-    let rows = [];
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await sleep(attempt === 0 ? 650 : 250);
-      rows = candidateRows();
-      if (rows.length) break;
-    }
+    const rows = await searchChatRows(query);
 
     let row = null;
     if (chatKey.startsWith("wa-id:")) {
@@ -586,7 +576,7 @@
       else if (exact.length > 1) throw new Error("More than one WhatsApp chat now has this name. Re-scan and add the exact result again.");
     }
 
-    if (!row && target.chatLabel) {
+    if (!row && chatKey.startsWith("wa-label:") && target.chatLabel) {
       const exactLabel = rows.filter((item) => normalize(rowLabel(item)) === normalize(target.chatLabel));
       if (exactLabel.length === 1) row = exactLabel[0];
     }
@@ -913,6 +903,8 @@
       }
       if (!composer) throw new Error("WhatsApp conversation opened but the message box was not found.");
 
+      if(!activeChatMatches(target)) throw new Error("The selected chat is not verified. Message was not sent.");
+      const beforeKeys = new Set(allMessageContainers().map(node => extractMessage(node,target)?.remoteMessageKey).filter(Boolean));
       const text = String(body || "");
       setEditableText(composer, text);
       await sleep(300);
@@ -936,6 +928,7 @@
         throw new Error("WhatsApp message box changed the text, so the message was not sent.");
       }
 
+      if(!activeChatMatches(target)) throw new Error("The active chat changed. Message was not sent.");
       const sendButton =
         document.querySelector('#main [data-testid="compose-btn-send"]') ||
         document.querySelector('#main button[aria-label*="Send" i]') ||
@@ -964,9 +957,13 @@
         }));
       }
 
-      await sleep(800);
-      lastOpenedChatKey = String(target.chatKey || "");
-      return { ok: true, remoteMessageKey: (remoteKeyPrefix || "outbound:") + Date.now() };
+      for(let attempt=0;attempt<12;attempt++) {
+        await sleep(250);
+        if(!activeChatMatches(target)) break;
+        const sent = allMessageContainers().map(node => extractMessage(node,target)).find(message => message && message.direction === "outbound" && message.body.trim() === text.trim() && !beforeKeys.has(message.remoteMessageKey));
+        if(sent) {lastOpenedChatKey=String(target.chatKey||"");return {ok:true,remoteMessageKey:sent.remoteMessageKey};}
+      }
+      throw new Error("Could not confirm this message in WhatsApp. Check the chat before retrying to avoid duplicates.");
     } finally {
       busy = false;
     }
@@ -1020,10 +1017,16 @@
       }
 
       if (!target) {
-        lastSyncAt = Date.now();
-        return;
+        const matches = clients.filter(item => activeChatMatches(item));
+        if(matches.length !== 1) {lastSyncAt=Date.now();return;}
+        target=matches[0];activeTarget={...target};
       }
 
+      if(!activeChatMatches(target)) {
+        const matches = clients.filter(item => activeChatMatches(item));
+        if(matches.length !== 1) {lastSyncAt=Date.now();return;}
+        target=matches[0]; activeTarget={...target};
+      }
       const messages = extractRecentInbound(target);
       if (messages.length) {
         await chrome.runtime.sendMessage({ type: "WA_INBOUND_BATCH", messages });
