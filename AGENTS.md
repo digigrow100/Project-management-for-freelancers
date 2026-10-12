@@ -159,6 +159,8 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Roles and Access
 
+Admin-only `/team` reuses AdminTeamPanel for roles, job roles, project grants, finance/renewals/credential access, invites and account management. Each member has a one-click POST “Open as member” control and an admin-gated `/team/view/[id]` access link (GET only shows the launch form). Member view keeps the original verified Supabase session; getCurrentProfile applies the selected member’s permissions only while the actor still has database-backed admin access. The HTTP-only Strict SameSite cookie is actor-bound and expires in one hour. A persistent banner returns to admin; member presence heartbeats are suppressed during admin inspection. Real member actions affect real records. No member passwords or login tokens are put in links. Logout clears the view cookie.
+
 Primary roles:
 - `admin`
 - `member`
@@ -709,6 +711,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Added the Team navigation/page, member settings and admin-only member-view launch/return with actor-bound expiry and member permission checks. Prepared locally; deployment not confirmed.
 
 - Review owner transfer now closes the old owner’s session before changing the task assignee, preventing orphaned timers.
 

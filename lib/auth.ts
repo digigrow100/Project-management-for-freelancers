@@ -1,6 +1,8 @@
 import { createAuthClient } from "./supabase/server";
 import * as store from "./store";
 import { isMissingTableError } from "./store";
+import { cookies } from "next/headers";
+import { resolveMemberView, MEMBER_VIEW_COOKIE } from "./memberView";
 import type { Profile } from "./types";
 
 /**
@@ -11,7 +13,7 @@ import type { Profile } from "./types";
  * If migration 006 hasn't been run yet, this fails open as an admin so the app
  * keeps behaving exactly as it did before team accounts existed.
  */
-export async function getCurrentProfile(): Promise<Profile | null> {
+export async function getAuthenticatedProfile(): Promise<Profile | null> {
   let user: { id: string; email?: string } | null = null;
   try {
     const supabase = createAuthClient();
@@ -51,6 +53,18 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     }
     throw error;
   }
+}
+
+/** The real signed-in admin remains the actor; only app-level member access changes. */
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const actor = await getAuthenticatedProfile();
+  return resolveMemberView(actor, cookies().get(MEMBER_VIEW_COOKIE)?.value, store.getProfile);
+}
+
+export async function requireAuthenticatedAdmin(): Promise<Profile> {
+  const actor = await getAuthenticatedProfile();
+  if (!actor || actor.role !== "admin") throw new Error("Admin access required.");
+  return actor;
 }
 
 export async function requireProfile(): Promise<Profile> {
