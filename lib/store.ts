@@ -519,6 +519,19 @@ export async function setSeoModuleAssignment(
 
   if (assignedTo) {
     await assertAssigneeMatchesProjectRole(projectId, assignedTo);
+    // The review-task trigger transfers its assignee immediately. End the old
+    // owner's session first so they are never left with an inaccessible timer.
+    if (module === "gsc" || module === "gbp") {
+      const {data:reviews,error:reviewError}=await supabase.from("freelance_hq_tasks").select("id,assigned_to").eq("project_id",projectId).like("fallback_template_key",`review:${module}:%`).neq("status","done");
+      if(reviewError) throw reviewError;
+      for(const review of reviews ?? []) {
+        if (!review.assigned_to || review.assigned_to === assignedTo) continue;
+        await closeOpenTimeEntriesForTask(review.id,nowIso(),"task_switched");
+        const {error:focusError}=await supabase.from("freelance_hq_task_focus").delete().eq("task_id",review.id);
+        if(focusError) throw focusError;
+      }
+    }
+
 
     const { error: assignmentError } = await supabase
       .from("freelance_hq_seo_module_assignments")
