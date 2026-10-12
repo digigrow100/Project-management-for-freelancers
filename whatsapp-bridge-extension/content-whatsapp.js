@@ -21,8 +21,8 @@
     const search = searchBox();
     const composer = composerBox();
     return Boolean(
-      (search instanceof HTMLElement && search.offsetParent) ||
-      (composer instanceof HTMLElement && composer.offsetParent) ||
+      visibleSearchInput(search) ||
+      (composer instanceof HTMLElement && composer.getClientRects().length) ||
       document.querySelector("#pane-side") ||
       document.querySelector('[data-testid="chat-list"]') ||
       document.querySelector('[aria-label*="Chat list" i]') ||
@@ -30,51 +30,61 @@
     );
   }
 
+  function visibleSearchInput(node) {
+    return node instanceof HTMLElement && node.getClientRects().length > 0 &&
+      !node.closest('#main, footer, [role="dialog"]') &&
+      (node.matches('input:not([type="hidden"]), textarea, [contenteditable="true"]'));
+  }
+
   function searchBox() {
     const selectors = [
-      'input[placeholder*="Search" i]',
-      'input[aria-label*="Search" i]',
+      '#side input', '#side [contenteditable="true"]',
       '[data-testid="chat-list-search"] input',
-      '[data-testid="chat-list-search"] div[contenteditable="true"]',
-      'div[contenteditable="true"][data-tab="3"]',
-      'div[contenteditable="true"][role="textbox"][aria-placeholder*="Search" i]',
-      'div[contenteditable="true"][role="textbox"][aria-label*="Search" i]',
-      'div[contenteditable="true"][role="textbox"][title*="Search" i]',
-      '[role="textbox"][aria-label*="Search or start new chat" i]',
+      '[data-testid="chat-list-search"] [contenteditable="true"]',
+      '[data-testid="chat-list-search"] [role="textbox"]',
+      'input[placeholder*="Search" i]', 'input[aria-label*="Search" i]',
+      '[contenteditable="true"][data-tab="3"]',
+      '[contenteditable="true"][aria-placeholder*="Search" i]',
+      '[contenteditable="true"][aria-label*="Search" i]',
+      '[role="textbox"][aria-label*="Search" i]',
     ];
     for (const selector of selectors) {
-      const node = document.querySelector(selector);
-      if (node instanceof HTMLElement && node.offsetParent && !node.closest("footer")) return node;
+      for (const wrapper of document.querySelectorAll(selector)) {
+        const node = visibleSearchInput(wrapper) ? wrapper : wrapper.querySelector('input, textarea, [contenteditable="true"]');
+        if (visibleSearchInput(node)) return node;
+      }
     }
-
-    const genericInputs = Array.from(document.querySelectorAll(
-      'input, textarea, [contenteditable="true"], [role="textbox"]'
-    ));
-
-    const hinted = genericInputs.find((node) => {
-      if (!(node instanceof HTMLElement) || !node.offsetParent || node.closest("footer")) return false;
-      const hint = [
-        node.getAttribute?.("placeholder"),
-        node.getAttribute?.("aria-label"),
-        node.getAttribute?.("title"),
-        node.getAttribute?.("aria-placeholder"),
-      ].filter(Boolean).join(" ");
+    const candidates = Array.from(document.querySelectorAll('input, textarea, [contenteditable="true"]')).filter(visibleSearchInput);
+    const hinted = candidates.find(node => {
+      const wrapper = node.closest('[role="textbox"], [data-testid="chat-list-search"]');
+      const hint = [node, wrapper].filter(Boolean).flatMap(el => ['placeholder','aria-label','title','aria-placeholder'].map(attr => el.getAttribute(attr) || '')).join(' ');
       return /search/i.test(hint);
     });
     if (hinted) return hinted;
-
-    return genericInputs.find((node) => {
-      if (!(node instanceof HTMLElement) || !node.offsetParent || node.closest("footer")) return false;
-      if (node.closest("#main")) return false;
+    return candidates.find(node => {
       const rect = node.getBoundingClientRect();
-      return rect.width >= 180 &&
-        rect.height >= 28 &&
-        rect.height <= 80 &&
-        rect.top >= 20 &&
-        rect.top <= 180 &&
-        rect.left >= 0 &&
-        rect.left < window.innerWidth * 0.6;
+      return rect.width >= 100 && rect.height >= 16 && rect.height <= 90 &&
+        rect.top >= 0 && rect.top <= 240 && rect.left >= 0 && rect.left < window.innerWidth * 0.5;
     }) || null;
+  }
+
+  async function ensureSearchBox() {
+    let search = searchBox();
+    if (search) return search;
+    // Open the Chats view if WhatsApp is currently displaying another section.
+    const chats = document.querySelector('[aria-label="Chats"], [title="Chats"]');
+    if (chats instanceof HTMLElement && chats.getClientRects().length) chats.click();
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await sleep(200);
+      search = searchBox();
+      if (search) return search;
+      if (attempt === 0) {
+        const icon = document.querySelector('#side [data-icon="search"]');
+        const button = icon?.closest('button, [role="button"]');
+        if (button instanceof HTMLElement && button.getClientRects().length) button.click();
+      }
+    }
+    return null;
   }
 
   function composerBox() {
@@ -89,7 +99,7 @@
     ];
     for (const selector of selectors) {
       const node = document.querySelector(selector);
-      if (node && node.offsetParent) return node;
+      if (node instanceof HTMLElement && node.getClientRects().length) return node;
     }
     return null;
   }
@@ -403,8 +413,8 @@
 
   async function scanChats(query) {
     if (!whatsappReady()) throw new Error("WhatsApp Web is not ready.");
-    const search = searchBox();
-    if (!search) throw new Error("WhatsApp search box was not found.");
+    const search = await ensureSearchBox();
+    if (!search) throw new Error("WhatsApp chat search is unavailable. Open the Chats view in WhatsApp Web and retry.");
 
     const needle = normalize(query);
     setEditableText(search, "");
@@ -546,7 +556,7 @@
       return true;
     }
 
-    const search = searchBox();
+    const search = await ensureSearchBox();
     if (!search) {
       // If the app just opened this chat, WhatsApp may remove the search box
       // from the DOM while leaving the conversation composer active.
