@@ -611,7 +611,7 @@ export async function listSeoWorkflowItems(projectId: string): Promise<SeoWorkfl
       .order("module")
       .order("sort_order");
     if (error) throw error;
-    return ((data ?? []) as SeoWorkflowItemRow[]).map(toSeoWorkflowItem);
+    return ((data ?? []) as SeoWorkflowItemRow[]).filter(row => !row.item_key.startsWith("demo_") && !/\bdemo\b/i.test(row.title)).map(toSeoWorkflowItem);
   } catch (error) {
     if (isMissingTableError(error)) return [];
     throw error;
