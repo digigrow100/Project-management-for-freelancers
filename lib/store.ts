@@ -504,6 +504,12 @@ export async function listSeoModuleAssignments(projectId: string): Promise<SeoMo
   }
 }
 
+export async function listMemberSeoModuleAssignments(userId: string): Promise<SeoModuleAssignment[]> {
+  const {data,error}=await getSupabase().from("freelance_hq_seo_module_assignments").select("project_id,module,assigned_to").eq("assigned_to",userId);
+  if(error) throw error;
+  return (data ?? []).map(row=>({projectId:row.project_id,module:row.module as SeoAssignableModule,assignedTo:row.assigned_to,assignedToName:""}));
+}
+
 export async function setSeoModuleAssignment(
   projectId: string,
   module: SeoAssignableModule,
@@ -1203,7 +1209,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   // block the automatic SEO queue before its date arrives.
   const { data: normalRows, error: normalError } = await getSupabase()
     .from("freelance_hq_tasks")
-    .select("id, scheduled_for, due_date")
+    .select("id, scheduled_for, due_date, fallback_template_key")
     .eq("assigned_to", userId)
     .neq("status", "done")
     .eq("is_fallback", false)
@@ -1214,7 +1220,9 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
     id: string;
     scheduled_for: string | null;
     due_date: string | null;
+    fallback_template_key: string | null;
   }>).some((row) => {
+    if (row.fallback_template_key?.startsWith("review:")) return false;
     if (!row.scheduled_for && !row.due_date) return true;
     if (row.scheduled_for && row.scheduled_for <= today) return true;
     if (row.due_date && row.due_date <= today) return true;
@@ -1257,6 +1265,8 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
       .maybeSingle();
     if (focusError && !isMissingTableError(focusError)) throw focusError;
 
+    // Review cycles have their own persistent tasks; they must not stop daily workflow rotation.
+    if (existingFallback.fallback_template_key?.startsWith("review:")) continue;
     const templateParts = (existingFallback.fallback_template_key ?? "").split(":");
     const taskDate = templateParts.length > 0 ? templateParts[templateParts.length - 1] ?? null : null;
     const isPausedUnavailable =
@@ -1875,6 +1885,7 @@ async function decrementPausedResumeCounters(userId: string): Promise<void> {
 export async function startTaskFocus(taskId: string, userId: string): Promise<void> {
   const task = await requireAssignedTask(taskId, userId);
   if (task.status === "done") return;
+  if (task.fallbackTemplateKey?.startsWith("review:")) throw new Error("Complete and save the review in its project tab. The task closes automatically.");
 
   const now = nowIso();
   if (task.waitingForAdmin) {
@@ -2389,6 +2400,7 @@ export async function toggleToday(taskId: string, today: string): Promise<void> 
 }
 
 export async function toggleChecklistItem(taskId: string, itemId: string): Promise<void> {
+  if (itemId.startsWith("review:")) throw new Error("Update this checklist in the project review tab, then save it.");
   const { data, error } = await getSupabase()
     .from("freelance_hq_tasks")
     .select("checklist, project_id, status, assigned_to")
