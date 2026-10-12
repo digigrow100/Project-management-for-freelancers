@@ -458,6 +458,8 @@ AI actions that can change app data should continue to use confirmation/safe too
 
 # WhatsApp Client Bridge
 
+All native manager controls are disabled for the full duration of a manual request, including team-access chips, so clicks cannot change optimistic state while their server action is skipped.
+
 My WhatsApp Chats has its own query state and Enter-key search. Manual actions hold an explicit async lock and pause live conversation polling; outdated peek results are discarded after changing chat or starting a manual action. Server request claiming prioritizes explicit actions over background peeks; new peek requests expire after 30 seconds and direct sends after 90 seconds. Expired processing requests are also closed, avoiding permanent processing states.
 
 Bridge v1.3.6 rejects chat-search rows unless the displayed name/phone matches the submitted query, verifies inserted search text and waits past stale chat-list rows. Chat opening, sending and syncing require an exact header-name match; cached targets and a visible composer alone do not verify recipients. Stable ID/phone targets cannot silently fall back to a different label. Sending is acknowledged only after a new matching outgoing message appears. Visible message/composer text preserves rendered line breaks for multiline confirmation. Fixtures cover these failure paths; actual user-profile behavior remains to be verified after extension reload.
@@ -706,6 +708,8 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- WhatsApp follow-up: the manager disables its entire form while a manual request runs, including team-access controls, preventing optimistic changes that are silently skipped.
+
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
@@ -739,4 +743,3 @@ Keep this section short and newest-first. Every future app update must add an en
 
 If you change how the app works and do not update this file, the task is incomplete.
 
-- WhatsApp follow-up: the manager disables its entire form while a manual request runs, including team-access controls, preventing optimistic changes that are silently skipped.
