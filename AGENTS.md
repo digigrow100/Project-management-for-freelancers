@@ -738,3 +738,5 @@ Keep this section short and newest-first. Every future app update must add an en
 # Final Rule for Future Agents
 
 If you change how the app works and do not update this file, the task is incomplete.
+
+- WhatsApp follow-up: the manager disables its entire form while a manual request runs, including team-access controls, preventing optimistic changes that are silently skipped.
