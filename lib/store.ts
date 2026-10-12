@@ -585,8 +585,9 @@ export async function setSeoModuleAssignment(
     .select("id,title,fallback_template_key,waiting_for_admin").eq("project_id",projectId).neq("status","done");
   if(openError) throw openError;
   for(const task of openTasks ?? []) {
+    if (task.fallback_template_key?.startsWith("retired:")) continue;
     const matches = module === "website_pages" || module === "reporting"
-      ? task.title.startsWith(SEO_ASSIGNMENT_TITLE_PREFIX[module])
+      ? (task.fallback_template_key?.startsWith("workflow:website_pages:") || task.title.startsWith(SEO_ASSIGNMENT_TITLE_PREFIX[module]))
       : items.some(item => task.fallback_template_key?.startsWith(`workflow:${item.module}:${item.id}:`)
         || task.title === `${SEO_ASSIGNMENT_TITLE_PREFIX[item.module]} ${item.title}`);
     if(!matches || task.waiting_for_admin) continue;
@@ -1110,7 +1111,7 @@ export async function getTasksByProject(projectId: string): Promise<Task[]> {
     taskNameLookup(),
   ]);
   if (error) throw error;
-  return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
+  return ((data ?? []) as TaskRow[]).filter(row => !row.fallback_template_key?.startsWith("retired:")).map((row) => toTask(row, nameById));
 }
 
 export async function getOpenTasks(): Promise<Task[]> {
@@ -1120,7 +1121,7 @@ export async function getOpenTasks(): Promise<Task[]> {
   ]);
   if (error) throw error;
 
-  const tasks = ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
+  const tasks = ((data ?? []) as TaskRow[]).filter(row => !row.fallback_template_key?.startsWith("retired:")).map((row) => toTask(row, nameById));
   return tasks.sort((a, b) => {
     const aDate = a.dueDate ?? a.scheduledFor;
     const bDate = b.dueDate ?? b.scheduledFor;
@@ -1176,7 +1177,7 @@ export async function getMyTasks(userId: string): Promise<Task[]> {
     taskNameLookup(),
   ]);
   if (error) throw error;
-  return ((data ?? []) as TaskRow[]).map((row) => toTask(row, nameById));
+  return ((data ?? []) as TaskRow[]).filter(row => !row.fallback_template_key?.startsWith("retired:")).map((row) => toTask(row, nameById));
 }
 
 interface IdleTaskTemplateRow {
@@ -1380,7 +1381,8 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
   for (const workflowModule of moduleOrder) {
     for (const project of projects) {
       const moduleOwner = moduleOwnerByKey.get(`${project.id}:${workflowModule}`);
-      if (workflowModule === "website_pages" && moduleOwner && moduleOwner !== userId) continue;
+      const hasSavedPlan = Array.from(moduleOwnerByKey.keys()).some(key => key.startsWith(`${project.id}:`));
+      if (workflowModule === "website_pages" && (hasSavedPlan ? moduleOwner !== userId : Boolean(moduleOwner && moduleOwner !== userId))) continue;
       if (claimedToday.has(`${project.id}:${workflowModule}`)) continue;
 
       if (workflowModule === "website_pages") {
@@ -1407,7 +1409,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         return createTask({
           projectId: project.id,
           stageId: null,
-          title: `Complete SEO checklist — ${page.name}`,
+          title: `Website Pages — ${page.name}`,
           notes: `Work through the page-level On-Page and Technical SEO checklist for ${page.name}.`,
           priority: "medium",
           assignedTo: userId,
@@ -1420,7 +1422,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
           why: "This is the next unfinished page in the project's rotating SEO workflow.",
           expectedOutcome: "All page checklist items are completed and verified.",
           isFallback: true,
-          fallbackTemplateKey: `workflow:website_pages:${page.id}:${today}`,
+          fallbackTemplateKey: `workflow:website_pages:${page.id}:tabplan-v2:${today}`,
         });
       }
 
@@ -1428,6 +1430,11 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         .filter((item) => {
           if (item.module !== workflowModule) return false;
           const owners = new Map(Array.from(moduleOwnerByKey.entries()).filter(([key]) => key.startsWith(`${project.id}:`)).map(([key,value]) => [key.slice(project.id.length+1),value]));
+          const group = seoAssignmentGroup(item);
+          // Structured cycles replace the legacy GSC/GBP automatic items.
+          if (group === "gsc" || group === "gbp") return false;
+          if (item.itemKey.startsWith("demo_") || /\bdemo\b/i.test(item.title)) return false;
+          if (owners.size > 0 && !owners.has(group)) return false;
           const owner = seoItemOwner(item, owners);
           if (owner && owner !== userId) return false;
           if (openWorkflowRefs.has(`${project.id}:${workflowModule}:${item.id}`)) return false;
@@ -1460,12 +1467,13 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
           : workflowModule === "blog_onsite"
             ? "content"
             : "off_page";
+      const assignmentLabel = seoAssignmentGroup(item) === "technical_seo" ? "Technical SEO" : moduleLabel[workflowModule];
       const steps = item.details.steps ?? [`Complete ${item.title} for this project`];
 
       return createTask({
         projectId: project.id,
         stageId: null,
-        title: `${moduleLabel[workflowModule]} — ${item.title}`,
+        title: `${assignmentLabel} — ${item.title}`,
         notes: item.url ? `Platform/site: ${item.url}` : "",
         priority: "medium",
         assignedTo: userId,
@@ -1474,7 +1482,7 @@ export async function ensureIdleSeoTaskForMember(userId: string): Promise<Task |
         why: `This is the next ${moduleLabel[workflowModule]} item in the daily project rotation.`,
         expectedOutcome: `${item.title} is completed and recorded for this project.`,
         isFallback: true,
-        fallbackTemplateKey: `workflow:${workflowModule}:${item.id}:${today}`,
+        fallbackTemplateKey: `workflow:${workflowModule}:${item.id}:tabplan-v2:${today}`,
       });
     }
   }

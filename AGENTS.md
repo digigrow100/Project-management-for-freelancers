@@ -323,6 +323,8 @@ Do not weaken URL sanitization, token checks, privacy controls, or retention beh
 
 # SEO Module
 
+Migration 101 retires the former Maaz/Junaid automatic queue by prefixing keys with retired:, unassigning unfinished entries, and preserving completed/source/time history. Retired entries are excluded from operational project/open/member task lists and ownership setters cannot revive them. Fresh workflow keys include tabplan-v2. One fresh pending item per owned project/tab is seeded alongside current GSC/GBP cycles; demo guest tasks are replaced by actual prospect research. Completed source checks carry forward. The generator excludes demo placeholders and legacy GSC/GBP items (structured review tasks cover those), and uses strict saved owners where a project has a tab plan.
+
 The approved eight-project tab plan is applied by migration 100: Maaz owns Website Pages, Technical SEO, Blog Onsite and GSC; Junaid owns remaining Full Website tracking/setup, Social Media, Local Listing, Web 2.0, Guest Blogging, GBP and general recurring. Full Website technical items route to technical_seo. GSC/GBP review cycles create real member tasks through invoker database triggers. Saving review sections syncs their task checklist; finishing the cycle closes its task/timer and creates the next cycle task with a stable ID. Review tasks can start/pause normal focus timers. Complete reviews in the project tab, not the generic task checkboxes. Changing a review owner first closes the former member’s current review session and clears focus before the task transfers, retaining time history. Removing a GSC/GBP owner through the assignment action closes review timers and clears their open task assignment. Technical SEO has one tab-level owner control. Both member dashboard routes show their own saved tab assignments per active project with direct tab links. System-created review tasks are excluded from the manual-task gate, so they do not block daily generation for other assigned tabs; undated reviews appear before legacy automatic work while manual/scheduled priorities and pauses remain intact. Archived projects and AI Ranko/Make Invo stay unassigned; completed tasks and running sessions are preserved. Paused/admin controls follow transferred tasks; historical sessions stay with their original worker.
 
 GSC, GBP and remaining recurring checks have independent assignment groups (`gsc`, `gbp`, `recurring_general`). `seoAssignmentRouting.ts` resolves original workflow items to these groups, preserving original IDs and legacy module-owner fallback. Migration 099 extends allowed groups. Eight existing team SEO projects have GSC owned by Maaz and GBP/general recurring owned by Junaid; AI Ranko/MakeInvo remain unassigned. Matching inactive open tasks were rerouted; active timers/admin requests and completed tasks were preserved. New group routing/UI requires this release; Migration 100 subsequently adds structured review tasks.
@@ -711,6 +713,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Retired legacy Maaz/Junaid automatic tasks and seeded fresh tab-plan work; hid retired data from operational queues while preserving source progress and time history.
 
 - Added the Team navigation/page, member settings and admin-only member-view launch/return with actor-bound expiry and member permission checks. Prepared locally; deployment not confirmed.
 
