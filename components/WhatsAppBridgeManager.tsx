@@ -713,7 +713,7 @@ export function WhatsAppBridgeManager({
   }
 
   return (
-    <div className="space-y-5">
+    <fieldset disabled={isPending} className="min-w-0 space-y-5 border-0 p-0">
       <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -972,6 +972,6 @@ export function WhatsAppBridgeManager({
           </div>
         </section>
       )}
-    </div>
+    </fieldset>
   );
 }
