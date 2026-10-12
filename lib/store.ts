@@ -587,7 +587,7 @@ export async function setSeoModuleAssignment(
   for(const task of openTasks ?? []) {
     if (task.fallback_template_key?.startsWith("retired:")) continue;
     const matches = module === "website_pages" || module === "reporting"
-      ? (task.fallback_template_key?.startsWith("workflow:website_pages:") || task.title.startsWith(SEO_ASSIGNMENT_TITLE_PREFIX[module]))
+      ? ((module === "website_pages" && task.fallback_template_key?.startsWith("workflow:website_pages:")) || task.title.startsWith(SEO_ASSIGNMENT_TITLE_PREFIX[module]))
       : items.some(item => task.fallback_template_key?.startsWith(`workflow:${item.module}:${item.id}:`)
         || task.title === `${SEO_ASSIGNMENT_TITLE_PREFIX[item.module]} ${item.title}`);
     if(!matches || task.waiting_for_admin) continue;
