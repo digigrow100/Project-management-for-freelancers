@@ -458,6 +458,8 @@ AI actions that can change app data should continue to use confirmation/safe too
 
 # WhatsApp Client Bridge
 
+Bridge v1.3.4 locates visible chat search inputs across sidebar/wrapper layouts, skips hidden/compose/dialog inputs and waits for Chats/search UI to open. Download buttons use the standalone versioned WhatsApp ZIP. Exact-chat matching and manual history-sharing rules remain in place. Search fixtures pass; user-profile live testing still requires reloading the installed extension.
+
 There are two related pieces:
 - UI/server functionality in the main app
 - a separate Chrome extension under `whatsapp-bridge-extension/*`
@@ -547,7 +549,7 @@ Current desired behavior:
 The notice should deduplicate using the WhatsApp message identity so the same voice note does not create repeated notices.
 
 Current WhatsApp bridge extension version after this rollback/notice change:
-- **1.3.3**
+- **1.3.4**
 
 The old audio-transcription API/page hook should not be reintroduced unless explicitly requested.
 
@@ -703,6 +705,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- WhatsApp bridge search compatibility fix: live scan requests showed search-box-not-found while connected. Added visible-input/wrapper lookup and Chats activation retry; version 1.3.4 standalone ZIP replaces full-repository download.
 - Applied the approved three-tab split in production for eight team SEO projects (24 owner records). Added independent assignment bars and item-level automatic routing. Existing inactive matching tasks reassigned; active/completed/admin-request tasks retained. Migration 099 applied; code deployment not yet confirmed.
 - Work-time correction prepared: duplicate/overlapping intervals count once, unattended checkpoint gaps are capped at 90 seconds, and repeated uploads use stable event IDs. Raw historical logs are preserved. Extension closure has the same gap cap; release not yet confirmed.
 - Timer-deferral follow-up now scopes closure by both task and acting member; regression coverage includes an open previous-assignee session.

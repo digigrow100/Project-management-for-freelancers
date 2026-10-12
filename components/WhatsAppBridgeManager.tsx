@@ -1,4 +1,5 @@
 "use client";
+import bridgeManifest from "@/whatsapp-bridge-extension/manifest.json";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
@@ -708,8 +709,8 @@ export function WhatsAppBridgeManager({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <a href="https://github.com/digigrow100/Project-management-for-freelancers/archive/refs/heads/main.zip" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400">
-            <Download size={13} /> Download Updated Source
+          <a href={`/downloads/freelance-hq-whatsapp-bridge.zip?v=${bridgeManifest.version}`} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-emerald-400">
+            <Download size={13} /> Download WhatsApp Extension v{bridgeManifest.version}
           </a>
           <button type="button" onClick={generatePairingCode} disabled={isPending} className="inline-flex items-center gap-1.5 rounded-lg border border-base-700 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-base-600">
             <Link2 size={13} /> Generate Pairing Code
