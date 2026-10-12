@@ -1,0 +1,25 @@
+const fs=require('node:fs');const vm=require('node:vm');const assert=require('node:assert/strict');
+const source=fs.readFileSync('whatsapp-bridge-extension/content-whatsapp.js','utf8');
+const matching=source.slice(source.indexOf('  function matchingSearchRows'),source.indexOf('  async function searchChatRows'));
+const active=source.slice(source.indexOf('  function activeChatMatches'),source.indexOf('  async function waitForOpenedChat'));
+let label='Other contact';
+const box={normalize:v=>String(v||'').trim().toLowerCase(),digits:v=>String(v||'').replace(/\D/g,''),rowLabel:r=>r.label,rowPhone:r=>r.phone||'',currentChatLabel:()=>label};
+vm.runInNewContext(matching+active,box);
+const wrong={label:'Other contact',textContent:'Other contact message from Hamza'};
+const correct={label:'Hamza Farooq'};
+assert.equal(box.matchingSearchRows([wrong],'hamza').length,0,'Message preview must not qualify an unrelated chat');
+assert.equal(box.matchingSearchRows([wrong,correct],'hamza')[0],correct);
+assert.equal(box.matchingSearchRows([correct],'').length,0);
+assert.equal(box.activeChatMatches({chatLabel:'Hamza'}),false);
+label='Hamza Farooq';assert.equal(box.activeChatMatches({chatLabel:'Hamza'}),false,'Partial names must not verify recipients');
+assert.equal(box.activeChatMatches({chatLabel:'Hamza Farooq'}),true);
+const search=source.slice(source.indexOf('  async function searchChatRows'),source.indexOf('  async function scanChats'));
+class Input{};let polls=0;let input=new Input();input.value='';
+Object.assign(box,{HTMLElement:Input,HTMLInputElement:Input,HTMLTextAreaElement:class{},ensureSearchBox:async()=>input,setEditableText:(n,v)=>{n.value=v;},sleep:async()=>{},candidateRows:()=>++polls<3?[wrong]:[correct],visibleSearchResultRows:()=>[]});
+vm.runInNewContext(search,box);
+(async()=>{
+ const rows=await box.searchChatRows('hamza');assert.equal(polls,3,'Wait past stale ordinary-list rows');assert.equal(rows[0],correct);
+ polls=0;box.setEditableText=()=>{};input.value='wrong';
+ await assert.rejects(()=>box.searchChatRows('hamza'),/did not accept/);assert.equal(polls,0);
+ console.log('Passed: unrelated results rejected, delayed search awaited, search input verified and exact recipient required.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
