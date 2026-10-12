@@ -9,6 +9,7 @@ import {
   getAllTaskFocusStates,
   getRecentCompletedTasks,
   getMyTasks,
+  listMemberSeoModuleAssignments,
   getOpenTasks,
   getProjectProgressMap,
   getProjectsForProfile,
@@ -30,10 +31,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
 
   if (profile && profile.role === "member") {
     await ensureIdleSeoTaskForMember(profile.id);
-    const [tasks, focusStates, extensionWork] = await Promise.all([
+    const [tasks, focusStates, extensionWork, moduleAssignments] = await Promise.all([
       getMyTasks(profile.id),
       getTaskFocusStates(profile.id),
       getEmployeeActivitySummary(profile.id),
+      listMemberSeoModuleAssignments(profile.id),
     ]);
     const taskProjectIds = new Set(tasks.map((task) => task.projectId));
     const [memberProjects, timeTotals] = await Promise.all([
@@ -47,6 +49,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
         focusStates={focusStates}
         timeTotals={timeTotals}
         initialExtensionWork={extensionWork}
+        moduleAssignments={moduleAssignments}
       />
     );
   }

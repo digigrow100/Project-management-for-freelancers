@@ -1,6 +1,7 @@
 import { getCurrentProfile } from "@/lib/auth";
 import {
   getMyTasks,
+  listMemberSeoModuleAssignments,
   ensureIdleSeoTaskForMember,
   getProjectsForProfile,
   getTaskFocusStates,
@@ -45,9 +46,10 @@ export default async function MyTasksPage() {
   }
 
   await ensureIdleSeoTaskForMember(profile.id);
-  const [tasks, focusStates] = await Promise.all([
+  const [tasks, focusStates, moduleAssignments] = await Promise.all([
     getMyTasks(profile.id),
     getTaskFocusStates(profile.id),
+    listMemberSeoModuleAssignments(profile.id),
   ]);
   const taskProjectIds = new Set(tasks.map((task) => task.projectId));
   const [projects, timeTotals] = await Promise.all([
@@ -56,5 +58,5 @@ export default async function MyTasksPage() {
   ]);
   await markSectionSeen(profile.id, "tasks");
 
-  return <MemberFocusDashboard tasks={tasks} projects={projects} focusStates={focusStates} timeTotals={timeTotals} />;
+  return <MemberFocusDashboard tasks={tasks} projects={projects} focusStates={focusStates} timeTotals={timeTotals} moduleAssignments={moduleAssignments} />;
 }

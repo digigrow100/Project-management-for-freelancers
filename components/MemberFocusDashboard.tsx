@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
@@ -20,7 +21,7 @@ import {
   X,
   Target,
 } from "lucide-react";
-import type { EmployeeActivitySummary, Project, Task, TaskFocusState, TaskSkipReason } from "@/lib/types";
+import type { EmployeeActivitySummary, Project, Task, TaskFocusState, TaskSkipReason, SeoModuleAssignment } from "@/lib/types";
 import {
   completeFocusTaskAction,
   pauseFocusTaskAction,
@@ -45,7 +46,7 @@ function localDateKey(date = new Date()): string {
 const priorityRank = { high: 0, medium: 1, low: 2 } as const;
 
 function isActionableManualTask(task: Task, today = localDateKey()): boolean {
-  if (task.isFallback || task.status === "done") return false;
+  if (task.isFallback || task.fallbackTemplateKey?.startsWith("review:") || task.status === "done") return false;
   if (!task.scheduledFor && !task.dueDate) return true;
   if (task.scheduledFor && task.scheduledFor <= today) return true;
   if (task.dueDate && task.dueDate <= today) return true;
@@ -60,6 +61,11 @@ function sortQueue(a: Task, b: Task): number {
 
   // When no manual work is due today, the generated SEO workflow task comes
   // before normal tasks scheduled for a future date.
+  if (!a.dueDate && !b.dueDate && !a.scheduledFor && !b.scheduledFor) {
+    const ar = a.fallbackTemplateKey?.startsWith("review:") === true;
+    const br = b.fallbackTemplateKey?.startsWith("review:") === true;
+    if (ar !== br) return ar ? -1 : 1;
+  }
   if (a.isFallback !== b.isFallback) return a.isFallback ? -1 : 1;
 
   const ad = a.dueDate ?? a.scheduledFor ?? "9999-12-31";
@@ -118,13 +124,19 @@ export function MemberFocusDashboard({
   focusStates,
   timeTotals,
   initialExtensionWork = null,
+  moduleAssignments = [],
 }: {
   tasks: Task[];
   projects: Project[];
   focusStates: TaskFocusState[];
   timeTotals: Record<string, number>;
   initialExtensionWork?: EmployeeActivitySummary | null;
+  moduleAssignments?: SeoModuleAssignment[];
 }) {
+  const tabLinks: Record<string,{label:string;tab:string}> = {
+    website_pages:{label:"Website Pages",tab:"pages"},technical_seo:{label:"Technical SEO",tab:"technical"},blog_onsite:{label:"Blog Onsite",tab:"blog"},gsc:{label:"GSC",tab:"gsc"},
+    full_website:{label:"Full Website",tab:"website"},social_media:{label:"Social Media",tab:"social"},local_listing:{label:"Local Listing",tab:"local"},web_2_0:{label:"Web 2.0",tab:"web2"},guest_blogging:{label:"Guest Blogging",tab:"guest"},gbp:{label:"GBP",tab:"gbp"},recurring_general:{label:"Recurring SEO",tab:"recurring"},
+  };
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
@@ -429,6 +441,25 @@ export function MemberFocusDashboard({
           </button>
         </div>
 
+        {moduleAssignments.length > 0 && (
+          <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
+            <h2 className="text-sm font-semibold text-neutral-100">Your assigned SEO tabs</h2>
+            <p className="mt-1 text-xs text-neutral-500">Open your tab to work on its checklist. The task queue shows one task at a time.</p>
+            <div className="mt-3 space-y-3">
+              {projects.filter(project=>!project.archived && moduleAssignments.some(a=>a.projectId===project.id)).map(project=>(
+                <div key={project.id}>
+                  <p className="mb-1.5 text-xs font-medium text-neutral-300">{project.name}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {moduleAssignments.filter(a=>a.projectId===project.id && tabLinks[a.module]).map(a=>(
+                      <Link key={a.module} href={`/projects/${project.id}?seoTab=${tabLinks[a.module]!.tab}`} className="rounded-md border border-accent-500/25 bg-accent-500/10 px-2 py-1 text-xs text-accent-300">{tabLinks[a.module]!.label}</Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {currentTask ? (
           <section className="relative mx-auto max-w-3xl pb-5">
             {browsePool.length > safeOffset + 2 && (
@@ -461,6 +492,10 @@ export function MemberFocusDashboard({
                   {currentIsActive ? "In Progress" : currentIsCarryover ? "Carryover" : currentIsPaused ? "Paused" : "Ready"}
                 </span>
               </div>
+
+              {currentTask.fallbackTemplateKey?.startsWith("review:") && (
+                <Link className="mt-4 inline-block rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-base-950" href={`/projects/${currentTask.projectId}?seoTab=${currentTask.fallbackTemplateKey.split(":")[1]}`}>Open review checklist</Link>
+              )}
 
               <button type="button" onClick={() => setDetailTask(currentTask)} className="mt-5 block w-full text-left">
                 <h2 className="text-2xl font-semibold leading-tight text-neutral-50 hover:text-accent-300">{currentTask.title}</h2>
@@ -550,7 +585,7 @@ export function MemberFocusDashboard({
                       <button
                         key={item.id}
                         type="button"
-                        disabled={isPending}
+                        disabled={isPending || item.id.startsWith("review:")}
                         onClick={() => toggleChecklist(currentTask, item.id)}
                         className="flex w-full items-center gap-2.5 rounded-lg border border-base-700/50 bg-base-950/55 px-3 py-2.5 text-left hover:border-base-600 disabled:opacity-60"
                       >
@@ -637,7 +672,7 @@ export function MemberFocusDashboard({
                 </div>
                 <button
                   type="button"
-                  disabled={Boolean(progress?.total && progress.done < progress.total)}
+                  disabled={currentTask.fallbackTemplateKey?.startsWith("review:") || Boolean(progress?.total && progress.done < progress.total)}
                   onClick={() => completeTask(currentTask)}
                   className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-base-950 shadow-sm hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-base-700 disabled:text-neutral-500"
                   title={progress?.total && progress.done < progress.total ? "Complete the checklist first" : "Mark task done"}

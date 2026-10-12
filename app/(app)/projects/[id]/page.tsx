@@ -257,22 +257,22 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
           technical={
             <div className="space-y-5">
               <h2 className="text-lg font-semibold text-neutral-100">Technical SEO</h2>
-              <p className="text-xs text-neutral-500">Assignments remain shared with the original Website Pages, Full Website and Recurring SEO modules.</p>
+              <SeoModuleAssignmentBar projectId={project.id} module="technical_seo" title="Technical SEO" assignedTo={moduleOwner("technical_seo")} members={assignableMembers} canEdit={isAdmin} />
               <p className="text-xs text-neutral-500">Page checks are shown per URL. Full Website checks apply across the site; recurring reviews repeat on their existing schedule.</p>
               <WebsitePagesPanel
                 projectId={project.id} pages={projectPages} checks={pageAuditChecks}
                 periodMonth={pageAuditMonth} keywords={[]} keywordPages={[]} view="technical"
               />
               <div>
-                <SeoModuleAssignmentBar projectId={project.id} module="full_website"
-                  title="Full Website" assignedTo={moduleOwner("full_website")}
+                <SeoModuleAssignmentBar projectId={project.id} module="technical_seo"
+                  title="Technical SEO" assignedTo={moduleOwner("technical_seo")}
                   members={assignableMembers} canEdit={isAdmin} />
                 <SeoWorkflowPanel projectId={project.id} module="full_website" title="Full Website Technical SEO"
                   items={seoWorkflowItems.filter((item) => item.module === "full_website" && isTechnicalWorkflow(item))} />
               </div>
               <div>
-                <SeoModuleAssignmentBar projectId={project.id} module="recurring"
-                  title="Recurring SEO" assignedTo={moduleOwner("recurring")}
+                <SeoModuleAssignmentBar projectId={project.id} module="technical_seo"
+                  title="Technical SEO" assignedTo={moduleOwner("technical_seo")}
                   members={assignableMembers} canEdit={isAdmin} />
                 <SeoWorkflowPanel projectId={project.id} module="recurring" title="Full Website — Recurring Technical Reviews"
                   items={seoWorkflowItems.filter((item) => item.module === "recurring" && isTechnicalWorkflow(item) && !GSC_RECURRING_KEYS.has(item.itemKey))} />

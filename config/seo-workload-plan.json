@@ -1,5 +1,5 @@
 {
-  "status": "approved-plan-pending-assignment-integration",
+  "status": "applied-to-eight-team-projects",
   "workDaysPerWeek": 6,
   "scope": "SEO projects; preserve archived projects and existing completed work",
   "moduleOwners": {
@@ -34,5 +34,5 @@
     "gbp": "Junaid",
     "recurring_general": "Junaid"
   },
-  "reviewAssignmentStatus": "Saved in production for eight existing team SEO projects; matching inactive open tasks rerouted; app routing release pending."
+  "reviewAssignmentStatus": "Applied with migration 100; GSC/GBP cycles create and synchronize member tasks."
 }
