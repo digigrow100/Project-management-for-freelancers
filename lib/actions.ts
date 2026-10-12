@@ -900,6 +900,7 @@ export async function inviteTeamMemberAction(
   try {
     await store.inviteTeamMember({ email, password, name, role, jobRole });
     revalidatePath("/admin");
+    revalidatePath("/team");
     return { ok: true };
   } catch (error) {
     return { ok: false, error: inviteTeamMemberErrorMessage(error) };
@@ -910,30 +911,35 @@ export async function updateMemberRoleAction(userId: string, role: Role) {
   await requireAdmin();
   await store.updateMemberRole(userId, role);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 export async function updateMemberJobRoleAction(userId: string, jobRole: JobRole) {
   await requireAdmin();
   await store.updateMemberJobRole(userId, jobRole);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 export async function setMemberRenewalsAccessAction(userId: string, allowed: boolean) {
   await requireAdmin();
   await store.setMemberRenewalsAccess(userId, allowed);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 export async function setMemberBacklinkCredentialAccessAction(userId: string, allowed: boolean) {
   await requireAdmin();
   await store.setMemberBacklinkCredentialAccess(userId, allowed);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 export async function setMemberFinanceAccessAction(userId: string, allowed: boolean) {
   await requireAdmin();
   await store.setMemberFinanceAccess(userId, allowed);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 export async function assignProjectsAction(formData: FormData) {
@@ -945,6 +951,7 @@ export async function assignProjectsAction(formData: FormData) {
   const projectIds = formData.getAll("projectIds").map(String);
   await store.setMemberAssignments(userId, projectIds);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 export async function setMemberTemporaryPasswordAction(
@@ -961,6 +968,7 @@ export async function setMemberTemporaryPasswordAction(
   try {
     await store.setMemberTemporaryPassword(userId, password);
     revalidatePath("/admin");
+    revalidatePath("/team");
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
@@ -972,6 +980,7 @@ export async function removeMemberAction(userId: string) {
   await requireAdmin();
   await store.removeMember(userId);
   revalidatePath("/admin");
+  revalidatePath("/team");
 }
 
 /**

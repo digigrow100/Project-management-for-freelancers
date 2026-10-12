@@ -6,7 +6,8 @@ import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
 import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
 import { ExtensionHealthBanner } from "@/components/ExtensionHealthBanner";
 import { UserRound } from "lucide-react";
-import { getCurrentProfile } from "@/lib/auth";
+import { stopMemberViewAction } from "@/lib/memberViewActions";
+import { getAuthenticatedProfile, getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
   countUnseenProjects,
@@ -27,6 +28,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
+  const actor = await getAuthenticatedProfile();
+  const memberView = actor?.role === "admin" && profile?.role === "member" && actor.id !== profile.id;
   const isAdmin = profile?.role === "admin";
   const canSeeClients = isAdmin || !!profile?.canAccessFinance;
 
@@ -79,6 +82,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MobileTopBar />
         <main className="theme-main min-h-full pb-24 md:pb-0">
           <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">
+            {memberView && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+              <div><p className="text-sm font-semibold text-amber-300">Admin viewing as {profile?.name || profile?.email}</p><p className="text-xs text-neutral-400">Actions change this member’s real work. This view lasts up to one hour.</p></div>
+              <form action={stopMemberViewAction}><button className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-base-950">Return to admin</button></form>
+            </div>}
             {profile?.role === "member" && (
               <div className="mb-4 flex items-center gap-3 rounded-xl border border-base-700/60 bg-base-850 px-3 py-2.5 shadow-card">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-500/10 text-accent-300">
@@ -106,7 +113,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           projects={projects}
         />
       )}
-      {profile && <PresenceHeartbeat />}
+      {profile && !memberView && <PresenceHeartbeat />}
       {profile && <WhatsAppChatWidget initialClients={whatsappClients} isAdmin={isAdmin} />}
     </div>
   );

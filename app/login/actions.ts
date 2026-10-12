@@ -1,4 +1,6 @@
 "use server";
+import {cookies} from "next/headers";
+import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
 
 import { redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
@@ -32,6 +34,7 @@ export async function loginAction(formData: FormData) {
 }
 
 export async function logoutAction() {
+  cookies().delete(MEMBER_VIEW_COOKIE);
   try {
     const supabase = createAuthClient();
     await supabase.auth.signOut();
