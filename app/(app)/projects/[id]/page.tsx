@@ -264,16 +264,10 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                 periodMonth={pageAuditMonth} keywords={[]} keywordPages={[]} view="technical"
               />
               <div>
-                <SeoModuleAssignmentBar projectId={project.id} module="technical_seo"
-                  title="Technical SEO" assignedTo={moduleOwner("technical_seo")}
-                  members={assignableMembers} canEdit={isAdmin} />
                 <SeoWorkflowPanel projectId={project.id} module="full_website" title="Full Website Technical SEO"
                   items={seoWorkflowItems.filter((item) => item.module === "full_website" && isTechnicalWorkflow(item))} />
               </div>
               <div>
-                <SeoModuleAssignmentBar projectId={project.id} module="technical_seo"
-                  title="Technical SEO" assignedTo={moduleOwner("technical_seo")}
-                  members={assignableMembers} canEdit={isAdmin} />
                 <SeoWorkflowPanel projectId={project.id} module="recurring" title="Full Website — Recurring Technical Reviews"
                   items={seoWorkflowItems.filter((item) => item.module === "recurring" && isTechnicalWorkflow(item) && !GSC_RECURRING_KEYS.has(item.itemKey))} />
               </div>

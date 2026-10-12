@@ -552,6 +552,19 @@ export async function setSeoModuleAssignment(
     if (error) throw error;
   }
 
+  // Removing a review owner must also remove their current queue item.
+  if (!assignedTo && (module === "gsc" || module === "gbp")) {
+    const {data:reviews,error:reviewError}=await supabase.from("freelance_hq_tasks").select("id").eq("project_id",projectId).like("fallback_template_key",`review:${module}:%`).neq("status","done");
+    if(reviewError) throw reviewError;
+    for(const review of reviews ?? []) {
+      await closeOpenTimeEntriesForTask(review.id,nowIso(),"paused");
+      const {error:focusError}=await supabase.from("freelance_hq_task_focus").delete().eq("task_id",review.id);
+      if(focusError) throw focusError;
+      const {error:taskError}=await supabase.from("freelance_hq_tasks").update({assigned_to:null,updated_at:nowIso()}).eq("id",review.id);
+      if(taskError) throw taskError;
+    }
+  }
+
   const taskOwner = assignedTo ?? null;
 
   const items = (await listSeoWorkflowItems(projectId)).filter(item => seoAssignmentGroup(item) === module);
@@ -1885,7 +1898,6 @@ async function decrementPausedResumeCounters(userId: string): Promise<void> {
 export async function startTaskFocus(taskId: string, userId: string): Promise<void> {
   const task = await requireAssignedTask(taskId, userId);
   if (task.status === "done") return;
-  if (task.fallbackTemplateKey?.startsWith("review:")) throw new Error("Complete and save the review in its project tab. The task closes automatically.");
 
   const now = nowIso();
   if (task.waitingForAdmin) {
@@ -2119,6 +2131,7 @@ export async function updateAssignedTaskBasics(
 export async function completeTaskFromFocus(taskId: string, userId: string): Promise<void> {
   const task = await requireAssignedTask(taskId, userId);
   if (task.status === "done") return;
+  if (task.fallbackTemplateKey?.startsWith("review:")) throw new Error("Complete and save the review in its project tab. The task closes automatically.");
 
   const now = nowIso();
   if (!isChecklistComplete(task.checklist)) {
