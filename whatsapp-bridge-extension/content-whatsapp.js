@@ -776,6 +776,10 @@
     return null;
   }
 
+  function messageText(node) {
+    return String(node?.innerText ?? node?.textContent ?? "").replace(/\u00a0/g, " ").replace(/\r\n/g, "\n").trim();
+  }
+
   function extractMessage(node, target) {
     if (isVoiceNoteNode(node)) return null;
 
@@ -783,7 +787,7 @@
       node.querySelector('[data-testid="msg-text"]') ||
       node.querySelector(".selectable-text") ||
       node.querySelector('span[dir="ltr"]');
-    const body = String(textNode?.textContent || "").trim();
+    const body = messageText(textNode);
     if (!body) return null;
     const prePlain = messagePrePlain(node);
     const remoteTimestamp = parseWhatsAppTimestamp(prePlain);
@@ -909,7 +913,7 @@
       setEditableText(composer, text);
       await sleep(300);
 
-      let verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
+      let verifiedText = messageText(composer);
       if (verifiedText !== text.trim() && text) {
         // Never send a duplicated or mutated payload. Clear the composer and
         // make one clean insertion attempt.
@@ -921,7 +925,7 @@
         document.execCommand("delete", false);
         document.execCommand("insertText", false, text);
         await sleep(250);
-        verifiedText = String(composer.textContent || "").replace(/\u00a0/g, " ").trim();
+        verifiedText = messageText(composer);
       }
 
       if (text && verifiedText !== text.trim()) {

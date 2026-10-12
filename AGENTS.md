@@ -458,7 +458,7 @@ AI actions that can change app data should continue to use confirmation/safe too
 
 # WhatsApp Client Bridge
 
-Bridge v1.3.5 rejects chat-search rows unless the displayed name/phone matches the submitted query, verifies inserted search text and waits past stale chat-list rows. Chat opening, sending and syncing require an exact header-name match; cached targets and a visible composer alone do not verify recipients. Stable ID/phone targets cannot silently fall back to a different label. Sending is acknowledged only after a new matching outgoing message appears. Fixtures cover these failure paths; actual user-profile behavior remains to be verified after extension reload.
+Bridge v1.3.6 rejects chat-search rows unless the displayed name/phone matches the submitted query, verifies inserted search text and waits past stale chat-list rows. Chat opening, sending and syncing require an exact header-name match; cached targets and a visible composer alone do not verify recipients. Stable ID/phone targets cannot silently fall back to a different label. Sending is acknowledged only after a new matching outgoing message appears. Visible message/composer text preserves rendered line breaks for multiline confirmation. Fixtures cover these failure paths; actual user-profile behavior remains to be verified after extension reload.
 
 Bridge v1.3.4 locates visible chat search inputs across sidebar/wrapper layouts, skips hidden/compose/dialog inputs and waits for Chats/search UI to open. Download buttons use the standalone versioned WhatsApp ZIP. Exact-chat matching and manual history-sharing rules remain in place. Search fixtures pass; user-profile live testing still requires reloading the installed extension.
 
@@ -551,7 +551,7 @@ Current desired behavior:
 The notice should deduplicate using the WhatsApp message identity so the same voice note does not create repeated notices.
 
 Current WhatsApp bridge extension version after this rollback/notice change:
-- **1.3.5**
+- **1.3.6**
 
 The old audio-transcription API/page hook should not be reintroduced unless explicitly requested.
 
@@ -707,6 +707,7 @@ Only expand the search when the direct code path is insufficient.
 Keep this section short and newest-first. Every future app update must add an entry here and update any affected section above.
 
 ## 2026-10-11
+- WhatsApp v1.3.6 preserves rendered multiline text during composer checks and send confirmation, preventing false failure reports after successful multiline sends.
 - WhatsApp follow-up v1.3.5: live Hamza scans returned unrelated names; fixed unfiltered/stale results, exact-recipient guards, current-chat sync validation and false-positive send acknowledgement.
 - WhatsApp bridge search compatibility fix: live scan requests showed search-box-not-found while connected. Added visible-input/wrapper lookup and Chats activation retry; version 1.3.4 standalone ZIP replaces full-repository download.
 - Applied the approved three-tab split in production for eight team SEO projects (24 owner records). Added independent assignment bars and item-level automatic routing. Existing inactive matching tasks reassigned; active/completed/admin-request tasks retained. Migration 099 applied; code deployment not yet confirmed.
