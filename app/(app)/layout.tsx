@@ -1,3 +1,4 @@
+import { AdminScreenSharePopup } from "@/components/AdminScreenSharePopup";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
@@ -105,6 +106,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+      {isAdmin && !memberView && <AdminScreenSharePopup />}
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
       {isAdmin && profile && adminWorkflowSettings && (
         <AdminWorkflowLauncher
