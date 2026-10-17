@@ -316,7 +316,7 @@ export function AdminEmployeeActivity({
   initialItems: EmployeeActivityTimelineItem[];
 }) {
   const today = dateKey(new Date());
-  const [preset, setPreset] = useState<Preset>("7d");
+  const [preset, setPreset] = useState<Preset>("30d");
   const [customFrom, setCustomFrom] = useState(today);
   const [customTo, setCustomTo] = useState(today);
   const [employeeId, setEmployeeId] = useState("");
@@ -515,7 +515,7 @@ export function AdminEmployeeActivity({
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-neutral-50">Browser Activity</h1>
           <p className="mt-1 max-w-3xl text-sm text-neutral-500">
-            Browser activity is linked to the employee&apos;s app account through a paired device token, not the Chrome Google account.
+            View each member&apos;s visited tabs, page URLs, active and idle time, and captured ChatGPT or Claude prompts. Choose a member and date range below. Expand a website to see its pages; AI prompt rows show captured text.
           </p>
         </div>
         <Link href="/admin" className="text-xs font-semibold text-accent-300 hover:text-accent-200">Back to dashboard</Link>
@@ -744,7 +744,7 @@ export function AdminEmployeeActivity({
                   </Fragment>
                 );
               })}
-              {groupedItems.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-neutral-600">No activity matches these filters.</td></tr>}
+              {groupedItems.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-neutral-600">No saved activity matches these filters. Try Last 30 Days or a custom range. A linked extension must be reporting to add new logs.</td></tr>}
             </tbody>
           </table>
         </div>
