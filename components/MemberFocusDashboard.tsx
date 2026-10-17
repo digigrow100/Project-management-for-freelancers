@@ -124,7 +124,6 @@ export function MemberFocusDashboard({
   focusStates,
   timeTotals,
   initialExtensionWork = null,
-  moduleAssignments = [],
 }: {
   tasks: Task[];
   projects: Project[];
@@ -133,10 +132,6 @@ export function MemberFocusDashboard({
   initialExtensionWork?: EmployeeActivitySummary | null;
   moduleAssignments?: SeoModuleAssignment[];
 }) {
-  const tabLinks: Record<string,{label:string;tab:string}> = {
-    website_pages:{label:"Website Pages",tab:"pages"},technical_seo:{label:"Technical SEO",tab:"technical"},blog_onsite:{label:"Blog Onsite",tab:"blog"},gsc:{label:"GSC",tab:"gsc"},
-    full_website:{label:"Full Website",tab:"website"},social_media:{label:"Social Media",tab:"social"},local_listing:{label:"Local Listing",tab:"local"},web_2_0:{label:"Web 2.0",tab:"web2"},guest_blogging:{label:"Guest Blogging",tab:"guest"},gbp:{label:"GBP",tab:"gbp"},recurring_general:{label:"Recurring SEO",tab:"recurring"},
-  };
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [detailTask, setDetailTask] = useState<Task | null>(null);
@@ -440,25 +435,6 @@ export function MemberFocusDashboard({
             <ChevronRight size={17} />
           </button>
         </div>
-
-        {moduleAssignments.length > 0 && (
-          <section className="rounded-xl2 border border-base-700/60 bg-base-850 p-4">
-            <h2 className="text-sm font-semibold text-neutral-100">Your assigned SEO tabs</h2>
-            <p className="mt-1 text-xs text-neutral-500">Open your tab to work on its checklist. The task queue shows one task at a time.</p>
-            <div className="mt-3 space-y-3">
-              {projects.filter(project=>!project.archived && moduleAssignments.some(a=>a.projectId===project.id)).map(project=>(
-                <div key={project.id}>
-                  <p className="mb-1.5 text-xs font-medium text-neutral-300">{project.name}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {moduleAssignments.filter(a=>a.projectId===project.id && tabLinks[a.module]).map(a=>(
-                      <Link key={a.module} href={`/projects/${project.id}?seoTab=${tabLinks[a.module]!.tab}`} className="rounded-md border border-accent-500/25 bg-accent-500/10 px-2 py-1 text-xs text-accent-300">{tabLinks[a.module]!.label}</Link>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {currentTask ? (
           <section className="relative mx-auto max-w-3xl pb-5">
