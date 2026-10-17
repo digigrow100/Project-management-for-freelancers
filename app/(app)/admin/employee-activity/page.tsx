@@ -17,7 +17,9 @@ export default async function EmployeeActivityPage() {
   if (profile?.role !== "admin") notFound();
 
   const now = new Date();
-  const from = new Date(now.getTime() - 7 * 86400000);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const from = new Date(today + "T00:00:00+05:00");
+  from.setUTCDate(from.getUTCDate() - 29);
   const [members, projects, devices, mappings, settings, liveShares, items] = await Promise.all([
     listTeamMembers(),
     getProjects(),

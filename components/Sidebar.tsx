@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore, Users } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore, Users, Activity } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -124,6 +124,10 @@ export function Sidebar({
             >
               <MessageCircleMore size={17} className="text-neutral-500 group-hover:text-accent-400" />
               WhatsApp Bridge
+            </Link>
+            <Link href="/admin/employee-activity" className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors">
+              <Activity size={17} className="text-neutral-500 group-hover:text-accent-400" />
+              Browser Activity
             </Link>
             <Link
               href="/admin/time-tracking"

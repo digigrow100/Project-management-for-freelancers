@@ -764,3 +764,5 @@ If you change how the app works and do not update this file, the task is incompl
 - Removed the assigned SEO tabs overview above member tasks on both dashboard routes. Existing task cards, assignments and history are preserved.
 
 - Enabled assigned GBP/GSC review checkboxes on task cards and Full Details, preserving review data and automatic cycle completion. Server validates task/project/owner and cycle before saving.
+
+- Browser Activity is now directly accessible in desktop and mobile admin navigation. Its initial timeline defaults to the last 30 Pakistan-calendar days, matching the selected filter. Existing member/site/date/AI filters and detailed saved prompts remain admin-only.
