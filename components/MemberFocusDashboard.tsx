@@ -295,6 +295,7 @@ export function MemberFocusDashboard({
   function toggleChecklist(task: Task, itemId: string) {
     startTransition(async () => {
       await toggleChecklistItemAction(task.id, task.projectId, itemId);
+      router.refresh();
     });
   }
 
@@ -470,7 +471,7 @@ export function MemberFocusDashboard({
               </div>
 
               {currentTask.fallbackTemplateKey?.startsWith("review:") && (
-                <Link className="mt-4 inline-block rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-base-950" href={`/projects/${currentTask.projectId}?seoTab=${currentTask.fallbackTemplateKey.split(":")[1]}`}>Open review checklist</Link>
+                <Link className="mt-4 inline-block rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-base-950" href={`/projects/${currentTask.projectId}?seoTab=${currentTask.fallbackTemplateKey.split(":")[1]}`}>Open review details and findings</Link>
               )}
 
               <button type="button" onClick={() => setDetailTask(currentTask)} className="mt-5 block w-full text-left">
@@ -556,12 +557,15 @@ export function MemberFocusDashboard({
                       {progress?.done ?? 0}/{progress?.total ?? 0} complete
                     </span>
                   </div>
+                  {currentTask.fallbackTemplateKey?.startsWith("review:") && (
+                    <p className="mb-3 text-xs text-neutral-500">Checks save to the project review. The last check completes this cycle automatically. Use review details for notes and evidence.</p>
+                  )}
                   <div className="grid gap-1.5">
                     {currentTask.checklist.map((item) => (
                       <button
                         key={item.id}
                         type="button"
-                        disabled={isPending || item.id.startsWith("review:")}
+                        disabled={isPending}
                         onClick={() => toggleChecklist(currentTask, item.id)}
                         className="flex w-full items-center gap-2.5 rounded-lg border border-base-700/50 bg-base-950/55 px-3 py-2.5 text-left hover:border-base-600 disabled:opacity-60"
                       >
