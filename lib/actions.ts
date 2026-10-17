@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as store from "./store";
+import {toggleSeoReviewTaskCheckAction} from "./seoReviewActions";
 import {
   requireAdmin,
   requireBacklinkCredentialAccess,
@@ -362,7 +363,11 @@ export async function toggleTodayAction(taskId: string, projectId: string, today
 
 export async function toggleChecklistItemAction(taskId: string, projectId: string, itemId: string) {
   await requireProjectAccess(projectId);
-  await store.toggleChecklistItem(taskId, itemId);
+  if (itemId.startsWith("review:")) {
+    await toggleSeoReviewTaskCheckAction(taskId, projectId, itemId);
+  } else {
+    await store.toggleChecklistItem(taskId, itemId);
+  }
   refresh(projectId);
 }
 

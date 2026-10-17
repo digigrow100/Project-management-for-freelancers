@@ -2,6 +2,7 @@
 import {requireProjectAccess} from "./auth";
 import {getSupabase} from "./supabaseClient";
 import {getProject} from "./store";
+import {getSeoReview} from "./seoReviews";
 import {REVIEW_SECTIONS,reviewComplete,type ReviewKind,type ReviewData} from "./seoReviewConfig";
 import {revalidatePath} from "next/cache";
 export async function saveSeoReviewAction(projectId:string,kind:ReviewKind,revision:number,data:ReviewData) {
@@ -22,4 +23,24 @@ export async function saveSeoReviewAction(projectId:string,kind:ReviewKind,revis
   if(error)throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
   return {complete};
+}
+
+export async function toggleSeoReviewTaskCheckAction(taskId:string,projectId:string,itemId:string) {
+  const profile=await requireProjectAccess(projectId);
+  const {data:task,error}=await getSupabase().from("freelance_hq_tasks")
+    .select("project_id,assigned_to,status,fallback_template_key,checklist").eq("id",taskId).maybeSingle();
+  if(error)throw error;
+  if(!task||task.project_id!==projectId)throw new Error("Task not found.");
+  if(profile.role!=="admin"&&task.assigned_to!==profile.id)throw new Error("This task is not assigned to you.");
+  if(task.status==="done")throw new Error("This review is already complete. Reload your tasks.");
+  const [prefix,kind,cycle,...extra]=String(task.fallback_template_key??"").split(":");
+  if(prefix!=="review"||(kind!=="gsc"&&kind!=="gbp")||extra.length)throw new Error("Invalid review task.");
+  const section=REVIEW_SECTIONS[kind].find(s=>itemId===`review:${kind}:${s.key}`);
+  if(!section||!task.checklist.some((item:{id:string})=>item.id===itemId))throw new Error("Invalid review check.");
+  const review=await getSeoReview(projectId,kind);
+  if(!review.available||String(review.cycle)!==cycle)throw new Error("This review cycle changed. Reload your tasks.");
+  const data={...review.data,checks:{...review.data.checks,[section.key]:!review.data.checks[section.key]}};
+  const result=await saveSeoReviewAction(projectId,kind,review.revision,data);
+  revalidatePath("/");revalidatePath("/my-tasks");revalidatePath("/today");
+  return result;
 }

@@ -83,7 +83,7 @@ export function MemberTaskDetailModal({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          {task.fallbackTemplateKey?.startsWith("review:") && <Link href={`/projects/${task.projectId}?seoTab=${task.fallbackTemplateKey.split(":")[1]}`} className="mb-4 inline-block rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-base-950">Open review checklist — save findings in this tab</Link>}
+          {task.fallbackTemplateKey?.startsWith("review:") && <Link href={`/projects/${task.projectId}?seoTab=${task.fallbackTemplateKey.split(":")[1]}`} className="mb-4 inline-block rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-base-950">Open review details and findings</Link>}
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">
             <main className="min-w-0 space-y-5">
               <section>
@@ -116,7 +116,7 @@ export function MemberTaskDetailModal({
                       <button
                         key={item.id}
                         type="button"
-                        disabled={isPending || task.status === "done" || item.id.startsWith("review:")}
+                        disabled={isPending || task.status === "done"}
                         onClick={() => {
                           setLocalChecklist((current) =>
                             current.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry),
