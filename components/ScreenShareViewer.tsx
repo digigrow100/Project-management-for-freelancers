@@ -6,7 +6,7 @@ import { ArrowLeft, MonitorUp, Volume2, VolumeX } from "lucide-react";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
-export function ScreenShareViewer({ sessionId }: { sessionId: string }) {
+export function ScreenShareViewer({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const lastSignalIdRef = useRef(0);
@@ -83,7 +83,7 @@ export function ScreenShareViewer({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {!compact && <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-xs text-neutral-500">
             <MonitorUp size={14} className="text-emerald-400" />
@@ -96,7 +96,8 @@ export function ScreenShareViewer({ sessionId }: { sessionId: string }) {
           <ArrowLeft size={13} />
           Employee Activity
         </Link>
-      </div>
+      </div>}
+      {compact && <p className="text-xs text-neutral-400" role="status">{status}</p>}
 
       <section className="overflow-hidden rounded-xl2 border border-base-700 bg-black shadow-card">
         <video ref={videoRef} autoPlay playsInline muted={muted} className="aspect-video w-full object-contain" />
