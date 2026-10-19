@@ -325,7 +325,7 @@ export async function refreshExtensionDeviceToken(device: AuthenticatedDevice) {
 export async function getEmployeeExtensionHealth(userId: string) {
   const { data, error } = await getSupabase()
     .from("freelance_hq_employee_devices")
-    .select("last_seen_at,last_health_at,token_expires_at,revoked_at")
+    .select("last_seen_at,last_health_at,token_expires_at,revoked_at,last_status")
     .eq("employee_id", userId)
     .is("revoked_at", null)
     .order("last_seen_at", { ascending: false });
@@ -339,7 +339,7 @@ export async function getEmployeeExtensionHealth(userId: string) {
   const healthy = rows.find((row) => {
     const seen = new Date(String(row.last_seen_at || row.last_health_at)).getTime();
     const expires = new Date(String(row.token_expires_at)).getTime();
-    return Number.isFinite(seen) && now - seen <= 3 * 60 * 1000 && Number.isFinite(expires) && expires > now;
+    return row.last_status !== "offline" && Number.isFinite(seen) && now - seen <= 3 * 60 * 1000 && Number.isFinite(expires) && expires > now;
   });
   if (healthy) {
     return {
