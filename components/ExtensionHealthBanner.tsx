@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import extensionManifest from "@/chrome-extension/manifest.json";
 
 import { useEffect, useState } from "react";
@@ -25,8 +26,11 @@ export function ExtensionHealthBanner() {
   useEffect(() => {
     void refresh();
     const id = window.setInterval(() => void refresh(), 30000);
-    return () => window.clearInterval(id);
+    window.addEventListener("extension-devices-changed", refresh);
+    return () => { window.clearInterval(id); window.removeEventListener("extension-devices-changed", refresh); };
   }, []);
+
+  useEffect(() => { setHidden(false); }, [health?.state]);
 
   if (!health || health.state === "online" || hidden) return null;
 
@@ -59,12 +63,13 @@ export function ExtensionHealthBanner() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {missing && (
+          {(
             <a href={`/downloads/freelance-hq-chrome-extension.zip?v=${extensionManifest.version}`} download className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-400">
               <Download size={13} />
               Download Chrome Extension v{extensionManifest.version}
             </a>
           )}
+          <Link href="/extensions" className="rounded-lg border border-base-600 px-3 py-2 text-xs text-neutral-300">Manage extensions</Link>
           <button type="button" onClick={createPairingCode} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-base-600 bg-base-900 px-3 py-2 text-xs font-semibold text-neutral-300">
             <Link2 size={13} />
             {busy ? "Creating…" : missing ? "Connect" : "Reconnect"}

@@ -768,3 +768,9 @@ If you change how the app works and do not update this file, the task is incompl
 - Browser Activity is now directly accessible in desktop and mobile admin navigation. Its initial timeline defaults to the last 30 Pakistan-calendar days, matching the selected filter. Existing member/site/date/AI filters and detailed saved prompts remain admin-only.
 
 - Admin layout polls live screen shares every three seconds and displays an invitation before creating a viewer connection. Approve opens a compact muted viewer; expand/shrink retains the same stream, and close/dismiss affects only the admin view. Ended shares close the peer. Dedicated screen-viewer routes suppress the popup viewer to avoid competing connections. Member browser screen-capture consent remains required.
+
+## Extension management
+
+/extensions is available to signed-in users. Members see monitoring only; admins also see the WhatsApp bridge card and setup link. Monitoring downloads always remain available in this page, including after pairing. The dashboard download hides only while a device is reporting; non-reporting/expired records keep download and reconnect available. A reported offline/disconnect state immediately exposes recovery controls on the next status refresh. Removing a Chrome extension cannot be detected immediately; stale reporting is detected after the heartbeat window. /api/extension/devices lists only safe fields for the signed-in user and disconnects only their own device, preserving activity history. Add another monitoring profile always creates an independent pairing code.
+
+- Added the role-aware Extensions page, persistent downloads, own-device disconnect and another-profile pairing controls. Fixed missing dashboard download for stale paired devices.

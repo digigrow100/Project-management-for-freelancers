@@ -3,7 +3,7 @@
 import extensionManifest from "@/chrome-extension/manifest.json";
 
 import { useState } from "react";
-import { Check, Chrome, Copy, Link2, Plus } from "lucide-react";
+import { Check, Chrome, Copy, Download, Link2, Plus } from "lucide-react";
 
 type PairingCode = {
   pairingCode: string;
@@ -59,12 +59,14 @@ export function ExtensionConnectCard() {
             <Chrome size={20} />
           </span>
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Chrome Extension <span className="text-xs font-normal text-sky-300">v{extensionManifest.version}</span></h2>
+            <h2 className="text-sm font-semibold text-neutral-100">Monitoring Extension <span className="text-xs font-normal text-sky-300">v{extensionManifest.version}</span></h2>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-neutral-500">
               Pair each Chrome profile separately with this signed-in account. Use a different one-time code for every profile; all paired profiles still report work under the same user.
             </p>
           </div>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <a href={`/downloads/freelance-hq-chrome-extension.zip?v=${extensionManifest.version}`} download className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 px-3 py-2 text-xs text-sky-300"><Download size={14}/> Download v{extensionManifest.version}</a>
         <button
           type="button"
           onClick={createCode}
@@ -74,6 +76,8 @@ export function ExtensionConnectCard() {
           {codes.length > 0 ? <Plus size={14} /> : <Link2 size={14} />}
           {busy ? "Creating…" : codes.length > 0 ? "Add another Chrome profile" : "Connect Chrome Extension"}
         </button>
+        <button type="button" onClick={createCode} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border border-base-600 px-3 py-2 text-xs text-neutral-300"><Plus size={14}/> Add another monitoring profile</button>
+        </div>
       </div>
 
       {error && <p className="mt-3 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>}
