@@ -168,6 +168,7 @@ Hosting now provides server/package/client/service records, separate billing (in
 - `/auth/invite` handles invitation code/token-hash and fragment flows. Configure this exact app URL in Supabase Auth redirect allowlist before sending client invitations. Invitations are only sent by an explicit admin form action.
 - `/api/cron/hosting-renewals` requires `CRON_SECRET`; scheduled renewal invoicing is off by default. Manual generation works without it. Paying a period's invoice advances its service due date once. No email reminders or online payment gateway are connected.
 - Server entries and service activation are admin declarations. Operation requests remain `awaiting_connection`; no shell commands, SSH keys, provisioning, deployment or rollback execution exists in this portal. The VPS production operator/evidence enrollment requirements remain outstanding. Backups and permanent storage sizing remain paused by user request.
+- Desktop sidebar gives the navigation the full space between the fixed header/switcher and account footer. Rows keep a minimum 40px height without shrinking; `overflow-y-auto` scrolls only when the list exceeds that available space. There is no competing flex spacer.
 - `WorkspaceProvider`, `HostingNavigation` and `hostingWorkspace.ts` preserve desktop/mobile switching. Team-only floating tools are unmounted in Hosting; existing team routines remain intact.
 - Checks: normal typecheck/lint/build, `node tests/hosting-workspaces.cjs` and `node tests/hosting-security.cjs` and `node tests/hosting-client-scope.cjs`. Isolated PostgreSQL integration: install pinned `@electric-sql/pglite@0.5.10` outside the repo and run `NODE_PATH=<install>/node_modules node tests/hosting-database.cjs` (verify the installed version used in release notes).
 
@@ -729,6 +730,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Corrected sidebar sizing: full available navigation height, nonshrinking menu rows/icons and automatic overflow only when needed, with account controls kept at the bottom.
 
 - Added the Hosting management/admin and separate client portal with prefixed tables, manual financial ledger, renewal invoices, domain checks, support and scoped access. Server execution and gateway payments remain unconnected; validate release status before claiming deployment.
 

@@ -36,7 +36,7 @@ export function WorkspaceSwitcher() {
   if (!canAccessHosting) return null;
 
   return (
-    <nav aria-label="Switch workspace" className="grid grid-cols-[1.4fr_1fr] gap-1 rounded-xl border border-base-700/60 bg-base-950/40 p-1">
+    <nav aria-label="Switch workspace" className="grid shrink-0 grid-cols-[1.4fr_1fr] gap-1 rounded-xl border border-base-700/60 bg-base-950/40 p-1">
       {([
         { name: "team", label: "Team Management", href: "/admin" },
         { name: "hosting", label: "Hosting", href: "/hosting" },

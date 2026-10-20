@@ -31,17 +31,17 @@ export function hostingLinkActive(pathname: string, href: string) {
 export function HostingNavigation() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto">
       {HOSTING_NAV.map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} prefetch={false}
           aria-current={hostingLinkActive(pathname, href) ? "page" : undefined}
           className={cn(
-            "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "group flex min-h-10 shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
             hostingLinkActive(pathname, href)
               ? "bg-accent-500/10 text-accent-300"
               : "text-neutral-300 hover:bg-base-800 hover:text-accent-300",
           )}>
-          <Icon size={17} aria-hidden="true" />
+          <Icon size={17} className="shrink-0" aria-hidden="true" />
           {label}
         </Link>
       ))}
