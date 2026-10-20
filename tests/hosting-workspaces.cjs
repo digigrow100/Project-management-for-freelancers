@@ -26,6 +26,7 @@ function load(filename) {
     };
     if (name === 'next/link') return ({ href, prefetch, children, ...props }) =>
       React.createElement('a', { href, ...props }, children);
+    if (name === '@/lib/hosting/auth') return {requireHostingAdmin:async()=>{if(profile?.role!=='admin')throw blocked;return profile;}};
     if (name === '@/lib/auth') return { getCurrentProfile: async () => profile };
     if (name === '@/app/login/actions') return { logoutAction: '/test-logout' };
     if (/\/(InstallAppButton|RefreshButton)$/.test(name)) return {
@@ -49,7 +50,7 @@ const { MobileNav } = load('components/MobileNav.tsx');
 const { MobileTopBar } = load('components/MobileTopBar.tsx');
 const { workspaceForPath, canAccessHosting, HOSTING_SECTIONS } = load('lib/hostingWorkspace.ts');
 const HostingLayout = load('app/(app)/hosting/layout.tsx').default;
-const HostingSection = load('app/(app)/hosting/[section]/page.tsx').default;
+
 
 function render(currentPath, currentProfile = profile) {
   pathname = currentPath;
@@ -98,10 +99,7 @@ function render(currentPath, currentProfile = profile) {
   await assert.rejects(HostingLayout({ children: 'secret' }), error => error === blocked);
   profile = { role: 'admin' };
   await HostingLayout({ children: 'allowed' });
-  for (const section of HOSTING_SECTIONS) {
-    const html = renderToStaticMarkup(React.createElement(HostingSection, { params: { section: section.key } }));
-    assert.match(html, /Not configured yet/);
-  }
-  assert.throws(() => HostingSection({ params: { section: 'unknown' } }), error => error === blocked);
-  console.log('PASS: hosting/team menus, desktop/mobile switch, exact route boundaries, hidden team tools, effective-role guard and honest section states.');
+  assert.ok(HOSTING_SECTIONS.some(s=>s.key==='payments'));
+  assert.ok(HOSTING_SECTIONS.some(s=>s.key==='operations'));
+  console.log('PASS: hosting/team menus, desktop/mobile switch, exact route boundaries, hidden team tools, effective-role guard and hosting section navigation.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2,8 +2,10 @@ import { createAuthClient } from "./supabase/server";
 import * as store from "./store";
 import { isMissingTableError } from "./store";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { resolveMemberView, MEMBER_VIEW_COOKIE } from "./memberView";
 import type { Profile } from "./types";
+import { hostingIdentity } from "./hosting/identity";
 
 /**
  * Resolves the signed-in user's team profile, auto-provisioning one on first
@@ -28,6 +30,7 @@ export async function getAuthenticatedProfile(): Promise<Profile | null> {
     return null;
   }
   if (!user) return null;
+  if (await hostingIdentity(user.id, user.email)) redirect("/client");
 
   try {
     const existing = await store.getProfile(user.id);

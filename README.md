@@ -585,3 +585,11 @@ npx capacitor-assets generate
 |---|---|---|
 | Download directly from your website | ✅ Yes — host a signed `.apk`, users sideload it | ❌ Not possible for a public app |
 | App/Play Store listing | Optional — Google Play Console, $25 one-time | Effectively required — Apple Developer Program, $99/year |
+
+## Hosting management
+
+Admins open Hosting using the workspace switch. Start with Settings (business details/payment instructions), Servers, Packages (allowed servers), Clients, then Hosting Services and Invoices. Registering servers does not connect a VPS. Activation is recorded only after external verification; queued operations await a future operator connection. Payments/refunds and expenses are recorded manually; client payment references require admin approval. No online gateway is configured.
+
+Hosting data uses the additive `20261020202238_hosting_management.sql` migration and exclusively `freelance_hq_hosting_` tables. Browser roles are denied database access. Clients use `/client` with a verified invitation/account link and cannot access agency/team data. Add `https://<app-domain>/auth/invite` to Supabase Auth redirect URLs before inviting clients. Never use a staff account as a hosting client.
+
+Daily renewal generation is off by default. Enable only after configuring a strong `CRON_SECRET` on Vercel. Manual generation is available on Hosting Overview. Backup setup, permanent storage sizing, automatic VPS execution and payment-provider integration are separate outstanding work.

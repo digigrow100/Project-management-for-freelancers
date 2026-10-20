@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/activity-retention",
       "schedule": "15 2 * * *"
+    },
+    {
+      "path": "/api/cron/hosting-renewals",
+      "schedule": "0 3 * * *"
     }
   ]
 }

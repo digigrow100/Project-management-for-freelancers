@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { AdminScreenSharePopup } from "@/components/AdminScreenSharePopup";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
@@ -30,6 +31,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
+  if (!profile) redirect("/client");
   const actor = await getAuthenticatedProfile();
   const memberView = actor?.role === "admin" && profile?.role === "member" && actor.id !== profile.id;
   const isAdmin = profile?.role === "admin";

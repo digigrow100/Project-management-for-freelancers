@@ -1,0 +1,8 @@
+import Link from "next/link";
+import { requireHostingClient } from "@/lib/hosting/auth";
+import { logoutAction } from "@/app/login/actions";
+export const dynamic='force-dynamic';
+export default async function ClientLayout({children}:{children:React.ReactNode}) {
+ const session=await requireHostingClient();
+ return <div data-theme="dark" className="app-theme min-h-screen bg-base-950"><header className="border-b border-base-700/60 bg-base-900 px-4 py-4 print:hidden"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"><Link href="/client" className="font-semibold text-neutral-100">HouseMySite · Client Portal</Link><div className="flex items-center gap-4 text-sm"><span className="text-neutral-400">{session.client.name}</span><form action={logoutAction}><button className="text-neutral-300">Log out</button></form></div></div><nav aria-label="Client navigation" className="mx-auto mt-4 flex max-w-6xl gap-5 overflow-x-auto text-sm text-neutral-400">{[['','Overview'],['services','My services'],['domains','Domains'],['invoices','Invoices'],['payments','Payments'],['tickets','Support']].map(([path,label])=><Link key={path} className="whitespace-nowrap hover:text-accent-300" href={'/client'+(path?'/'+path:'')}>{label}</Link>)}</nav></header><main className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-8 md:py-8">{session.client.status==='suspended'&&<p className="rounded-lg border border-amber-400/30 p-3 text-sm text-amber-400">Your account is suspended. You can still review billing and contact support.</p>}{children}</main></div>;
+}

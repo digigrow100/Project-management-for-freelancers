@@ -42,3 +42,6 @@ ios/.xcode.env.local
 *.xcworkspace/xcuserdata
 *.xcodeproj/xcuserdata
 *.xcodeproj/project.xcworkspace/xcuserdata
+
+# Supabase CLI local state
+supabase/.temp/

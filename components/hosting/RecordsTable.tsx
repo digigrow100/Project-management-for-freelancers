@@ -1,0 +1,26 @@
+import Link from "next/link";
+import type { HostingLookups } from "@/lib/hosting/types";
+import type { HostingRecord } from "@/lib/hosting/store";
+import { money } from "@/lib/hosting/validation";
+import { Hidden,HostingForm,cardClass } from "./ui";
+const columns:Record<string,[string,string][]>={servers:[['name','Server'],['hostname','Hostname'],['status','Availability'],['provider','Provider'],['region','Region']],packages:[['name','Package'],['price_minor','Price'],['billing_cycle','Cycle'],['disk_mb','Disk MiB'],['inode_limit','Inodes'],['memory_mb','RAM MiB'],['is_active','Available']],clients:[['name','Client'],['email','Email'],['company','Company'],['status','Status']],services:[['name','Service'],['client_id','Client'],['package_id','Package'],['status','Recorded status'],['next_due_date','Next due'],['price_minor','Price']],domains:[['hostname','Domain'],['client_id','Client'],['dns_status','DNS check'],['ssl_status','SSL check'],['ssl_expires_at','Certificate expiry'],['expires_on','Registration expiry']],invoices:[['number','Invoice'],['client_id','Client'],['total_minor','Total'],['status','Ledger state'],['due_on','Due']],payments:[['paid_on','Date'],['client_id','Client'],['direction','Direction'],['amount_minor','Amount'],['method','Method'],['reference','Reference']],expenses:[['incurred_on','Date'],['vendor','Payee'],['category','Category'],['amount_minor','Amount'],['server_id','Server']],tickets:[['subject','Subject'],['client_id','Client'],['status','Status'],['priority','Priority'],['created_at','Opened']],operations:[['service_id','Service'],['kind','Request'],['status','Status'],['note','Note'],['created_at','Requested']],activity:[['created_at','When'],['event','Event'],['entity','Record type']],submissions:[['client_id','Client'],['amount_minor','Claimed amount'],['reference','Reference'],['status','Review status']]};
+export function RecordsTable({section,records,lookups,client=false}:{section:string;records:HostingRecord[];lookups?:HostingLookups;client?:boolean}) {
+ const cols=(columns[section]??[]).filter(([key])=>!client||!['client_id','server_id','package_id'].includes(key));
+ const base=client?'/client':'/hosting';
+ const editable=['servers','packages','clients','services','domains'].includes(section)&&!client;
+ const value=(row:Record<string,unknown>,key:string):React.ReactNode=>{
+   const raw=row[key];if(raw===null||raw===undefined||raw==='')return '—';
+   if(key==='client_id')return lookups?.clients.find(c=>c.id===raw)?.name??'Client';
+   if(key==='server_id')return lookups?.servers.find(c=>c.id===raw)?.name??'Unassigned';
+   if(key==='package_id')return lookups?.packages.find(c=>c.id===raw)?.name??'Package';
+   if(key==='service_id')return lookups?.services.find(c=>c.id===raw)?.name??'Service';
+   if(key.endsWith('_minor'))return row.currency?money(Number(raw),String(row.currency)):(Number(raw)/100).toFixed(2);
+   if(typeof raw==='boolean')return raw?'Yes':'No';
+   if(key==='number')return <Link className="text-accent-300 hover:underline" href={`${base}/invoices/${row.id}`}>{String(raw)}</Link>;
+   if(key==='subject')return <Link className="text-accent-300 hover:underline" href={`${base}/tickets/${row.id}`}>{String(raw)}</Link>;
+   if(key.endsWith('_at'))return new Date(String(raw)).toLocaleDateString('en-GB',{timeZone:'Asia/Karachi'});
+   return String(raw).replaceAll('_',' ');
+ };
+ if(!records.length)return <div className={`${cardClass} text-sm text-neutral-400`}>No {section==='operations'?'operation requests':section} yet.</div>;
+ return <div className="overflow-x-auto rounded-xl border border-base-700/60"><table className="w-full text-left text-sm"><thead className="bg-base-850 text-xs text-neutral-400"><tr>{cols.map(([key,label])=><th key={key} className="whitespace-nowrap px-4 py-3 font-medium">{label}</th>)}<th className="px-4 py-3"><span className="sr-only">Actions</span></th></tr></thead><tbody>{records.map(item=>{const row=item as unknown as Record<string,unknown>;const id=String(row.id);return <tr key={id} className="border-t border-base-700/50">{cols.map(([key])=><td key={key} className="max-w-xs px-4 py-3 text-neutral-300">{value(row,key)}</td>)}<td className="px-4 py-3">{editable&&<Link href={`/hosting/${section}?edit=${id}`} className="text-xs text-accent-300">Edit</Link>}{section==='domains'&&!client&&<div className="flex gap-2"><HostingForm action="check_dns" returnPath="/hosting/domains" label="Check DNS"><Hidden name="id" value={id}/></HostingForm><HostingForm action="check_ssl" returnPath="/hosting/domains" label="Check SSL"><Hidden name="id" value={id}/></HostingForm></div>}{section==='operations'&&row.status==='awaiting_connection'&&<HostingForm action="cancel_job" returnPath="/hosting/operations" label="Cancel request" danger><Hidden name="id" value={id}/></HostingForm>}{section==='submissions'&&row.status==='pending'&&<div className="flex gap-2">{['approve','reject'].map(decision=><HostingForm key={decision} action="review_submission" returnPath="/hosting/submissions" label={decision==='approve'?'Approve payment':'Reject'} danger={decision==='reject'}><Hidden name="id" value={id}/><Hidden name="decision" value={decision}/></HostingForm>)}</div>}</td></tr>;})}</tbody></table></div>;
+}
