@@ -164,6 +164,7 @@ Admins can switch between Team Management (`/admin`) and Hosting (`/hosting`) fr
 Hosting now provides server/package/client/service records, separate billing (invoices, manual payments/refunds, expenses, reviewed payment claims), renewal invoice generation, domain DNS/TLS checks, support threads, append-only audit events and settings. All new tables use `freelance_hq_hosting_`; migration `20261020202238_hosting_management.sql` is additive; `20261020205241_hosting_indexes.sql` covers ownership/audit foreign keys. Both were applied to the existing Freelance HQ Supabase project and live financial transaction checks passed with rollback (no retained test customers or payments). Agency records are not migrated; an optional client link is explicit.
 
 - `lib/hosting/*` contains strict admin/client authorization, scoped data access, validation, guarded server actions and public-IP-only DNS/TLS probes. Browser database roles have no table or RPC grants; all hosting tables enable RLS. Monetary changes use transactional RPCs with idempotency and balance/currency checks; currencies remain separate.
+- Client UI: `components/hosting/ClientNavigation.tsx`, `ClientServices.tsx`, and `app/(client)/client/portal.css` implement the white minimalist sidebar and responsive client-only styling. The account page shows existing contact details; changes are requested through support.
 - `app/(client)/client/*` is a separate client shell. Verified invitations/account links grant access to owned services, invoices, payment claims and support only. Hosting identities (including revoked ones) cannot auto-create team profiles or enter team routes. Private admin notes/internal support messages are never selected for clients.
 - Hosting Clients includes a one-click POST “Open client portal” read-only inspection. The original admin authentication remains unchanged. A domain-separated HMAC-signed, actor/client-bound, HTTP-only Strict SameSite cookie expires in 30 minutes; every request rechecks effective and database-backed admin access and target existence/status. The client shell shows an admin banner and return action; client writes are rejected server-side, not merely hidden. Start/return events are audited under the real admin. Logout clears the inspection cookie. `20261020211243_hosting_admin_client_summary.sql` provides client-scoped admin totals with no browser RPC grant; applied live and checked with rollback for target scoping, non-admin denial and closed-client denial.
 - `/auth/invite` handles invitation code/token-hash and fragment flows. Configure this exact app URL in Supabase Auth redirect allowlist before sending client invitations. Invitations are only sent by an explicit admin form action.
@@ -731,6 +732,9 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Restyled the client portal with the selected white minimalist HouseMySite sidebar and blue accents. Added responsive active navigation, scoped light styling, service detail disclosures, billing tabs and a read-only account page. Existing billing/support actions and signed admin inspection remain intact. No database changes or new server controls; contact support handles account/service changes.
+
 
 - Hide the sidebar scrollbar without disabling scrolling; add signed, expiring, audited read-only client inspection from Hosting Clients with live admin authorization and a return control.
 
