@@ -54,7 +54,7 @@ export function Sidebar({
 
       <WorkspaceOnly name="hosting"><HostingNavigation /></WorkspaceOnly>
       <WorkspaceOnly name="team">
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto [&>a]:min-h-10 [&>a]:shrink-0 [&>a>svg]:shrink-0">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 sidebar-scroll overflow-x-hidden overflow-y-auto [&>a]:min-h-10 [&>a]:shrink-0 [&>a>svg]:shrink-0">
         {NAV.map(({ href, label, icon: Icon }) => {
           const resolvedHref =
             isAdmin && href === "/"

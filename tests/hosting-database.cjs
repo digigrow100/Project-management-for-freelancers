@@ -4,6 +4,7 @@ const {PGlite}=require('@electric-sql/pglite');const fs=require('fs');const asse
 const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table public.freelance_hq_profiles(id uuid primary key,role text);create table public.freelance_hq_clients(id uuid primary key);`);
 await db.exec(fs.readFileSync('supabase/migrations/20261020202238_hosting_management.sql','utf8'));
 await db.exec(fs.readFileSync('supabase/migrations/20261020205241_hosting_indexes.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/migrations/20261020211243_hosting_admin_client_summary.sql','utf8'));
 const admin=id(),user=id(),client=id(),other=id(),pkg=id(),service=id();
 await db.query(`insert into auth.users values ($1,'admin@example.test',now()),($2,'client@example.test',now())`,[admin,user]);await db.query(`insert into freelance_hq_profiles values($1,'admin')`,[admin]);
 await db.query(`insert into freelance_hq_hosting_clients(id,name,email) values($1,'Client','client@example.test'),($2,'Other','other@example.test')`,[client,other]);
@@ -21,6 +22,8 @@ await assert.rejects(call('record_payment',{p_actor:admin,p_data:{...pay,idempot
 await assert.rejects(call('record_payment',{p_actor:admin,p_data:{...pay,idempotency_key:id(),amount_minor:6001}}),/exceeds outstanding/);
 let summary=await call('client_summary',{p_user:user,p_client:client});assert.equal(Number(summary.outstanding[0].outstanding_minor),6000);
 await assert.rejects(call('client_summary',{p_user:user,p_client:other}),/denied/);
+assert.equal(Number((await call('admin_client_summary',{p_actor:admin,p_client:client})).outstanding[0].outstanding_minor),6000);
+await assert.rejects(call('admin_client_summary',{p_actor:user,p_client:client}),/admin access/);
 await call('record_payment',{p_actor:admin,p_data:{...pay,idempotency_key:id(),amount_minor:6000}});
 const next=(await db.query(`select next_due_date::text d from freelance_hq_hosting_services where id=$1`,[service])).rows[0].d;assert.notEqual(next,data.period_start);
 await assert.rejects(call('cancel_invoice',{p_actor:admin,p_id:invoice}),/payment history/);

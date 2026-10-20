@@ -86,7 +86,7 @@ async function invoiceDetails(id: string, clientId?: string) {
   return {invoice,submissions:checked<{id:string;reference:string;amount_minor:number;status:string}[]>(submissions),items:checked<HostingInvoiceItem[]>(items),payments:checked<HostingPayment[]>(payments),client:checked<{id:string;name:string;email:string;address:string;company:string}>(client),config};
 }
 export async function adminInvoice(id: string) { await requireHostingAdmin(); return invoiceDetails(id); }
-export async function clientInvoice(id: string) { const session=await requireHostingClient(); return invoiceDetails(id,session.clientId); }
+export async function clientInvoice(id: string) { const session=await requireHostingClient(); return {...await invoiceDetails(id,session.clientId),readOnly:session.adminView}; }
 async function ticketDetails(id: string, clientId?: string) {
   uuid.parse(id);
   let q=getSupabase().from(hostingTable("tickets")).select("*").eq("id",id);
@@ -98,7 +98,7 @@ async function ticketDetails(id: string, clientId?: string) {
   return {ticket,messages:checked<HostingMessage[]>(await messages)};
 }
 export async function adminTicket(id: string) { await requireHostingAdmin(); return ticketDetails(id); }
-export async function clientTicket(id: string) { const s=await requireHostingClient();return ticketDetails(id,s.clientId); }
+export async function clientTicket(id: string) { const s=await requireHostingClient();return {...await ticketDetails(id,s.clientId),readOnly:s.adminView}; }
 const clientColumns = {
   services:"id,client_id,package_id,server_id,name,primary_domain,status,price_minor,currency,billing_cycle,next_due_date,auto_invoice",
   invoices:"id,number,client_id,service_id,currency,status,subtotal_minor,tax_minor,total_minor,issued_on,due_on,period_start,notes,terms",
@@ -115,6 +115,6 @@ export async function clientRecords(section: ClientSection,page=1) {
 }
 export async function clientOverview() {
   const s=await requireHostingClient();
-  const [summary,config]=await Promise.all([getSupabase().rpc("freelance_hq_hosting_client_summary",{p_user:s.userId,p_client:s.clientId}),settings()]);
+  const [summary,config]=await Promise.all([s.adminView?getSupabase().rpc("freelance_hq_hosting_admin_client_summary",{p_actor:s.userId,p_client:s.clientId}):getSupabase().rpc("freelance_hq_hosting_client_summary",{p_user:s.userId,p_client:s.clientId}),settings()]);
   return {...checked<{services:number;tickets:number;outstanding:{currency:string;outstanding_minor:number}[]}>(summary),config};
 }

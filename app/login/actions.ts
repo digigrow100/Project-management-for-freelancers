@@ -35,6 +35,7 @@ export async function loginAction(formData: FormData) {
 
 export async function logoutAction() {
   cookies().delete(MEMBER_VIEW_COOKIE);
+  cookies().delete("fhq_hosting_client_view");
   try {
     const supabase = createAuthClient();
     await supabase.auth.signOut();
