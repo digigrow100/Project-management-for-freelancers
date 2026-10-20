@@ -5,6 +5,8 @@ import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
 import { RefreshButton } from "./RefreshButton";
 import { logoutAction } from "@/app/login/actions";
+import { WorkspaceOnly, WorkspaceSwitcher } from "./WorkspaceProvider";
+import { HostingNavigation } from "./HostingNavigation";
 
 const NAV = [
   { href: "/extensions", label: "Extensions", icon: Chrome },
@@ -48,6 +50,10 @@ export function Sidebar({
         <RefreshButton className="ml-auto" />
       </div>
 
+      <WorkspaceSwitcher />
+
+      <WorkspaceOnly name="hosting"><HostingNavigation /></WorkspaceOnly>
+      <WorkspaceOnly name="team">
       <nav className="flex flex-col gap-1">
         {NAV.map(({ href, label, icon: Icon }) => {
           const resolvedHref =
@@ -164,6 +170,7 @@ export function Sidebar({
           New Project
         </Link>
       )}
+      </WorkspaceOnly>
 
       <div className="min-h-0 flex-1" />
 

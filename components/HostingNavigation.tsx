@@ -1,0 +1,49 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers } from "lucide-react";
+import { HOSTING_SECTIONS } from "@/lib/hostingWorkspace";
+import { cn } from "@/lib/utils";
+
+const icons = {
+  servers: Server,
+  packages: Package,
+  services: Layers,
+  clients: Building2,
+  billing: Receipt,
+  domains: Globe,
+  settings: Settings,
+};
+
+export const HOSTING_NAV = [
+  { href: "/hosting", label: "Overview", icon: LayoutDashboard },
+  ...HOSTING_SECTIONS.map(({ key, label }) => ({
+    href: `/hosting/${key}`, label, icon: icons[key],
+  })),
+];
+
+export function hostingLinkActive(pathname: string, href: string) {
+  return pathname === href || (href !== "/hosting" && pathname.startsWith(href + "/"));
+}
+
+export function HostingNavigation() {
+  const pathname = usePathname();
+  return (
+    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+      {HOSTING_NAV.map(({ href, label, icon: Icon }) => (
+        <Link key={href} href={href} prefetch={false}
+          aria-current={hostingLinkActive(pathname, href) ? "page" : undefined}
+          className={cn(
+            "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            hostingLinkActive(pathname, href)
+              ? "bg-accent-500/10 text-accent-300"
+              : "text-neutral-300 hover:bg-base-800 hover:text-accent-300",
+          )}>
+          <Icon size={17} aria-hidden="true" />
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}

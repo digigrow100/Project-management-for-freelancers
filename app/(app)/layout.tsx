@@ -24,6 +24,7 @@ import {
   listRenewals,
 } from "@/lib/store";
 import { listAccessibleWhatsAppClients } from "@/lib/whatsappBridge";
+import { WorkspaceProvider, WorkspaceOnly } from "@/components/WorkspaceProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     isAdmin && profile ? await listAdminWorkItems(profile.id) : [];
 
   return (
+    <WorkspaceProvider canAccessHosting={isAdmin}>
     <div
       data-theme={profile?.themePreference ?? "dark"}
       className="app-theme flex min-h-screen md:h-screen md:overflow-hidden"
@@ -101,22 +103,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 </div>
               </div>
             )}
-            {profile && <ExtensionHealthBanner />}
+            <WorkspaceOnly name="team">{profile && <ExtensionHealthBanner />}</WorkspaceOnly>
             {children}
           </div>
         </main>
       </div>
-      {isAdmin && !memberView && <AdminScreenSharePopup />}
+      <WorkspaceOnly name="team">{isAdmin && !memberView && <AdminScreenSharePopup />}</WorkspaceOnly>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
-      {isAdmin && profile && adminWorkflowSettings && (
+      <WorkspaceOnly name="team">{isAdmin && profile && adminWorkflowSettings && (
         <AdminWorkflowLauncher
           initialItems={adminWorkItems}
           initialSettings={adminWorkflowSettings}
           projects={projects}
         />
-      )}
+      )}</WorkspaceOnly>
       {profile && !memberView && <PresenceHeartbeat />}
-      {profile && <WhatsAppChatWidget initialClients={whatsappClients} isAdmin={isAdmin} />}
+      <WorkspaceOnly name="team">{profile && <WhatsAppChatWidget initialClients={whatsappClients} isAdmin={isAdmin} />}</WorkspaceOnly>
     </div>
+    </WorkspaceProvider>
   );
 }

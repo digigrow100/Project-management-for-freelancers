@@ -8,6 +8,8 @@ import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "./WorkspaceProvider";
+import { HOSTING_NAV, hostingLinkActive } from "./HostingNavigation";
 
 const PRIMARY_NAV = [
   { href: "/", label: "Home", icon: LayoutDashboard },
@@ -55,6 +57,7 @@ export function MobileNav({
   unseenTasks?: number;
 }) {
   const pathname = usePathname();
+  const hosting = useWorkspace().workspace === "hosting";
   const isAdmin = profile?.role === "admin";
   const canAccessRenewals = isAdmin || Boolean(profile?.canAccessRenewals);
   const canAccessFinance = isAdmin || Boolean(profile?.canAccessFinance);
@@ -65,7 +68,7 @@ export function MobileNav({
     "/my-tasks": unseenTasks,
   };
 
-  const financeItem = isAdmin ? MORE_NAV.find((item) => item.href === "/finance") : undefined;
+  const financeItem = isAdmin && !hosting ? MORE_NAV.find((item) => item.href === "/finance") : undefined;
   const domainsItem = MORE_NAV.find((item) => item.href === "/domains");
   const invoicesItem = MORE_NAV.find((item) => item.href === "/invoices");
   const extraItems = isAdmin
@@ -74,7 +77,9 @@ export function MobileNav({
         ...(canAccessRenewals && domainsItem ? [domainsItem] : []),
         ...(canAccessFinance && invoicesItem ? [invoicesItem] : []),
       ];
-  const sheetItems = [...COMMON_MORE_NAV, ...extraItems];
+  const sheetItems = hosting ? HOSTING_NAV.slice(3) : [...COMMON_MORE_NAV, ...extraItems];
+  const primaryItems = hosting ? HOSTING_NAV.slice(0, 3) : PRIMARY_NAV;
+  const linkActive = hosting ? hostingLinkActive : isActive;
 
   return (
     <>
@@ -85,9 +90,10 @@ export function MobileNav({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-neutral-200">More</p>
+              <p className="text-sm font-semibold text-neutral-200">{hosting ? "Hosting menu" : "More"}</p>
               <button
                 type="button"
+                aria-label="Close menu"
                 onClick={() => setMoreOpen(false)}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-400 hover:bg-base-800 hover:text-neutral-200"
               >
@@ -104,7 +110,7 @@ export function MobileNav({
                   onClick={() => setMoreOpen(false)}
                   className={cn(
                     "relative flex flex-col items-center gap-2 rounded-xl border border-base-700/60 bg-base-850 px-2 py-4 text-xs",
-                    isActive(pathname, resolvedHref) ? "text-accent-300" : "text-neutral-300",
+                    linkActive(pathname, resolvedHref) ? "text-accent-300" : "text-neutral-300",
                   )}
                 >
                   <span className="relative">
@@ -119,16 +125,16 @@ export function MobileNav({
                 </Link>
                 );
               })}
-              <InstallAppButton variant="sheet" />
+              {!hosting && <InstallAppButton variant="sheet" />}
             </div>
           </div>
         </div>
       )}
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 flex items-stretch justify-around border-t border-base-700/60 bg-base-900/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        {PRIMARY_NAV.map(({ href, label, icon: Icon }) => {
+      <nav aria-label={hosting ? "Hosting navigation" : "Team navigation"} className="md:hidden fixed bottom-0 left-0 right-0 z-20 flex items-stretch justify-around border-t border-base-700/60 bg-base-900/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+        {primaryItems.map(({ href, label, icon: Icon }) => {
           const resolvedHref = isAdmin && href === "/" ? "/admin" : href;
-          const active = isActive(pathname, resolvedHref);
+          const active = linkActive(pathname, resolvedHref);
           return (
             <Link
               key={href}
