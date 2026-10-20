@@ -157,6 +157,21 @@ Never edit an old migration that may already have run in production. Add a new m
 
 ---
 
+# Team Management / Hosting workspaces
+
+Admins can switch between Team Management (`/admin`) and Hosting (`/hosting`) from the desktop sidebar or mobile top bar. `WorkspaceProvider` derives the workspace from the URL, so refresh, deep links and browser Back retain the correct navigation. Returning to Team Management opens the existing admin dashboard and restores its existing menus.
+
+Hosting has its own Overview, Servers, Packages, Hosting Services, Clients, Billing, Domains & SSL and Settings navigation. The overview and section pages are setup states only: no server connection, package CRUD, hosting billing, client login or provisioning integration is implemented by this change. Existing clients and financial records are not copied, reclassified or migrated.
+
+- `components/WorkspaceProvider.tsx` — workspace context, switch links and conditional team UI.
+- `components/HostingNavigation.tsx` and `lib/hostingWorkspace.ts` — hosting menus and exact route matching.
+- `app/(app)/hosting/layout.tsx` — server-side effective-admin check; members and admin-as-member sessions are denied.
+- Team workflow launcher, extension banner, WhatsApp widget and screen-share invitation UI are hidden/unmounted while viewing Hosting. Presence behavior and existing task/finance routines remain unchanged.
+- No database migration, Supabase configuration or VPS change. This is an admin workspace switch, not the future customer portal. No deployment has been performed.
+- Regression check: `node tests/hosting-workspaces.cjs`, plus normal typecheck/lint/build.
+
+---
+
 # Roles and Access
 
 Admin-only `/team` reuses AdminTeamPanel for roles, job roles, project grants, finance/renewals/credential access, invites and account management. Each member has a one-click POST “Open as member” control and an admin-gated `/team/view/[id]` access link (GET only shows the launch form). Member view keeps the original verified Supabase session; getCurrentProfile applies the selected member’s permissions only while the actor still has database-backed admin access. The HTTP-only Strict SameSite cookie is actor-bound and expires in one hour. A persistent banner returns to admin; member presence heartbeats are suppressed during admin inspection. Real member actions affect real records. No member passwords or login tokens are put in links. Logout clears the view cookie.
@@ -713,6 +728,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Prepared the admin Team Management / Hosting switch with separate desktop/mobile navigation, server-gated hosting setup pages and hidden team-only floating tools. Existing team flows and data remain unchanged; hosting integrations and deployment are pending.
 
 - Queue release follow-up: supplied seeded task SEO categories and handled a midnight legacy-generator carryover without resetting work.
 
