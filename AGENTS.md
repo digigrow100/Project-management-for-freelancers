@@ -161,14 +161,15 @@ Never edit an old migration that may already have run in production. Add a new m
 
 Admins can switch between Team Management (`/admin`) and Hosting (`/hosting`) from the desktop sidebar or mobile top bar. `WorkspaceProvider` derives the workspace from the URL, so refresh, deep links and browser Back retain the correct navigation. Returning to Team Management opens the existing admin dashboard and restores its existing menus.
 
-Hosting has its own Overview, Servers, Packages, Hosting Services, Clients, Billing, Domains & SSL and Settings navigation. The overview and section pages are setup states only: no server connection, package CRUD, hosting billing, client login or provisioning integration is implemented by this change. Existing clients and financial records are not copied, reclassified or migrated.
+Hosting now provides server/package/client/service records, separate billing (invoices, manual payments/refunds, expenses, reviewed payment claims), renewal invoice generation, domain DNS/TLS checks, support threads, append-only audit events and settings. All new tables use `freelance_hq_hosting_`; migration `20261020202238_hosting_management.sql` is additive; `20261020205241_hosting_indexes.sql` covers ownership/audit foreign keys. Both were applied to the existing Freelance HQ Supabase project and live financial transaction checks passed with rollback (no retained test customers or payments). Agency records are not migrated; an optional client link is explicit.
 
-- `components/WorkspaceProvider.tsx` — workspace context, switch links and conditional team UI.
-- `components/HostingNavigation.tsx` and `lib/hostingWorkspace.ts` — hosting menus and exact route matching.
-- `app/(app)/hosting/layout.tsx` — server-side effective-admin check; members and admin-as-member sessions are denied.
-- Team workflow launcher, extension banner, WhatsApp widget and screen-share invitation UI are hidden/unmounted while viewing Hosting. Presence behavior and existing task/finance routines remain unchanged.
-- No database migration, Supabase configuration or VPS change. This is an admin workspace switch, not the future customer portal. No deployment has been performed.
-- Regression check: `node tests/hosting-workspaces.cjs`, plus normal typecheck/lint/build.
+- `lib/hosting/*` contains strict admin/client authorization, scoped data access, validation, guarded server actions and public-IP-only DNS/TLS probes. Browser database roles have no table or RPC grants; all hosting tables enable RLS. Monetary changes use transactional RPCs with idempotency and balance/currency checks; currencies remain separate.
+- `app/(client)/client/*` is a separate client shell. Verified invitations/account links grant access to owned services, invoices, payment claims and support only. Hosting identities (including revoked ones) cannot auto-create team profiles or enter team routes. Private admin notes/internal support messages are never selected for clients.
+- `/auth/invite` handles invitation code/token-hash and fragment flows. Configure this exact app URL in Supabase Auth redirect allowlist before sending client invitations. Invitations are only sent by an explicit admin form action.
+- `/api/cron/hosting-renewals` requires `CRON_SECRET`; scheduled renewal invoicing is off by default. Manual generation works without it. Paying a period's invoice advances its service due date once. No email reminders or online payment gateway are connected.
+- Server entries and service activation are admin declarations. Operation requests remain `awaiting_connection`; no shell commands, SSH keys, provisioning, deployment or rollback execution exists in this portal. The VPS production operator/evidence enrollment requirements remain outstanding. Backups and permanent storage sizing remain paused by user request.
+- `WorkspaceProvider`, `HostingNavigation` and `hostingWorkspace.ts` preserve desktop/mobile switching. Team-only floating tools are unmounted in Hosting; existing team routines remain intact.
+- Checks: normal typecheck/lint/build, `node tests/hosting-workspaces.cjs` and `node tests/hosting-security.cjs` and `node tests/hosting-client-scope.cjs`. Isolated PostgreSQL integration: install pinned `@electric-sql/pglite@0.5.10` outside the repo and run `NODE_PATH=<install>/node_modules node tests/hosting-database.cjs` (verify the installed version used in release notes).
 
 ---
 
@@ -729,7 +730,7 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
-- Prepared the admin Team Management / Hosting switch with separate desktop/mobile navigation, server-gated hosting setup pages and hidden team-only floating tools. Existing team flows and data remain unchanged; hosting integrations and deployment are pending.
+- Added the Hosting management/admin and separate client portal with prefixed tables, manual financial ledger, renewal invoices, domain checks, support and scoped access. Server execution and gateway payments remain unconnected; validate release status before claiming deployment.
 
 - Queue release follow-up: supplied seeded task SEO categories and handled a midnight legacy-generator carryover without resetting work.
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers } from "lucide-react";
+import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard } from "lucide-react";
 import { HOSTING_SECTIONS } from "@/lib/hostingWorkspace";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,7 @@ const icons = {
   billing: Receipt,
   domains: Globe,
   settings: Settings,
+  invoices: Receipt, payments: CreditCard, expenses: Wallet, submissions: ListChecks, tickets: MessageCircle, operations: Server, activity: Activity,
 };
 
 export const HOSTING_NAV = [
@@ -30,7 +31,7 @@ export function hostingLinkActive(pathname: string, href: string) {
 export function HostingNavigation() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
       {HOSTING_NAV.map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} prefetch={false}
           aria-current={hostingLinkActive(pathname, href) ? "page" : undefined}
