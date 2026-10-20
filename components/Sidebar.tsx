@@ -39,8 +39,8 @@ export function Sidebar({
     "/my-tasks": unseenTasks,
   };
   return (
-    <aside className="sidebar-themed hidden md:flex md:h-screen md:w-64 md:flex-col border-r border-base-700/60 bg-base-900/80 backdrop-blur-sm pl-[calc(1rem+env(safe-area-inset-left))] pr-4 py-6 gap-6">
-      <div className="flex items-center gap-2 px-2">
+    <aside className="sidebar-themed hidden md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col border-r border-base-700/60 bg-base-900/80 backdrop-blur-sm pl-[calc(1rem+env(safe-area-inset-left))] pr-4 py-6 gap-6">
+      <div className="flex shrink-0 items-center gap-2 px-2">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/15 text-accent-400">
           <Leaf size={18} />
         </span>
@@ -54,7 +54,7 @@ export function Sidebar({
 
       <WorkspaceOnly name="hosting"><HostingNavigation /></WorkspaceOnly>
       <WorkspaceOnly name="team">
-      <nav className="flex flex-col gap-1">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto [&>a]:min-h-10 [&>a]:shrink-0 [&>a>svg]:shrink-0">
         {NAV.map(({ href, label, icon: Icon }) => {
           const resolvedHref =
             isAdmin && href === "/"
@@ -164,7 +164,7 @@ export function Sidebar({
       {isAdmin && (
         <Link
           href="/projects/new"
-          className="flex items-center justify-center gap-2 rounded-lg bg-accent-500 px-3 py-2 text-sm font-medium text-base-950 hover:bg-accent-400 transition-colors shadow-glow"
+          className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-accent-500 px-3 py-2 text-sm font-medium text-base-950 hover:bg-accent-400 transition-colors shadow-glow"
         >
           <Plus size={16} />
           New Project
@@ -172,9 +172,7 @@ export function Sidebar({
       )}
       </WorkspaceOnly>
 
-      <div className="min-h-0 flex-1" />
-
-      <div className="flex flex-col gap-3">
+      <div className="flex shrink-0 flex-col gap-3">
         {profile && (
           <div className="rounded-xl border border-base-700/60 bg-base-850/70 px-3 py-2.5">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">Logged in as</p>
