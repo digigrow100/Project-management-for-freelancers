@@ -31,7 +31,7 @@ export function hostingLinkActive(pathname: string, href: string) {
 export function HostingNavigation() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto">
+    <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 sidebar-scroll overflow-x-hidden overflow-y-auto">
       {HOSTING_NAV.map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} prefetch={false}
           aria-current={hostingLinkActive(pathname, href) ? "page" : undefined}

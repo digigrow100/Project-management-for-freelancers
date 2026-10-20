@@ -165,10 +165,11 @@ Hosting now provides server/package/client/service records, separate billing (in
 
 - `lib/hosting/*` contains strict admin/client authorization, scoped data access, validation, guarded server actions and public-IP-only DNS/TLS probes. Browser database roles have no table or RPC grants; all hosting tables enable RLS. Monetary changes use transactional RPCs with idempotency and balance/currency checks; currencies remain separate.
 - `app/(client)/client/*` is a separate client shell. Verified invitations/account links grant access to owned services, invoices, payment claims and support only. Hosting identities (including revoked ones) cannot auto-create team profiles or enter team routes. Private admin notes/internal support messages are never selected for clients.
+- Hosting Clients includes a one-click POST “Open client portal” read-only inspection. The original admin authentication remains unchanged. A domain-separated HMAC-signed, actor/client-bound, HTTP-only Strict SameSite cookie expires in 30 minutes; every request rechecks effective and database-backed admin access and target existence/status. The client shell shows an admin banner and return action; client writes are rejected server-side, not merely hidden. Start/return events are audited under the real admin. Logout clears the inspection cookie. `20261020211243_hosting_admin_client_summary.sql` provides client-scoped admin totals with no browser RPC grant; applied live and checked with rollback for target scoping, non-admin denial and closed-client denial.
 - `/auth/invite` handles invitation code/token-hash and fragment flows. Configure this exact app URL in Supabase Auth redirect allowlist before sending client invitations. Invitations are only sent by an explicit admin form action.
 - `/api/cron/hosting-renewals` requires `CRON_SECRET`; scheduled renewal invoicing is off by default. Manual generation works without it. Paying a period's invoice advances its service due date once. No email reminders or online payment gateway are connected.
 - Server entries and service activation are admin declarations. Operation requests remain `awaiting_connection`; no shell commands, SSH keys, provisioning, deployment or rollback execution exists in this portal. The VPS production operator/evidence enrollment requirements remain outstanding. Backups and permanent storage sizing remain paused by user request.
-- Desktop sidebar gives the navigation the full space between the fixed header/switcher and account footer. Rows keep a minimum 40px height without shrinking; `overflow-y-auto` scrolls only when the list exceeds that available space. There is no competing flex spacer.
+- Desktop sidebar gives the navigation the full space between the fixed header/switcher and account footer. Rows keep a minimum 40px height without shrinking; `overflow-y-auto` scrolls only when the list exceeds that available space. There is no competing flex spacer. The sidebar scrollbar track/thumb are hidden in Firefox/WebKit while wheel, touch and keyboard scrolling remain available.
 - `WorkspaceProvider`, `HostingNavigation` and `hostingWorkspace.ts` preserve desktop/mobile switching. Team-only floating tools are unmounted in Hosting; existing team routines remain intact.
 - Checks: normal typecheck/lint/build, `node tests/hosting-workspaces.cjs` and `node tests/hosting-security.cjs` and `node tests/hosting-client-scope.cjs`. Isolated PostgreSQL integration: install pinned `@electric-sql/pglite@0.5.10` outside the repo and run `NODE_PATH=<install>/node_modules node tests/hosting-database.cjs` (verify the installed version used in release notes).
 
@@ -730,6 +731,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Hide the sidebar scrollbar without disabling scrolling; add signed, expiring, audited read-only client inspection from Hosting Clients with live admin authorization and a return control.
 
 - Corrected sidebar sizing: full available navigation height, nonshrinking menu rows/icons and automatic overflow only when needed, with account controls kept at the bottom.
 

@@ -155,7 +155,9 @@ export async function hostingAdminAction(form:FormData) {
   redirect(target+'?saved=1');
 }
 export async function hostingClientAction(form:FormData) {
-  const session=await requireHostingClient();const returnPath=safeReturnPath(str(form,'return_path'),true);let target=returnPath;
+  const session=await requireHostingClient();
+  if(session.adminView)throw new Error("Admin client view is read-only. Return to Hosting to make changes.");
+  const returnPath=safeReturnPath(str(form,'return_path'),true);let target=returnPath;
   try {
     const action=z.enum(['payment_submission','new_ticket','ticket_reply']).parse(str(form,'action'));
     const key=uuid.parse(str(form,'request_key'));
