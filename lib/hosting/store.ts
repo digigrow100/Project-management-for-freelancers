@@ -28,7 +28,12 @@ export async function adminRecords(section: HostingSectionKey, page: number) {
   await requireHostingAdmin();
   const index = Math.max(1,Math.min(100000,Math.floor(page)||1));
   const result = await getSupabase().from(hostingTable(sectionTables[section])).select("*",{count:"exact"}).order("created_at",{ascending:false}).range((index-1)*25,index*25-1);
-  const records = checked<HostingRecord[]>(result);
+  let records = checked<HostingRecord[]>(result);
+  if(section==='submissions' && records.length) {
+    const ids=records.map(r=>(r as HostingSubmission).invoice_id);
+    const invoices=checked<{id:string;number:string;currency:string}[]>(await getSupabase().from(hostingTable("invoices")).select("id,number,currency").in("id",ids));
+    records=(records as HostingSubmission[]).map(r=>{const i=invoices.find(i=>i.id===(r as HostingSubmission).invoice_id);return {...r,currency:i?.currency,invoice_number:i?.number};});
+  }
   return {records,total:result.count??0,page:index};
 }
 export async function adminOverview(start?: string,end?: string) {
