@@ -57,7 +57,7 @@ export async function middleware(request: NextRequest) {
     return target;
   }
 
-  const isPublic = request.nextUrl.pathname === "/api/cron/hosting-renewals" || PUBLIC_PATHS.some((path) => request.nextUrl.pathname===path || request.nextUrl.pathname.startsWith(path+"/"));
+  const isPublic = request.nextUrl.pathname === "/api/hosting-operator" || request.nextUrl.pathname === "/api/cron/hosting-renewals" || PUBLIC_PATHS.some((path) => request.nextUrl.pathname===path || request.nextUrl.pathname.startsWith(path+"/"));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

@@ -29,3 +29,7 @@ jobs:
 
       - run: node tests/hosting-bridge-reports.cjs
       - run: node tests/hosting-bridge-access.cjs
+
+      - run: node tests/hosting-operator-protocol.cjs
+      - run: npm install --prefix /tmp/hms-operator-test-deps --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.10
+      - run: NODE_PATH=/tmp/hms-operator-test-deps/node_modules node tests/hosting-operator-database.cjs
