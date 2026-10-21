@@ -26,3 +26,6 @@ jobs:
 
       - run: node tests/security-hardening.cjs
       - run: node tests/hosting-mfa-actions.cjs
+
+      - run: node tests/hosting-bridge-reports.cjs
+      - run: node tests/hosting-bridge-access.cjs
