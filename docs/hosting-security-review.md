@@ -44,3 +44,13 @@ Tracked-file pattern scan found no private keys, GitHub token patterns, Supabase
 Deploy code only after the additive migration and its grant tests pass. Once released, Hosting admin navigation redirects to `/login/security` until the owner scans the QR and verifies a code. Already verified users with a lower-assurance session are challenged before app/hosting access. Keep the owner’s Supabase dashboard access available for verified lost-device recovery; never disable MFA based only on a support email.
 
 If the application release fails, roll back the Vercel application to the previously working deployment. Keep the additive DB migration and restrictive grants; the old app does not depend on them, so removing security tables/functions is unnecessary. This is an application rollback plan, not a verified disaster recovery backup.
+
+## Production deployment verified — 21 October 2026
+
+The owner reconnected the correct Vercel account. The existing Hamza project (`prj_m9lKtkMZkvSAx11hGJRxrnvAil4M`, team `team_aVGEjNhGPKrmhxJ6EKcOLEnZ`) owned the original application alias, but the reviewed `main` commit was only built as a Preview. Its server-only `SUPABASE_ANON_KEY` configuration was also missing.
+
+Added `SUPABASE_ANON_KEY` using the existing publishable anon-role key (verified against the same database project, never printed) and `APP_URL=https://project-management-for-freelancers.vercel.app` for Production and Preview. The privileged service-role key was not read or changed. An initial incomplete build was cancelled before completion.
+
+Redeployed reviewed commit `fe53e70914a7f17b3cc77c741c80a056fe13766a` using Production configuration. Deployment `dpl_BrCocBQHeFPWF7wJ3BBtZbqu1yuk` reached READY with `target=production`, no alias error, and the original `project-management-for-freelancers.vercel.app` alias attached. No protection settings were disabled. Owner authenticator enrollment and authenticated workflow testing still require the owner's participation. The dependency and recovery limitations above still apply.
+
+Public HTTP verification passed: `/login` returned 200 with a sign-in form; `/login/security` and `/hosting` returned 307 to login. All three responses contained the new CSP base-uri directive and frame denial; hosting/auth responses were private/no-store. These signed-out checks do not verify the user's MFA enrollment or authenticated payment/support flows.
