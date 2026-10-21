@@ -1,3 +1,4 @@
+import "server-only";
 import { decryptApiKey } from "./dynadotCrypto";
 
 /**
@@ -36,7 +37,7 @@ async function callDynadot(apiKey: string, command: string, params: Record<strin
   url.searchParams.set("command", command);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
-  const res = await fetch(url.toString(), { method: "GET", cache: "no-store" });
+  const res = await fetch(url.toString(), { method: "GET", cache: "no-store", signal: AbortSignal.timeout(15000), redirect: "error" });
   if (!res.ok) throw new Error(`Dynadot API HTTP ${res.status}`);
 
   const json = await res.json();
@@ -44,8 +45,7 @@ async function callDynadot(apiKey: string, command: string, params: Record<strin
   const body = topKey ? json[topKey] : json;
   const status = body?.Status ?? body?.ResponseCode;
   if (status && String(status).toLowerCase() !== "success" && String(status) !== "0") {
-    const message = body?.Error ?? body?.Message ?? `Dynadot command "${command}" failed.`;
-    throw new Error(String(message));
+    throw new Error("Dynadot rejected the request. Check the account settings.");
   }
   return body;
 }

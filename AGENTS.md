@@ -733,6 +733,9 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Hosting hardening: mandatory admin TOTP enrollment/verification, live session revocation and 24h hosting-session checks, private transactional rate limits, HttpOnly/Secure auth cookies, safer recovery redirects, stronger reset passwords, fail-closed team roles and server-only secret modules. Migration `20261021095631_hosting_security_hardening.sql` adds only hosting-prefixed state and restricts legacy trigger RPC grants. See `docs/hosting-security-review.md` for verification and remaining deployment/enrollment/dependency limitations.
+
+
 - Restyled the client portal with the selected white minimalist HouseMySite sidebar and blue accents. Added responsive active navigation, scoped light styling, service detail disclosures, billing tabs and a read-only account page. Existing billing/support actions and signed admin inspection remain intact. No database changes or new server controls; contact support handles account/service changes.
 
 

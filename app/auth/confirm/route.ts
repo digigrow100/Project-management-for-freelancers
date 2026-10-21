@@ -8,7 +8,7 @@ import { createAuthClient } from "@/lib/supabase/server";
 // In both cases the auth session is written to cookies before redirecting to
 // the password form.
 function sanitizeNextPath(next: string | null): string {
-  if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+  if (next && next.startsWith("/") && !next.startsWith("//") && !/[\\\r\n]/.test(next)) return next;
   return "/";
 }
 
