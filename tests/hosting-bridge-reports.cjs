@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict'),crypto=require('crypto'),ts=require(process.cwd()+'/node_modules/typescript');
+const mod={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/hosting/bridgeReports.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{module:mod,exports:mod.exports,require});const parse=mod.exports.parseBridgeReport;
+const now=Date.parse('2026-10-21T12:00:00Z'),body=JSON.stringify({schema_version:1,request_id:'hms-check-1',operation:'audit.health'});
+const issue={number:1,body,user:{id:110416445},labels:[{name:'hms-operation'}],created_at:'2026-10-21T11:00:00Z'};
+const result={issue:1,body_sha256:crypto.createHash('sha256').update(body).digest('hex'),request_id:'hms-check-1',operation:'audit.health',status:'ok',at:'2026-10-21T11:10:00Z',findings:[{severity:'warning'}]};
+const comment=r=>({body:'HouseMySite operation result\n\n```json\n'+JSON.stringify(r)+'\n```',user:{id:110416445},created_at:'2026-10-21T11:11:00Z'});
+assert.equal(parse(issue,comment(result),now).warnings,1);assert.equal(parse(issue,comment(result),now).stale,false);
+for(const patch of [{issue:2},{body_sha256:'bad'},{request_id:'other'},{operation:'release.apply'},{at:'2026-10-22T12:00:00Z'},{findings:null},{status:'invented'}])assert.equal(parse(issue,comment({...result,...patch}),now),null);
+assert.equal(parse({...issue,user:{id:1}},comment(result),now),null);assert.equal(parse(issue,{...comment(result),user:{id:1}},now),null);assert.equal(parse({...issue,body:body+' '},comment(result),now),null);assert.equal(parse({...issue,pull_request:{}},comment(result),now),null);assert.equal(parse(issue,comment(result),now+86400000).stale,true);assert.equal(parse(null,null),null);
+console.log('PASS: bridge reports bind owner, issue, exact request digest, operation, timestamp and status; stale reports never imply live health.');

@@ -733,6 +733,8 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Registered the owner-verified Contabo server1 inventory as draft (4 vCPU, 8 GiB RAM, 150 GiB physical disk; nominal totals, not free allocation). Its admin-only Connection page reads digest-bound, owner-authored health/services reports from the existing restricted GitHub/Windows bridge via server-only HOSTING_BRIDGE_GITHUB_TOKEN (Issues read-only, pinned repository/account). Reports older than 24h are historical; checking does not execute an audit or prove production readiness. No SSH, provisioning or production operator is enabled.
+
 - Refreshed authenticator screens with responsive white/blue HouseMySite styling. Settings → Security and client Account link to own-account authenticator management. Removal requires explicit confirmation, a fresh code for an owned verified factor, active session and rate limiting; refresh session after removal. Hosting admin MFA remains mandatory.
 
 - Security deployment mapping resolved after owner reconnected the Hamza Vercel account. Added the missing server-only anon-key setting and canonical APP_URL; rebuilt commit `fe53e709` for Production as `dpl_BrCocBQHeFPWF7wJ3BBtZbqu1yuk` (READY), attached to the original application alias. MFA still requires owner enrollment; authenticated live testing, critical dependency upgrades and recovery work remain open. See `docs/hosting-security-review.md`.
