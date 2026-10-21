@@ -1,3 +1,4 @@
+import { requireHostingSession } from "@/lib/security/mfa";
 import "server-only";
 import { cookies } from "next/headers";
 import { HOSTING_CLIENT_VIEW_COOKIE,readClientView } from "./clientView";
@@ -12,11 +13,13 @@ export async function requireHostingAdmin() {
   // Do not inherit the older app's missing-profile-table fallback.
   const row = await getSupabase().from("freelance_hq_profiles").select("id,role").eq("id",profile.id).eq("role","admin").maybeSingle();
   if (row.error || !row.data) throw new Error("Hosting admin access required.");
+  await requireHostingSession(true);
   return profile;
 }
 export async function requireHostingClient() {
   const { data: { user }, error } = await createAuthClient().auth.getUser();
   if (error || !user) redirect("/login");
+  await requireHostingSession();
   const viewCookie=cookies().get(HOSTING_CLIENT_VIEW_COOKIE)?.value;
   if(viewCookie){
     const clientId=readClientView(viewCookie,user.id);

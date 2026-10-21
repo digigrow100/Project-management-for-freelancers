@@ -1,3 +1,4 @@
+import { secureAuthCookie } from "@/lib/security/cookies";
 import { cookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
@@ -27,7 +28,7 @@ export function createAuthClient() {
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           try {
             for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, options);
+              cookieStore.set(name, value, secureAuthCookie(options));
             }
           } catch {
             // Called from a Server Component render, which can't set cookies.

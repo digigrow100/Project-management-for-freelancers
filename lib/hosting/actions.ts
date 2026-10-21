@@ -1,4 +1,5 @@
 "use server";
+import { rateLimit } from "@/lib/security/rateLimit";
 import { isIP } from "node:net";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
@@ -127,6 +128,7 @@ export async function hostingAdminAction(form:FormData) {
   const actor=await requireHostingAdmin();
   const returnPath=safeReturnPath(str(form,'return_path'));let target=returnPath;
   try {
+    await rateLimit("hosting-write",actor.id,60,60);
     const action=z.enum(['save','invoice','payment','review_submission','cancel_invoice','renewals','invite','link_account','access','job','cancel_job','check_dns','check_ssl','ticket_reply','ticket_status']).parse(str(form,'action'));
     if(action==='save') await saveEntity(form,actor.id);
     else if(action==='invoice') {
@@ -159,6 +161,7 @@ export async function hostingClientAction(form:FormData) {
   if(session.adminView)throw new Error("Admin client view is read-only. Return to Hosting to make changes.");
   const returnPath=safeReturnPath(str(form,'return_path'),true);let target=returnPath;
   try {
+    await rateLimit("client-write",session.userId,30,60);
     const action=z.enum(['payment_submission','new_ticket','ticket_reply']).parse(str(form,'action'));
     const key=uuid.parse(str(form,'request_key'));
     if(action==='payment_submission') {

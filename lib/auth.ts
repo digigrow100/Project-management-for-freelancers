@@ -1,6 +1,6 @@
+import { requireEnrolledMfa } from "./security/mfa";
 import { createAuthClient } from "./supabase/server";
 import * as store from "./store";
-import { isMissingTableError } from "./store";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { resolveMemberView, MEMBER_VIEW_COOKIE } from "./memberView";
@@ -8,12 +8,8 @@ import type { Profile } from "./types";
 import { hostingIdentity } from "./hosting/identity";
 
 /**
- * Resolves the signed-in user's team profile, auto-provisioning one on first
- * sight: the very first person to ever sign in becomes 'admin', everyone after
- * defaults to 'member' (an admin can promote them later from the Admin panel).
- *
- * If migration 006 hasn't been run yet, this fails open as an admin so the app
- * keeps behaving exactly as it did before team accounts existed.
+ * Resolves the signed-in user's team profile, auto-provisioning new team accounts only as members.
+ * Missing profile tables fail closed; admin roles are never inferred from errors.
  */
 export async function getAuthenticatedProfile(): Promise<Profile | null> {
   let user: { id: string; email?: string } | null = null;
@@ -30,30 +26,17 @@ export async function getAuthenticatedProfile(): Promise<Profile | null> {
     return null;
   }
   if (!user) return null;
+  await requireEnrolledMfa();
   if (await hostingIdentity(user.id, user.email)) redirect("/client");
 
   try {
     const existing = await store.getProfile(user.id);
     if (existing) return existing;
 
-    const count = await store.getProfileCount();
-    const role = count === 0 ? "admin" : "member";
+    const role = "member";
     const name = user.email?.split("@")[0] ?? "";
     return await store.createProfile({ id: user.id, email: user.email ?? "", name, role });
   } catch (error) {
-    if (isMissingTableError(error)) {
-      return {
-        id: user.id,
-        email: user.email ?? "",
-        name: user.email?.split("@")[0] ?? "",
-        role: "admin",
-        jobRole: "general",
-        canAccessRenewals: true,
-        canAccessBacklinkCredentials: true,
-        canAccessFinance: true,
-        createdAt: new Date().toISOString(),
-      };
-    }
     throw error;
   }
 }

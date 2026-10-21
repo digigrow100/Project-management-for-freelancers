@@ -1,4 +1,6 @@
 "use server";
+import { limitSignIn, rateLimit } from "@/lib/security/rateLimit";
+import { requireEnrolledMfa } from "@/lib/security/mfa";
 import {cookies} from "next/headers";
 import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
 
@@ -13,9 +15,11 @@ export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
-  if (!email || !password) {
+  if (!email || email.length>254 || !password || password.length>1024) {
     redirect(`/login?error=${encodeURIComponent("Email and password are required.")}`);
   }
+
+  try {await limitSignIn("login",email);} catch {redirect("/login?error="+encodeURIComponent("Too many attempts or security checks unavailable. Please try again later."));}
 
   let supabase;
   try {
@@ -27,7 +31,7 @@ export async function loginAction(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    redirect(`/login?error=${encodeURIComponent("Sign-in failed. Check your details and try again.")}`);
   }
 
   redirect("/");
@@ -48,9 +52,11 @@ export async function logoutAction() {
 export async function requestPasswordResetAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
 
-  if (!email) {
+  if (!email || email.length>254) {
     redirect(`/login/forgot-password?error=${encodeURIComponent("Email is required.")}`);
   }
+
+  try {await limitSignIn("reset",email);} catch {redirect("/login/forgot-password?error="+encodeURIComponent("Please wait before requesting another reset link."));}
 
   let supabase;
   try {
@@ -67,7 +73,7 @@ export async function requestPasswordResetAction(formData: FormData) {
   // accurate for both the real and the no-such-account case. Only a genuine
   // failure (bad email format, rate limit, misconfiguration) surfaces below.
   if (error) {
-    redirect(`/login/forgot-password?error=${encodeURIComponent(error.message)}`);
+    redirect(`/login/forgot-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
   }
 
   redirect("/login/forgot-password?sent=1");
@@ -77,9 +83,9 @@ export async function updatePasswordAction(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-  if (!password || password.length < 6) {
+  if (!password || password.length < 12 || password.length > 128) {
     redirect(
-      `/login/reset-password?error=${encodeURIComponent("Password must be at least 6 characters.")}`,
+      `/login/reset-password?error=${encodeURIComponent("Password must be between 12 and 128 characters.")}`,
     );
   }
   if (password !== confirmPassword) {
@@ -93,6 +99,11 @@ export async function updatePasswordAction(formData: FormData) {
     redirect(`/login/reset-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
   }
 
+  const {data:{user}}=await supabase.auth.getUser();
+  if(!user)redirect("/login");
+  await requireEnrolledMfa();
+  try {await rateLimit("password",user.id,5,900);} catch {redirect("/login/reset-password?error="+encodeURIComponent("Please wait before changing your password again."));}
+
   const { error } = await supabase.auth.updateUser({ password });
 
   if (error) {
@@ -100,7 +111,7 @@ export async function updatePasswordAction(formData: FormData) {
     // (this is often just a password-policy rejection), so bouncing to
     // "request a new link" would throw away a perfectly good session along
     // with whatever they'd already typed.
-    redirect(`/login/reset-password?error=${encodeURIComponent(error.message)}`);
+    redirect(`/login/reset-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
   }
 
   // verifyOtp already signed them in via the recovery link, so they're

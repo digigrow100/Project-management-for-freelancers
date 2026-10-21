@@ -16,6 +16,7 @@ export function getSiteOrigin(): string {
   const vercelProduction = process.env.VERCEL_PROJECT_PRODUCTION_URL;
   if (vercelProduction) return `https://${vercelProduction.replace(/\/+$/, "")}`;
 
+  if(process.env.NODE_ENV==="production") throw new Error("Set APP_URL before generating account recovery links.");
   const headersList = headers();
   const host = headersList.get("host") ?? "localhost:3000";
   const protocol = headersList.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");

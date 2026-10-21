@@ -1,3 +1,4 @@
+import { secureAuthCookie } from "./lib/security/cookies";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -18,11 +19,9 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-  // Fail open rather than 500ing every request (including /login itself) when
-  // Supabase isn't configured yet — each page already throws its own clear
-  // setup error the moment it tries to reach the database.
+  // Missing authentication configuration must never expose protected routes.
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.next({ request });
+    return new NextResponse("Sign-in is temporarily unavailable.", {status:503,headers:{"Cache-Control":"no-store"}});
   }
 
   let response = NextResponse.next({ request });
@@ -41,7 +40,7 @@ export async function middleware(request: NextRequest) {
           }
           response = NextResponse.next({ request });
           for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
+            response.cookies.set(name, value, secureAuthCookie(options));
           }
         },
       },
@@ -52,18 +51,24 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublic = request.nextUrl.pathname === "/api/cron/hosting-renewals" || PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+  function redirectWithCookies(url:URL) {
+    const target=NextResponse.redirect(url);
+    for(const cookie of response.cookies.getAll())target.cookies.set(cookie);
+    return target;
+  }
+
+  const isPublic = request.nextUrl.pathname === "/api/cron/hosting-renewals" || PUBLIC_PATHS.some((path) => request.nextUrl.pathname===path || request.nextUrl.pathname.startsWith(path+"/"));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url);
   }
 
   if (user && request.nextUrl.pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url);
   }
 
   return response;

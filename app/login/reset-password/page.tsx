@@ -25,7 +25,8 @@ export default function ResetPasswordPage({ searchParams }: { searchParams: { er
               name="password"
               type="password"
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
               autoFocus
               placeholder="••••••••"
               className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
@@ -37,7 +38,8 @@ export default function ResetPasswordPage({ searchParams }: { searchParams: { er
               name="confirmPassword"
               type="password"
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
               placeholder="••••••••"
               className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
             />
