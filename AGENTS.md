@@ -733,6 +733,8 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Refreshed authenticator screens with responsive white/blue HouseMySite styling. Settings → Security and client Account link to own-account authenticator management. Removal requires explicit confirmation, a fresh code for an owned verified factor, active session and rate limiting; refresh session after removal. Hosting admin MFA remains mandatory.
+
 - Security deployment mapping resolved after owner reconnected the Hamza Vercel account. Added the missing server-only anon-key setting and canonical APP_URL; rebuilt commit `fe53e709` for Production as `dpl_BrCocBQHeFPWF7wJ3BBtZbqu1yuk` (READY), attached to the original application alias. MFA still requires owner enrollment; authenticated live testing, critical dependency upgrades and recovery work remain open. See `docs/hosting-security-review.md`.
 
 
