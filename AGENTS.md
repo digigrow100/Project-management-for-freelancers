@@ -733,6 +733,9 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Security deployment mapping resolved after owner reconnected the Hamza Vercel account. Added the missing server-only anon-key setting and canonical APP_URL; rebuilt commit `fe53e709` for Production as `dpl_BrCocBQHeFPWF7wJ3BBtZbqu1yuk` (READY), attached to the original application alias. MFA still requires owner enrollment; authenticated live testing, critical dependency upgrades and recovery work remain open. See `docs/hosting-security-review.md`.
+
+
 - Hosting hardening: mandatory admin TOTP enrollment/verification, live session revocation and 24h hosting-session checks, private transactional rate limits, HttpOnly/Secure auth cookies, safer recovery redirects, stronger reset passwords, fail-closed team roles and server-only secret modules. Migration `20261021095631_hosting_security_hardening.sql` adds only hosting-prefixed state and restricts legacy trigger RPC grants. See `docs/hosting-security-review.md` for verification and remaining deployment/enrollment/dependency limitations.
 
 
