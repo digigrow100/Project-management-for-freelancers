@@ -206,6 +206,10 @@ Always enforce permissions server-side, not only by hiding UI.
 
 # Projects and Task Workflow
 
+Root `/` sends effective admins to `/admin` and keeps the member focus dashboard for effective members. The obsolete root admin overview is removed; project detail routes remain. TaskDetailModal also uses a viewport-bounded body portal, fixed header/footer and internal scrolling. Assigned workflow task popups reuse SeoWorkflowPanel for login/contact/placement editing; their server loader verifies the saved task owner and project access. Workflow forms expose the saved login/contact fields consistently, preserve encrypted passwords and require explicit password reveal.
+
+AdminWorkflowLauncher (Start My Work, including related team requests) uses a body portal and a viewport-bounded fixed-height flex dialog. Header and action footer do not grow with the queue; the middle content scrolls. Very short screens also permit scrolling inside the bounded header/footer. Close, Cancel and Escape dismiss without completing work; focus stays inside the dialog and returns on dismissal. Background scrolling is locked only while visible.
+
 Deferring a task closes only the acting member’s open time entries for that task; other tasks and members keep their timers. Simple pauses go to the queue tail; scheduled returns and admin requests appear in Pending.
 
 The app supports multiple project types, including:
@@ -637,7 +641,7 @@ Latest relevant migration families in this repo include:
 
 # Deployment and Verification Rules
 
-User hold: do not trigger Vercel or push/merge app changes until the user explicitly authorizes deployment. Prepare and verify changes locally.
+The user explicitly authorized release of the pending team-app fixes on 25 October 2026: admin/workflow popup sizing, root admin dashboard routing, and workflow login/contact editing from assigned member tasks. This authorization does not cover unrelated hosting/operator draft PRs.
 
 Main branch:
 - `main`
@@ -732,6 +736,10 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Consolidated the authorized team-app release: bounded admin workflow/task popups, root admin dashboard redirect, consistent workflow login/contact fields and direct assigned-member editing. No schema changes. Deployment status must be verified against the Digigrow project serving hqproject.com and the lake.vercel.app alias.
+
+- Fixed the screenshot-confirmed Start My Work popup in AdminWorkflowLauncher: centered, bounded viewport height, scrollable related tasks, compact persistent actions, Close/Cancel/Escape and focus containment. This is distinct from TaskDetailModal. Browser fixtures passed with 1 and 150 tasks at 1920×1080, 1366×768, 1024×600, 390×844, 320×480 and 844×390, including transformed-parent containment and Escape dismissal. Deployment remains on user hold.
 
 - Registered the owner-verified Contabo server1 inventory as draft (4 vCPU, 8 GiB RAM, 150 GiB physical disk; nominal totals, not free allocation). Its admin-only Connection page reads digest-bound, owner-authored health/services reports from the existing restricted GitHub/Windows bridge via server-only HOSTING_BRIDGE_GITHUB_TOKEN (Issues read-only, pinned repository/account). Reports older than 24h are historical; checking does not execute an audit or prove production readiness. No SSH, provisioning or production operator is enabled.
 
