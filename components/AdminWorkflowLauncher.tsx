@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlarmClock,
   ArrowRight,
@@ -23,6 +23,7 @@ import {
   snoozeAdminWorkItemAction,
   snoozeAllAdminWorkAction,
 } from "@/lib/actions";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 const priorityRank = { high: 0, medium: 1, low: 2 } as const;
@@ -126,10 +127,38 @@ export function AdminWorkflowLauncher({
     }
   }, [eligible.length, workflowSnoozed, open, clockNow]);
 
-  function closeForNow() {
+  const closeForNow = useCallback(() => {
     window.localStorage.setItem("admin-workflow-dismissed-at", String(Date.now()));
     setOpen(false);
-  }
+  }, []);
+
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogVisible = open && pendingCount > 0 && pathname !== "/admin/whatsapp-bridge";
+  useEffect(() => {
+    if (!dialogVisible) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeForNow(); }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+      ) ?? []).filter((element) => element.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [dialogVisible, closeForNow]);
 
   function startWorkflow() {
     startTransition(async () => {
@@ -223,10 +252,10 @@ export function AdminWorkflowLauncher({
         <ArrowRight size={16} className="text-neutral-500" />
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-md sm:p-6">
-          <div className={cn(
-            "w-full max-w-2xl overflow-hidden rounded-3xl border bg-base-900 shadow-[0_30px_100px_rgba(0,0,0,.55)]",
+      {open && createPortal(
+        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-black/70 p-3 backdrop-blur-md sm:p-4">
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="admin-workflow-title" className={cn(
+            "flex h-[min(860px,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] min-h-0 w-full min-w-0 max-w-2xl flex-col overflow-hidden rounded-3xl border bg-base-900 shadow-[0_30px_100px_rgba(0,0,0,.55)]",
             current?.source === "team_request"
               ? "border-rose-500/30"
               : current?.source === "invoice_reminder"
@@ -236,7 +265,7 @@ export function AdminWorkflowLauncher({
                   : "border-base-600",
           )}>
             <div className={cn(
-              "border-b px-5 py-4 sm:px-6",
+              "max-h-[25dvh] shrink-0 overflow-y-auto border-b px-4 py-3 sm:px-6",
               current?.source === "team_request"
                 ? "border-rose-500/20 bg-gradient-to-r from-rose-500/10 via-base-900 to-base-900"
                 : current?.source === "invoice_reminder"
@@ -284,25 +313,29 @@ export function AdminWorkflowLauncher({
                             ? "High Priority · Domain Expiry"
                             : "My Task"}
                     </p>
-                    <h2 className="mt-1 text-xl font-semibold leading-snug text-neutral-50 sm:text-2xl">
+                    <h2 id="admin-workflow-title" className="mt-1 line-clamp-2 break-words text-lg font-semibold leading-snug text-neutral-50 sm:text-2xl">
                       {current?.title ?? "No task ready right now"}
                     </h2>
                   </div>
                 </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={closeForNow} className="rounded-lg border border-base-600 px-2 py-1.5 text-xs text-neutral-200">Cancel</button>
                 <button
                   type="button"
+                  ref={closeRef}
                   onClick={closeForNow}
-                  className="rounded-xl p-2 text-neutral-500 hover:bg-base-800 hover:text-neutral-200"
+                  className="shrink-0 rounded-xl p-2 text-neutral-500 hover:bg-base-800 hover:text-neutral-200"
                   aria-label="Close workflow"
                 >
                   <X size={18} />
                 </button>
+                </div>
               </div>
             </div>
 
             {current ? (
               <>
-                <div className="space-y-4 px-5 py-5 sm:px-6">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 [overflow-wrap:anywhere] sm:px-6">
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Info label="Priority" value={current.priority.toUpperCase()} tone={current.priority === "high" ? "rose" : "neutral"} />
                     <Info
@@ -437,8 +470,8 @@ export function AdminWorkflowLauncher({
                   </div>
                 </div>
 
-                <div className="border-t border-accent-500/20 bg-accent-500/[0.03] px-5 py-5 sm:px-6">
-                  <div className="space-y-4">
+                <div className="max-h-[45dvh] shrink-0 overflow-y-auto overscroll-contain border-t border-accent-500/20 bg-base-900 px-4 py-3 sm:px-6">
+                  <div className="space-y-2">
                     <div>
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
                         Actions
@@ -451,7 +484,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={completeCurrent}
-                          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-accent-400/40 bg-accent-500 px-4 text-sm font-semibold text-base-950 shadow-glow transition-all hover:-translate-y-0.5 hover:bg-accent-400 disabled:translate-y-0 disabled:opacity-60"
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-accent-400/40 bg-accent-500 px-4 text-sm font-semibold text-base-950 shadow-glow transition-all hover:-translate-y-0.5 hover:bg-accent-400 disabled:translate-y-0 disabled:opacity-60"
                         >
                           <CheckCircle2 size={16} />
                           {current.source === "invoice_reminder"
@@ -465,7 +498,7 @@ export function AdminWorkflowLauncher({
                           <button
                             type="button"
                             onClick={openInvoices}
-                            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-accent-500/25 bg-accent-500/10 px-4 text-sm font-semibold text-accent-300 transition-all hover:-translate-y-0.5 hover:border-accent-400/40 hover:bg-accent-500/15"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-accent-500/25 bg-accent-500/10 px-4 text-sm font-semibold text-accent-300 transition-all hover:-translate-y-0.5 hover:border-accent-400/40 hover:bg-accent-500/15"
                           >
                             <Banknote size={16} />
                             Open Invoices
@@ -480,12 +513,12 @@ export function AdminWorkflowLauncher({
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
                         Snooze
                       </p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="grid grid-cols-4 gap-2">
                         <button
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("30m")}
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
+                          className="inline-flex h-9 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
                         >
                           30 min
                         </button>
@@ -493,7 +526,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("1h")}
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
+                          className="inline-flex h-9 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
                         >
                           1 hour
                         </button>
@@ -501,7 +534,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("tomorrow")}
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-accent-500/35 bg-accent-500/10 px-3 text-xs font-semibold text-accent-300 transition-all hover:-translate-y-0.5 hover:bg-accent-500/15 disabled:translate-y-0 disabled:opacity-60"
+                          className="inline-flex h-9 items-center justify-center rounded-xl border border-accent-500/35 bg-accent-500/10 px-3 text-xs font-semibold text-accent-300 transition-all hover:-translate-y-0.5 hover:bg-accent-500/15 disabled:translate-y-0 disabled:opacity-60"
                         >
                           Tomorrow
                         </button>
@@ -509,7 +542,7 @@ export function AdminWorkflowLauncher({
                           type="button"
                           disabled={isPending}
                           onClick={() => snoozeCurrent("after_next_task")}
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
+                          className="inline-flex h-9 items-center justify-center rounded-xl border border-base-700 bg-base-900/70 px-3 text-xs font-semibold text-neutral-400 transition-all hover:-translate-y-0.5 hover:border-accent-500/25 hover:bg-accent-500/[0.06] hover:text-accent-300 disabled:translate-y-0 disabled:opacity-60"
                         >
                           After next
                         </button>
@@ -517,8 +550,8 @@ export function AdminWorkflowLauncher({
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                       {current.projectId && (
                         <Link
                           href={`/projects/${current.projectId}`}
@@ -544,7 +577,7 @@ export function AdminWorkflowLauncher({
                 </div>
               </>
             ) : (
-              <div className="px-6 py-10 text-center">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-10 text-center">
                 <CheckCircle2 size={34} className="mx-auto text-emerald-400" />
                 <h3 className="mt-3 text-lg font-semibold text-neutral-100">Nothing ready right now</h3>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -559,7 +592,8 @@ export function AdminWorkflowLauncher({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

@@ -1554,6 +1554,18 @@ export async function updateKeywordAction(formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
 }
 
+export async function getAssignedTaskWorkflowAction(taskId: string) {
+  const profile = await requireProfile();
+  const tasks = await store.getMyTasks(profile.id);
+  const task = tasks.find((entry) => entry.id === taskId);
+  if (!task) throw new Error("Task is not assigned to you.");
+  await requireProjectAccess(task.projectId);
+  const parts = task.fallbackTemplateKey?.split(":") ?? [];
+  if (parts[0] !== "workflow" || parts[1] === "website_pages") return null;
+  const items = await store.listSeoWorkflowItems(task.projectId);
+  return items.find((item) => item.id === parts[2] && item.module === parts[1]) ?? null;
+}
+
 export async function updateSeoWorkflowItemStatusAction(input: {
   projectId: string;
   itemId: string;

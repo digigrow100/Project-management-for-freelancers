@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { X, Trash2, Clock, CalendarDays, ListChecks, FileText } from "lucide-react";
 import type { ChecklistItem, Profile, Stage, Task, TaskStatus } from "@/lib/types";
 import { deleteTaskAction, updateTaskDetailsAction } from "@/lib/actions";
@@ -30,6 +31,20 @@ export function TaskDetailModal({
   assignableMembers?: Profile[];
   onClose: () => void;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const [status, setStatus] = useState<TaskStatus>(task.status);
@@ -55,29 +70,33 @@ export function TaskDetailModal({
 
   const checklistComplete = checklist.every((item) => item.done);
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/60 p-3 backdrop-blur-sm sm:p-5"
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Task details"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "w-full rounded-xl2 border border-base-700/60 bg-base-850 p-5 shadow-card",
+          "flex max-h-[calc(100dvh-2.5rem)] w-full min-w-0 flex-col overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 p-4 shadow-card sm:p-5",
           tab === "notes" ? "max-w-2xl" : "max-w-lg",
         )}
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-wide text-neutral-500">Task details</p>
             {projectName && <p className="mt-0.5 truncate text-sm text-neutral-400">{projectName}</p>}
           </div>
-          <button onClick={onClose} className="shrink-0 rounded-md p-1 text-neutral-500 hover:bg-base-700/60 hover:text-neutral-300">
+          <button type="button" aria-label="Close task details" onClick={onClose} className="shrink-0 rounded-md p-1 text-neutral-500 hover:bg-base-700/60 hover:text-neutral-300">
             <X size={18} />
           </button>
         </div>
 
-        <div className="mb-3 flex items-center gap-1 rounded-lg border border-base-700/60 bg-base-900 p-1">
+        <div className="mb-3 flex shrink-0 items-center gap-1 rounded-lg border border-base-700/60 bg-base-900 p-1">
           <button
             type="button"
             onClick={() => setTab("details")}
@@ -101,7 +120,12 @@ export function TaskDetailModal({
           </button>
         </div>
 
-        {tab === "notes" && <TaskNotesEditor taskId={task.id} projectId={task.projectId} />}
+        {tab === "notes" && (
+          <>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain"><TaskNotesEditor taskId={task.id} projectId={task.projectId} /></div>
+            <div className="shrink-0 border-t border-base-700/60 pt-3 text-right"><button type="button" onClick={onClose} className="rounded-md border border-base-600 px-3 py-2 text-sm text-neutral-300">Cancel</button></div>
+          </>
+        )}
 
         <form
           ref={formRef}
@@ -112,8 +136,9 @@ export function TaskDetailModal({
               onClose();
             });
           }}
-          className={cn("flex flex-col gap-3", tab === "notes" && "hidden")}
+          className={cn("flex min-h-0 flex-1 flex-col", tab === "notes" && "hidden")}
         >
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pr-1">
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="projectId" value={task.projectId} />
 
@@ -310,7 +335,9 @@ export function TaskDetailModal({
             )}
           </div>
 
-          <div className="mt-1 flex items-center justify-between gap-3">
+          </div>
+          <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-base-700/60 pt-3">
+            <button type="button" onClick={onClose} className="rounded-md border border-base-600 px-3 py-2 text-sm text-neutral-300">Cancel</button>
             <button
               type="button"
               disabled={isPending}
@@ -335,6 +362,7 @@ export function TaskDetailModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
