@@ -16,6 +16,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node --experimental-strip-types tests/extension-request-backoff.cjs
       - run: npm run typecheck
       - run: npm run lint
       - run: node tests/hosting-workspaces.cjs

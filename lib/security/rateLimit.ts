@@ -2,12 +2,15 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { headers } from "next/headers";
 import { getSupabase } from "@/lib/supabaseClient";
+export class SecurityCheckUnavailable extends Error {
+ constructor() { super('Security checks are unavailable. Try again later.'); }
+}
 export async function rateLimit(scope:string,identity:string,limit:number,seconds:number) {
  const secret=process.env.SUPABASE_SERVICE_ROLE_KEY;
- if(!secret)throw new Error('Security checks are unavailable. Try again later.');
+ if(!secret)throw new SecurityCheckUnavailable();
  const key=createHmac('sha256',secret).update(`hosting-rate-v1:${scope}:${identity}`).digest('hex');
  const {data,error}=await getSupabase().rpc('freelance_hq_hosting_rate_limit',{p_key:key,p_limit:limit,p_seconds:seconds});
- if(error)throw new Error('Security checks are unavailable. Try again later.');
+ if(error)throw new SecurityCheckUnavailable();
  if(data!==true)throw new Error('Too many attempts. Please wait and try again.');
 }
 export async function limitSignIn(scope:string,email:string) {

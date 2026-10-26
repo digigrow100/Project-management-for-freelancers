@@ -1,3 +1,4 @@
+import { assertExtensionServiceAvailable, noteExtensionServiceFailure } from "./extensionAvailability";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { confirmedActivityTime } from "./activityIntervals";
 import { readAllActivityRows } from "./activityPagination";
@@ -264,7 +265,8 @@ export async function authenticateExtensionRequest(request: Request): Promise<Au
   const deviceId = (request.headers.get("x-device-id") ?? "").trim();
   if (!rawToken || rawToken.length < 20 || !installId || !deviceId) throw new Error("Unauthorized.");
 
-  const { data, error } = await getSupabase()
+  assertExtensionServiceAvailable();
+  const { data, error, status } = await getSupabase()
     .from("freelance_hq_employee_devices")
     .select("id,employee_id,device_id,extension_install_id,device_label,token_expires_at")
     .eq("token_hash", sha256(rawToken))
@@ -273,7 +275,10 @@ export async function authenticateExtensionRequest(request: Request): Promise<Au
     .gt("token_expires_at", nowIso())
     .is("revoked_at", null)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    noteExtensionServiceFailure(status);
+    throw error;
+  }
   if (!data) throw new Error("Unauthorized.");
 
   return {

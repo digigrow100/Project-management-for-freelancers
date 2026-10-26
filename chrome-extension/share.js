@@ -1,3 +1,5 @@
+const requestGate = new FhqRequestGate(chrome.storage.local);
+let signalPollInFlight = false;
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 let peer = null;
 let displayStream = null;
@@ -8,7 +10,7 @@ let heartbeatTimer = null;
 let lastSignalId = 0;
 
 async function state() {
-  return chrome.storage.local.get(["appOrigin", "deviceToken", "employee"]);
+  return chrome.storage.local.get(["appOrigin", "deviceToken", "employee", "extensionInstallId", "deviceId"]);
 }
 
 async function api(path, options = {}) {
@@ -17,7 +19,12 @@ async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("content-type", "application/json");
   headers.set("authorization", "Bearer " + auth.deviceToken);
-  return fetch(auth.appOrigin + path, { ...options, headers });
+  if (!auth.extensionInstallId || !auth.deviceId) throw new Error("Extension is not paired.");
+  headers.set("x-extension-install-id", auth.extensionInstallId);
+  headers.set("x-device-id", auth.deviceId);
+  return requestGate.run(() => fetch(auth.appOrigin + path, {
+    ...options, headers, signal: AbortSignal.timeout(20000),
+  }), true);
 }
 
 function setStatus(text) {
@@ -42,13 +49,19 @@ async function sendSignal(signalType, payload) {
 }
 
 async function pollSignals() {
-  if (!sessionId || !peer) return;
+  if (!sessionId || !peer || signalPollInFlight) return;
+  signalPollInFlight = true;
+  const currentSession = sessionId;
   try {
     const response = await api(
       "/api/extension/screen-share/signal?sessionId=" + encodeURIComponent(sessionId) + "&afterId=" + lastSignalId,
       { method: "GET" },
     );
-    if (!response.ok) return;
+    if (!response.ok) {
+      setStatus("Screen-share connection unavailable. Retrying with a delay; you can stop sharing.");
+      return;
+    }
+    if (sessionId !== currentSession || !peer) return;
     const data = await response.json();
     for (const signal of data.signals || []) {
       lastSignalId = Math.max(lastSignalId, signal.id);
@@ -61,6 +74,8 @@ async function pollSignals() {
     }
   } catch {
     setStatus("Connection retrying…");
+  } finally {
+    signalPollInFlight = false;
   }
 }
 
@@ -91,7 +106,7 @@ async function startSharing() {
   if (micStream) for (const track of micStream.getTracks()) peer.addTrack(track, micStream);
 
   peer.onicecandidate = (event) => {
-    if (event.candidate) void sendSignal("ice", event.candidate.toJSON());
+    if (event.candidate) void sendSignal("ice", event.candidate.toJSON()).catch(() => setStatus("Screen-share connection unavailable."));
   };
 
   displayStream.getVideoTracks()[0]?.addEventListener("ended", () => void stopSharing());
@@ -108,7 +123,7 @@ async function startSharing() {
     void api("/api/extension/screen-share/session", {
       method: "POST",
       body: JSON.stringify({ action: "heartbeat", sessionId }),
-    });
+    }).catch(() => setStatus("Screen-share connection unavailable."));
   }, 30000);
 
   setSharing(true);

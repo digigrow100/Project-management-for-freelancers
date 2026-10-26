@@ -1,3 +1,4 @@
+import { ExtensionServiceUnavailable } from "@/lib/extensionAvailability";
 import { NextResponse } from "next/server";
 import { addScreenShareSignal, authenticateExtensionRequest, listScreenShareSignals } from "@/lib/employeeActivity";
 
@@ -12,6 +13,11 @@ export async function GET(request: Request) {
     const signals = await listScreenShareSignals({ sessionId, afterId, receiver: "employee", device });
     return NextResponse.json({ signals });
   } catch (error) {
+    if (error instanceof ExtensionServiceUnavailable) {
+      return NextResponse.json({ ok: false, error: error.message }, {
+        status: 503, headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+      });
+    }
     const message = error instanceof Error ? error.message : "Signal read failed.";
     return NextResponse.json({ error: message }, { status: message === "Unauthorized." ? 401 : 400 });
   }
@@ -35,6 +41,11 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof ExtensionServiceUnavailable) {
+      return NextResponse.json({ ok: false, error: error.message }, {
+        status: 503, headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+      });
+    }
     const message = error instanceof Error ? error.message : "Signal upload failed.";
     return NextResponse.json({ error: message }, { status: message === "Unauthorized." ? 401 : 400 });
   }

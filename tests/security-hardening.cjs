@@ -19,6 +19,13 @@ const cookie=load('lib/security/cookies.ts',{}, {NODE_ENV:'production'}).secureA
 let allowed=true,unavailable=false,rateArgs;
 const limiter=load('lib/security/rateLimit.ts',{'next/headers':{headers:()=>({get:()=>null})},'@/lib/supabaseClient':{getSupabase:()=>({rpc:async(name,args)=>{rateArgs=args;return {data:allowed,error:unavailable?{}:null}}})}}, {SUPABASE_SERVICE_ROLE_KEY:'test-only-not-real'});
 await limiter.limitSignIn('login','Private@Example.test');assert.match(rateArgs.p_key,/^[a-f0-9]{64}$/);assert(!rateArgs.p_key.includes('Private'));allowed=false;await assert.rejects(limiter.rateLimit('login','id',10,60),/Too many/);allowed=true;unavailable=true;await assert.rejects(limiter.rateLimit('login','id',10,60),/unavailable/);
+// A backend outage must not be mislabeled as bad credentials or bypass the limiter.
+const login=load('app/login/actions.ts',{'@/lib/security/rateLimit':limiter,'@/lib/security/mfa':{},'next/headers':{cookies:()=>({})},'@/lib/memberView':{},'next/navigation':{redirect},'@/lib/supabase/server':{createAuthClient:()=>{throw Error('must not attempt authentication')}},'@/lib/site':{getSiteOrigin:()=>"https://example.test"}});
+const form=new FormData();form.set('email','test@example.test');form.set('password','test-password');
+await assert.rejects(login.loginAction(form),e=>decodeURIComponent(e.redirect||'').includes('Sign-in is temporarily unavailable'));
+unavailable=false;allowed=false;
+await assert.rejects(login.loginAction(form),e=>decodeURIComponent(e.redirect||'').includes('Too many sign-in attempts'));
+allowed=true;
 // Team auth never infers an administrator from a missing table or empty profile set.
 let missing=true;const team=load('lib/auth.ts',{'./security/mfa':{requireEnrolledMfa:async()=>{}},'./supabase/server':{createAuthClient:()=>auth},'./store':{getProfile:async()=>{if(missing)throw Error('missing table');return null},createProfile:async x=>x},'next/headers':{cookies:()=>({get:()=>undefined})},'next/navigation':{redirect},'./hosting/identity':{hostingIdentity:async()=>null},'./memberView':{}});
 await assert.rejects(team.getAuthenticatedProfile(),/missing table/);missing=false;assert.equal((await team.getAuthenticatedProfile()).role,'member');
