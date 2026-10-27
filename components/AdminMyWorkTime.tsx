@@ -4,6 +4,7 @@ import { Activity, CalendarClock, Clock3, Pause, Play } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { EmployeeActivitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {startVisiblePolling} from '@/lib/visiblePolling';
 
 function duration(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
@@ -25,42 +26,31 @@ function timeLabel(value: string | null) {
   }).format(date);
 }
 
+export function workTimeDisplay(summary:EmployeeActivitySummary|null,now:number){
+  const age=summary?.lastSeenAt?now-Date.parse(summary.lastSeenAt):Number.POSITIVE_INFINITY;
+  // A minute checkpoint plus a minute poll may be almost two minutes old.
+  // Keep display freshness separate from the existing90s work estimate bound.
+  const fresh=Number.isFinite(age)&&age<=150000;
+  const liveSeconds=summary?.status==='active'&&fresh?Math.min(90,Math.max(0,Math.floor(age/1000))):0;
+  const status=!summary?.deviceCount||!fresh?'offline':summary.status;
+  return {liveSeconds,status};
+}
+
 export function AdminMyWorkTime({ initialSummary }: { initialSummary: EmployeeActivitySummary | null }) {
   const [summary, setSummary] = useState(initialSummary);
   const [clockNow, setClockNow] = useState(() => Date.now());
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function refresh() {
-      try {
-        const response = await fetch("/api/extension/my-work-summary", { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as { summary?: EmployeeActivitySummary | null };
-        if (!cancelled && data.summary) setSummary(data.summary);
-      } catch {
-        // Keep the last known totals if a refresh fails.
-      }
-    }
-
+    const stop=startVisiblePolling<{summary?:EmployeeActivitySummary|null}>("/api/extension/my-work-summary",data=>{if(data.summary)setSummary(data.summary);});
     const clockId = window.setInterval(() => setClockNow(Date.now()), 1000);
-    const refreshId = window.setInterval(() => void refresh(), 15000);
     return () => {
-      cancelled = true;
+      stop();
       window.clearInterval(clockId);
-      window.clearInterval(refreshId);
     };
   }, []);
 
-  const fresh =
-    summary?.lastSeenAt &&
-    clockNow - new Date(summary.lastSeenAt).getTime() <= 90_000;
-  const liveSeconds =
-    summary?.status === "active" && fresh && summary.lastSeenAt
-      ? Math.max(0, Math.floor((clockNow - new Date(summary.lastSeenAt).getTime()) / 1000))
-      : 0;
+  const {liveSeconds,status}=workTimeDisplay(summary,clockNow);
   const today = (summary?.todayActiveSeconds ?? 0) + liveSeconds;
-  const status = !summary?.deviceCount || !fresh ? "offline" : summary.status;
 
   return (
     <section className="rounded-xl2 border border-accent-500/20 bg-base-850 p-4 shadow-card">
@@ -124,3 +114,4 @@ function Metric({
     </div>
   );
 }
+

@@ -822,3 +822,45 @@ If you change how the app works and do not update this file, the task is incompl
 /extensions is available to signed-in users. Members see monitoring only; admins also see the WhatsApp bridge card and setup link. Monitoring downloads always remain available in this page, including after pairing. The dashboard download hides only while a device is reporting; non-reporting/expired records keep download and reconnect available. A reported offline/disconnect state immediately exposes recovery controls on the next status refresh. Removing a Chrome extension cannot be detected immediately; stale reporting is detected after the heartbeat window. /api/extension/devices lists only safe fields for the signed-in user and disconnects only their own device, preserving activity history. Add another monitoring profile always creates an independent pairing code.
 
 - Added the role-aware Extensions page, persistent downloads, own-device disconnect and another-profile pairing controls. Fixed missing dashboard download for stale paired devices.
+
+## Supabase recovery and request reduction — 2026-10-27 (local preparation)
+
+Owner reports Supabase recharge. Live read-only checks confirm PostgreSQL17.6 and
+all18 hosting tables have RLS enabled with no anon/authenticated/PUBLIC table grants.
+All3 operator transport tables are still absent. The earlier outage retry fix is in
+unmerged draft#230 at21b6e02; current main53c3327 contains the approved#229 popup
+changes, while latest observed READY production uses5a3a4dd. Do not call new fixes live.
+
+Additional LOCAL fixes: employeeActivity loads one lazy matcher snapshot per upload,
+not per event/prompt (100-event batch2 matcher reads instead of up to200). The snapshot
+is never shared across requests or identities; definitions refresh on the next batch.
+Personal-summary queries now filter profiles/devices/prompts/sessions by employee
+before transfer; device fields are explicit. Full monthly activity pagination remains.
+AdminMyWorkTime and EmployeeActivityOverview use60-second visible-only nonoverlapping
+polling with20-second timeout, bounded failure/402/Retry-After cooldown, cancellation,
+late-response discard and stop on401/403. Visibility changes cannot bypass cooldown.
+No authentication identity, success result or revocation cache was added.
+
+Review source at pm-retry (new files/tests) and portal-full-local (current main53c3327
+web snapshot +#230 sources + local hosting overlay). The local snapshot excludes
+public assets/download ZIPs/native shells and MUST NOT be deployed as a complete repo.
+Existing#230 retains its original source-matching1.2.5 ZIP; update/reload unpacked
+extensions after a future approved release. New app edits remain local under the
+previous source-push/deployment hold. No SQL migration, Auth setting or production
+change has been made. Exact new tests10 and prior backoff12/security checks pass;
+full actual dependency TypeScript/lint and fresh optimized build pass (same4 old
+hook warnings). The first build hit stale generated export cleanup; preserved the
+old .next tree and rebuilt cleanly. Source was not deleted to repair build outputs.
+
+- Personal work widget display freshness allows150s for checkpoint/poll lag, while live extrapolation is capped at90s. Verified time rows and reports are unchanged.
+
+## Hosting launch authorization — 2026-10-27
+
+The owner explicitly authorizes reviewed changes needed to bring hosting live:
+source pushes, required PR merges, hosting-specific migrations, app deployment,
+VPS setup and connection work. Do not pause for another approval for those launch
+steps. This overrides the earlier source/deployment hold ONLY for this launch.
+Once hosting is live, request approval again for later production changes. Keep
+unrelated projects, purchases and destructive customer data operations outside scope.
+Preserve current services/data and rollback points; authorization does not turn a
+fixture result into live acceptance. Never request or publish private credentials.
