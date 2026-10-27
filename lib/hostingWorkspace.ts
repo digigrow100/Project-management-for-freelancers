@@ -22,9 +22,14 @@ export const HOSTING_SECTIONS = [
   { key: "submissions", label: "Payment References", description: "Review client payment claims before recording money received." },
   { key: "domains", label: "Domains & SSL", description: "Track domain renewals and verify DNS and certificates." },
   { key: "tickets", label: "Support Tickets", description: "Reply to hosting customers and track support work." },
+  { key: "email", label: "Email Accounts", description: "Manage scoped mailboxes through reviewed provider requests." },
+  { key: "databases", label: "Databases", description: "Manage scoped databases through reviewed provider requests." },
+  { key: "forms", label: "Form Email API", description: "Manage paid website form accounts and server API keys." },
+  { key: "backups", label: "Backups & Restore", description: "Review verified recovery dates and prepare isolated restores." },
   { key: "operations", label: "Server Operations", description: "Review requests waiting for a connected server operator." },
   { key: "activity", label: "Activity", description: "Review hosting administration and billing events." },
   { key: "settings", label: "Settings", description: "Set business details, invoice terms and renewal preferences." },
 ] as const;
 
 export type HostingSection = (typeof HOSTING_SECTIONS)[number];
+

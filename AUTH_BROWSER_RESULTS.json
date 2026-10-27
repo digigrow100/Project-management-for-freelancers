@@ -1,0 +1,8 @@
+{
+  "status": "passed",
+  "groups": 16,
+  "browser": "153.0.8010.0",
+  "production_ready": false,
+  "auth_scope": "synthetic protocol fixture; not live GoTrue acceptance",
+  "external_mutations": 0
+}

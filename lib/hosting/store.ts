@@ -29,6 +29,10 @@ export async function adminRecords(section: HostingSectionKey, page: number) {
   const index = Math.max(1,Math.min(100000,Math.floor(page)||1));
   const result = await getSupabase().from(hostingTable(sectionTables[section])).select("*",{count:"exact"}).order("created_at",{ascending:false}).range((index-1)*25,index*25-1);
   let records = checked<HostingRecord[]>(result);
+  if(section==='operations' && records.length) {
+    const deliveries=await getSupabase().from(hostingTable('operator_deliveries')).select('job_id,state,updated_at').in('job_id',records.map(r=>r.id));
+    records=records.map(r=>{const delivery=deliveries.data?.find(d=>d.job_id===r.id);return {...r,transport_status:deliveries.error?'unavailable':delivery?.state??'not dispatched',transport_updated_at:delivery?.updated_at??null};});
+  }
   if(section==='submissions' && records.length) {
     const ids=records.map(r=>(r as HostingSubmission).invoice_id);
     const invoices=checked<{id:string;number:string;currency:string}[]>(await getSupabase().from(hostingTable("invoices")).select("id,number,currency").in("id",ids));

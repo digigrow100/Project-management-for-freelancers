@@ -1,0 +1,16 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),{buildSync}=require('esbuild'),path=require('node:path');const React=require('react'),{create,act}=require('react-test-renderer');
+const root=path.resolve(__dirname,'..');const output=buildSync({entryPoints:[path.join(root,'components/hosting/SignedOperatorDelivery.tsx')],tsconfig:path.join(root,'tsconfig.focused.json'),bundle:true,platform:'browser',format:'cjs',write:false,external:['react','react/jsx-runtime']});const m={exports:{}};new Function('require','module','exports',output.outputFiles[0].text)(require,m,m.exports);const {SignedOperatorDelivery}=m.exports;
+const packet=operation=>({job_id:'10000000-0000-4000-8000-000000000001',request:{operation,idempotency_key:'10000000-0000-4000-8000-000000000002',payload:operation==='env.set'?{project:'c12345678',scope:'preview',sealed:'a'.repeat(100)}:{project:'c12345678'},auth:{issued:100,signature:'a'.repeat(86)+'=='}}});
+const file=value=>({size:JSON.stringify(value).length,text:async()=>JSON.stringify(value)});
+test('valid signed file sends once and uncertain response cannot auto-retry',async()=>{let calls=0;global.fetch=async()=>{calls++;throw Error('timeout')};let view;await act(async()=>view=create(React.createElement(SignedOperatorDelivery)));
+ await act(async()=>view.root.findByType('input').props.onChange({target:{files:[file(packet('env.set'))]}}));assert.equal(view.root.findByType('button').props.disabled,false);
+ const submit=view.root.findByType('button').props.onClick;await act(async()=>Promise.all([submit(),submit()]));assert.equal(calls,1);assert.equal(view.root.findByType('button').props.disabled,true);assert.match(JSON.stringify(view.toJSON()),/Check Operations/);await act(async()=>view.unmount());
+});
+test('plaintext secrets, wrong packet and oversized files are rejected before network',async()=>{let calls=0;global.fetch=async()=>{calls++;return Response.json({})};let view;await act(async()=>view=create(React.createElement(SignedOperatorDelivery)));
+ const unsafe=packet('env.set');unsafe.request.payload={project:'c12345678',scope:'preview',values:{PASSWORD:'never-send-this'}};
+ for(const input of [file(unsafe),file({private_key:'not-a-request'}),{size:131073,text:async()=>{throw Error('must not read')}}]){await act(async()=>view.root.findByType('input').props.onChange({target:{files:[input]}}));assert.equal(view.root.findByType('button').props.disabled,true);}assert.equal(calls,0);await act(async()=>view.unmount());
+});
+test('slow older file cannot replace the current selection',async()=>{let resolve;let view;await act(async()=>view=create(React.createElement(SignedOperatorDelivery)));const select=view.root.findByType('input').props.onChange;let pending;
+ await act(async()=>{pending=select({target:{files:[{size:100,text:()=>new Promise(r=>resolve=r)}]}});});
+ await act(async()=>select({target:{files:[file(packet('domain.release'))]}}));await act(async()=>{resolve(JSON.stringify(packet('env.set')));await pending;});assert.match(JSON.stringify(view.toJSON()),/domain.release/);assert.doesNotMatch(JSON.stringify(view.toJSON()),/env.set/);await act(async()=>view.unmount());
+});

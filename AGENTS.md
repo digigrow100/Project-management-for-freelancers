@@ -169,7 +169,7 @@ Hosting now provides server/package/client/service records, separate billing (in
 - Hosting Clients includes a one-click POST “Open client portal” read-only inspection. The original admin authentication remains unchanged. A domain-separated HMAC-signed, actor/client-bound, HTTP-only Strict SameSite cookie expires in 30 minutes; every request rechecks effective and database-backed admin access and target existence/status. The client shell shows an admin banner and return action; client writes are rejected server-side, not merely hidden. Start/return events are audited under the real admin. Logout clears the inspection cookie. `20261020211243_hosting_admin_client_summary.sql` provides client-scoped admin totals with no browser RPC grant; applied live and checked with rollback for target scoping, non-admin denial and closed-client denial.
 - `/auth/invite` handles invitation code/token-hash and fragment flows. Configure this exact app URL in Supabase Auth redirect allowlist before sending client invitations. Invitations are only sent by an explicit admin form action.
 - `/api/cron/hosting-renewals` requires `CRON_SECRET`; scheduled renewal invoicing is off by default. Manual generation works without it. Paying a period's invoice advances its service due date once. No email reminders or online payment gateway are connected.
-- Server entries and service activation are admin declarations. Operation requests remain `awaiting_connection`; no shell commands, SSH keys, provisioning, deployment or rollback execution exists in this portal. The VPS production operator/evidence enrollment requirements remain outstanding. Backups and permanent storage sizing remain paused by user request.
+- Server entries and service activation remain admin declarations. Note-only jobs remain `awaiting_connection`; the new signed manual transport is OFF by default. `operatorProtocol.ts`, `operator.ts`, bounded `operatorBody.ts`, `/api/hosting-operator` (exact machine-auth middleware exception only) and its admin/MFA/same-origin `/dispatch` endpoint implement per-server scoped claims and receipts. Migration `20261027182003_hosting_operator_transport.sql` adds private operator enrollments (disabled by default), host mappings and delivery records with service-role-only invoker RPCs; applied live during the approved initial launch; enrollments remain disabled. Existing host keys/roles/signatures remain authoritative. `cancel`/delete/rollback are not executable v1 operations; no shell execution or private signing keys enter the portal. Admin Operations distinguishes delivery/receipt observation from request status. Do not infer a running website from applied Intake intent. See `docs/hosting-operator-transport.md`; evidence/storage/recovery live enrollment and VPS installation still need owner inputs and approval.
 - Desktop sidebar gives the navigation the full space between the fixed header/switcher and account footer. Rows keep a minimum 40px height without shrinking; `overflow-y-auto` scrolls only when the list exceeds that available space. There is no competing flex spacer. The sidebar scrollbar track/thumb are hidden in Firefox/WebKit while wheel, touch and keyboard scrolling remain available.
 - `WorkspaceProvider`, `HostingNavigation` and `hostingWorkspace.ts` preserve desktop/mobile switching. Team-only floating tools are unmounted in Hosting; existing team routines remain intact.
 - Checks: normal typecheck/lint/build, `node tests/hosting-workspaces.cjs` and `node tests/hosting-security.cjs` and `node tests/hosting-client-scope.cjs`. Isolated PostgreSQL integration: install pinned `@electric-sql/pglite@0.5.10` outside the repo and run `NODE_PATH=<install>/node_modules node tests/hosting-database.cjs` (verify the installed version used in release notes).
@@ -864,3 +864,40 @@ Once hosting is live, request approval again for later production changes. Keep
 unrelated projects, purchases and destructive customer data operations outside scope.
 Preserve current services/data and rollback points; authorization does not turn a
 fixture result into live acceptance. Never request or publish private credentials.
+
+## Hosting controls release — 2026-10-27
+
+Canonical live app: Digigrow Team project prj_uaskxWpvMZK26bJn0VDboJBdqqbI,
+hqproject.com (lake.vercel.app alias). The Hamza project is an older duplicate;
+do not use its deployment state as evidence for this live app. PR230 is merged
+at0ab9c3eedc292db9f0d17afa813d4da4c11ac307; canonical production deployment
+5EkNShGpjwvqiCi55cDbakXejv67 is READY. APP_URL=https://hqproject.com is now
+configured for the next production build to make scoped API origins explicit.
+
+New hosting source: admin/client Email, Database, Form Email API and Backups pages;
+private authenticated/same-origin/rate-limited typed gateways; admin inspection is
+read-only. Feature publication is server-side and default-off; clients get no link,
+page or API access for unreleased features. Admin Operations shows testing/release
+settings separately from actual health. HOSTING_CLIENT_FEATURES is an explicit
+allowlist; do not publish a feature before the real provider/worker is enrolled.
+Passwords are X25519/HKDF/AES-GCM sealed on device after independent host-key pinning.
+Forms keys are one-time display with explicit rotation/revocation and fixed sender/
+recipient paid entitlement; no online checkout is claimed. Restore prepares isolated
+staging only; uncertain work never automatically retries or activates live data.
+
+OperatorSigner/context/dispatch use a non-extractable scoped device key, public-key
+enrollment and exact typed server requests. No private signing key reaches the
+portal. Actual provider changes also require the separate reviewed owner signature.
+The operator process itself is not installed just because the portal page is live.
+
+Migrations now use the ACTUAL production history versions20261027182003 and
+20261027182025. Exactly these2 migrations were applied via the Supabase connector.
+All3 transport tables have RLS, no browser grants,0 enrolled operators; expanded job
+kind/body constraints verified by isolated SQL tests. Previous proposed timestamps
+were replaced so future migration tooling cannot apply the same tables twice.
+No customer data export/import occurred. Keep runtime/feature flags absent until
+private enrollment, storage/evidence/backup and provider acceptance are completed.
+
+Owner approval covers only the initial hosting launch. Once it is live, obtain
+approval for later production changes again. No unrelated purchase or destructive
+customer operation is implied. Source tests/CI and live acceptance remain distinct.

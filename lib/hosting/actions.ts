@@ -143,7 +143,7 @@ export async function hostingAdminAction(form:FormData) {
     else if(action==='link_account') await linkAccount(form,actor.id);
     else if(action==='access') {const id=uuid.parse(str(form,'id'));checked(await getSupabase().from(hostingTable('client_access')).update({enabled:flag(form,'enabled')}).eq('id',id));await audit(actor.id,'client_access_changed','client_access',id);}
     else if(action==='check_dns'||action==='check_ssl') await verifyDomain(form,actor.id);
-    else if(action==='job') {const id=await save('jobs',{service_id:uuid.parse(str(form,'service_id')),kind:z.enum(['provision','suspend','resume','cancel','deploy','rollback']).parse(str(form,'kind')),note:optionalText().parse(str(form,'note')),requested_by:actor.id,idempotency_key:uuid.parse(str(form,'request_key'))},null);await audit(actor.id,'operation_requested','jobs',id);}
+    else if(action==='job') {const id=await save('jobs',{service_id:uuid.parse(str(form,'service_id')),kind:z.enum(['provision','suspend','resume','cancel','deploy','rollback','configure']).parse(str(form,'kind')),note:optionalText().parse(str(form,'note')),requested_by:actor.id,idempotency_key:uuid.parse(str(form,'request_key'))},null);await audit(actor.id,'operation_requested','jobs',id);}
     else if(action==='cancel_job') {const id=uuid.parse(str(form,'id'));checked(await getSupabase().from(hostingTable('jobs')).update({status:'cancelled'}).eq('id',id).eq('status','awaiting_connection'));await audit(actor.id,'operation_cancelled','jobs',id);}
     else if(action==='ticket_reply') {
       const id=uuid.parse(str(form,'ticket_id'));checked(await getSupabase().from(hostingTable('tickets')).select('id').eq('id',id).single());
@@ -189,3 +189,4 @@ export async function hostingClientAction(form:FormData) {
   } catch(error) {const message=error instanceof z.ZodError?error.issues[0]?.message:error instanceof Error?error.message:'Could not save changes.';redirect(returnPath+'?error='+encodeURIComponent(message??'Check the form values.'));}
   redirect(target+'?saved=1');
 }
+
