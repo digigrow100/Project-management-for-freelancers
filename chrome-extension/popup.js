@@ -83,7 +83,7 @@ async function refresh() {
     pairView.hidden = true;
     pairedView.hidden = false;
     document.getElementById("employeeName").textContent = state.employee?.name || state.employee?.email || "Employee";
-    document.getElementById("statusText").textContent = "Paired to employee account";
+    document.getElementById("statusText").textContent = state.syncPaused ? "Sync paused: service unavailable. Will retry automatically." : "Paired to employee account";
     document.getElementById("currentSite").textContent = state.currentInterval?.url || "Waiting for active tab…";
     await storageRemove(PENDING_PAIRING_KEYS);
     return;
@@ -98,7 +98,7 @@ async function refresh() {
     pairView.hidden = true;
     pairedView.hidden = false;
     document.getElementById("employeeName").textContent = latest.employee?.name || latest.employee?.email || "Employee";
-    document.getElementById("statusText").textContent = "Paired to employee account";
+    document.getElementById("statusText").textContent = latest.syncPaused ? "Sync paused: service unavailable. Will retry automatically." : "Paired to employee account";
     document.getElementById("currentSite").textContent = latest.currentInterval?.url || "Waiting for active tab…";
   }
 }

@@ -1,3 +1,5 @@
+importScripts("request-gate.js");
+const requestGate = new FhqRequestGate(chrome.storage.local);
 const FLUSH_ALARM = "fhq-flush";
 const HEARTBEAT_ALARM = "fhq-heartbeat";
 const SECURITY_HEALTH_ALARM = "fhq-security-health";
@@ -54,7 +56,11 @@ async function apiFetch(path, options = {}) {
   headers.set("authorization", "Bearer " + state.deviceToken);
   headers.set("x-extension-install-id", state.extensionInstallId);
   headers.set("x-device-id", state.deviceId);
-  return fetch(state.appOrigin + path, { ...options, headers });
+  const response = await requestGate.run(() => fetch(state.appOrigin + path, {
+    ...options, headers, signal: AbortSignal.timeout(20000),
+  }));
+  if (response.status === 401) await storageSet({ deviceToken: null, employee: null });
+  return response;
 }
 
 function cleanTab(tab) {
@@ -530,6 +536,7 @@ async function pair(payload) {
   }
   if (!response.ok) throw new Error(data?.error || "Pairing failed.");
   await storageSet({
+    extensionRetryState: null,
     appOrigin: data.appOrigin || origin,
     deviceToken: data.deviceToken,
     employee: data.employee,
@@ -650,7 +657,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "GET_STATE") {
-    Promise.all([authState(), storageGet(["currentInterval", "lastHeartbeatAt"])])
+    Promise.all([authState(), storageGet(["currentInterval", "lastHeartbeatAt", "extensionRetryState"])])
       .then(([auth, state]) => sendResponse({
         ok: true,
         paired: Boolean(auth.deviceToken),
@@ -658,6 +665,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         appOrigin: auth.appOrigin || null,
         currentInterval: state.currentInterval || null,
         lastHeartbeatAt: state.lastHeartbeatAt || null,
+        syncPaused: Number(state.extensionRetryState?.until || 0) > Date.now(),
       }));
     return true;
   }

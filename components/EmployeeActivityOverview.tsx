@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Activity, Bot, Clock3, ExternalLink, MonitorUp, Timer, Users } from "lucide-react";
 import type { EmployeeActivitySummary } from "@/lib/types";
+import {startVisiblePolling} from '@/lib/visiblePolling';
 
 function duration(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
@@ -36,22 +37,7 @@ export function EmployeeActivityOverview({ initialRows }: { initialRows: Employe
   const [rows, setRows] = useState(initialRows);
 
   useEffect(() => {
-    let cancelled = false;
-    async function refresh() {
-      try {
-        const response = await fetch("/api/admin/employee-activity?summary=1", { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as { summaries?: EmployeeActivitySummary[] };
-        if (!cancelled && Array.isArray(data.summaries)) setRows(data.summaries);
-      } catch {
-        // Keep last known state.
-      }
-    }
-    const id = window.setInterval(refresh, 30000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    return startVisiblePolling<{summaries?:EmployeeActivitySummary[]}>("/api/admin/employee-activity?summary=1",data=>{if(Array.isArray(data.summaries))setRows(data.summaries);});
   }, []);
 
   return (
@@ -122,3 +108,4 @@ function Metric({ icon: Icon, label, value }: { icon: typeof Activity; label: st
     </div>
   );
 }
+

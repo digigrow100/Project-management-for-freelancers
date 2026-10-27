@@ -1,3 +1,4 @@
+import { assertExtensionServiceAvailable, noteExtensionServiceFailure } from "./extensionAvailability";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { confirmedActivityTime } from "./activityIntervals";
 import { readAllActivityRows } from "./activityPagination";
@@ -264,7 +265,8 @@ export async function authenticateExtensionRequest(request: Request): Promise<Au
   const deviceId = (request.headers.get("x-device-id") ?? "").trim();
   if (!rawToken || rawToken.length < 20 || !installId || !deviceId) throw new Error("Unauthorized.");
 
-  const { data, error } = await getSupabase()
+  assertExtensionServiceAvailable();
+  const { data, error, status } = await getSupabase()
     .from("freelance_hq_employee_devices")
     .select("id,employee_id,device_id,extension_install_id,device_label,token_expires_at")
     .eq("token_hash", sha256(rawToken))
@@ -273,7 +275,10 @@ export async function authenticateExtensionRequest(request: Request): Promise<Au
     .gt("token_expires_at", nowIso())
     .is("revoked_at", null)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    noteExtensionServiceFailure(status);
+    throw error;
+  }
   if (!data) throw new Error("Unauthorized.");
 
   return {
@@ -385,11 +390,10 @@ async function loadProjectMatchers() {
   };
 }
 
-export async function matchProjectForUrl(rawUrl: string, promptText = ""): Promise<{ id: string; name: string } | null> {
+function matchProjectWithMatchers(rawUrl: string, promptText: string, { mappings, projects }: Awaited<ReturnType<typeof loadProjectMatchers>>): { id: string; name: string } | null {
   const { url, domain } = sanitizeActivityUrl(rawUrl);
   const source = (url + "\n" + promptText).toLowerCase();
   const sourceNoProtocol = source.replace(/^https?:\/\//, "");
-  const { mappings, projects } = await loadProjectMatchers();
 
   for (const mapping of mappings) {
     const pattern = mapping.pattern.trim().toLowerCase();
@@ -416,6 +420,21 @@ export async function matchProjectForUrl(rawUrl: string, promptText = ""): Promi
   return null;
 }
 
+function projectMatcherForBatch() {
+  // One lazy snapshot per upload, never shared across requests or identities.
+  // Matching is classification only; authentication and revocation remain fresh.
+  let snapshot: ReturnType<typeof loadProjectMatchers> | undefined;
+  return async (rawUrl: string, promptText = "") => {
+    if (!sanitizeActivityUrl(rawUrl).url && !promptText.trim()) return null;
+    snapshot ??= loadProjectMatchers();
+    return matchProjectWithMatchers(rawUrl, promptText, await snapshot);
+  };
+}
+
+export async function matchProjectForUrl(rawUrl: string, promptText = ""): Promise<{ id: string; name: string } | null> {
+  return projectMatcherForBatch()(rawUrl, promptText);
+}
+
 type ActivityInput = {
   id?: unknown;
   sessionId?: unknown;
@@ -435,6 +454,7 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
 
   const supabase = getSupabase();
   const rows: Array<Record<string, unknown>> = [];
+  const matchProject = projectMatcherForBatch();
   let latest: {
     at: string;
     status: BrowserDeviceStatus;
@@ -452,7 +472,7 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
     const endedAt = event.endedAt ? safeIso(event.endedAt, startedAt) : null;
     const { url, domain } = sanitizeActivityUrl(event.url);
     const title = String(event.pageTitle ?? "").replace(/[\u0000-\u001F]/g, " ").slice(0, 500);
-    const project = url ? await matchProjectForUrl(url) : null;
+    const project = url ? await matchProject(url) : null;
     const sessionId = typeof event.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(event.sessionId)
       ? event.sessionId
       : null;
@@ -548,6 +568,7 @@ export async function ingestPromptBatch(device: AuthenticatedDevice, rawPrompts:
   if (!Array.isArray(rawPrompts)) throw new Error("Prompts must be an array.");
   const prompts = rawPrompts.slice(0, MAX_PROMPT_BATCH) as PromptInput[];
   const rows: Array<Record<string, unknown>> = [];
+  const matchProject = projectMatcherForBatch();
 
   for (const item of prompts) {
     const platform = String(item.platform ?? "");
@@ -557,7 +578,7 @@ export async function ingestPromptBatch(device: AuthenticatedDevice, rawPrompts:
     const sessionId = typeof item.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(item.sessionId)
       ? item.sessionId
       : null;
-    const project = await matchProjectForUrl("", promptText);
+    const project = await matchProject("", promptText);
     rows.push({
       employee_id: device.employeeId,
       device_id: device.id,
@@ -633,6 +654,22 @@ export async function getEmployeeActivitySummaries(employeeIdFilter?: string): P
   const tomorrowStart = startOfPakistanDay(1).toISOString();
   const monthStart = startOfPakistanMonth().toISOString();
 
+  let profileQuery=supabase.from("freelance_hq_profiles").select("id,name,email,role");
+  let deviceQuery=supabase.from("freelance_hq_employee_devices")
+    .select("id,employee_id,device_id,extension_install_id,device_label,paired_at,last_seen_at,last_status,current_domain,current_url,current_title,current_project_id,revoked_at")
+    .is("revoked_at",null);
+  let promptQuery=supabase.from("freelance_hq_ai_prompt_logs").select("employee_id")
+    .gte("submitted_at",todayStart).lt("submitted_at",tomorrowStart);
+  let sessionQuery=supabase.from("freelance_hq_browser_sessions")
+    .select("id,employee_id,device_id,started_at,ended_at,status")
+    .gte("started_at",todayStart).lt("started_at",tomorrowStart).order("started_at",{ascending:true});
+  if(employeeIdFilter){
+    profileQuery=profileQuery.eq("id",employeeIdFilter);
+    deviceQuery=deviceQuery.eq("employee_id",employeeIdFilter);
+    promptQuery=promptQuery.eq("employee_id",employeeIdFilter);
+    sessionQuery=sessionQuery.eq("employee_id",employeeIdFilter);
+  }
+
   const [
     { data: profiles, error: profileError },
     { data: devices, error: deviceError },
@@ -641,8 +678,8 @@ export async function getEmployeeActivitySummaries(employeeIdFilter?: string): P
     { data: projects, error: projectError },
     { data: sessions, error: sessionError },
   ] = await Promise.all([
-    supabase.from("freelance_hq_profiles").select("id,name,email,role"),
-    supabase.from("freelance_hq_employee_devices").select("*").is("revoked_at", null),
+    profileQuery,
+    deviceQuery,
     readAllActivityRows(async (from, to) => {
       let query = supabase
         .from("freelance_hq_activity_logs")
@@ -655,18 +692,9 @@ export async function getEmployeeActivitySummaries(employeeIdFilter?: string): P
       if (employeeIdFilter) query = query.eq("employee_id", employeeIdFilter);
       return await query;
     }),
-    supabase
-      .from("freelance_hq_ai_prompt_logs")
-      .select("employee_id")
-      .gte("submitted_at", todayStart)
-      .lt("submitted_at", tomorrowStart),
+    promptQuery,
     supabase.from("freelance_hq_projects").select("id,name"),
-    supabase
-      .from("freelance_hq_browser_sessions")
-      .select("id,employee_id,device_id,started_at,ended_at,status")
-      .gte("started_at", todayStart)
-      .lt("started_at", tomorrowStart)
-      .order("started_at", { ascending: true }),
+    sessionQuery,
   ]);
 
   for (const error of [profileError, deviceError, activityError, promptError, projectError, sessionError]) {

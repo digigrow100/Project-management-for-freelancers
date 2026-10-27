@@ -1,5 +1,5 @@
 "use server";
-import { limitSignIn, rateLimit } from "@/lib/security/rateLimit";
+import { limitSignIn, rateLimit, SecurityCheckUnavailable } from "@/lib/security/rateLimit";
 import { requireEnrolledMfa } from "@/lib/security/mfa";
 import {cookies} from "next/headers";
 import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
@@ -19,7 +19,14 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("Email and password are required.")}`);
   }
 
-  try {await limitSignIn("login",email);} catch {redirect("/login?error="+encodeURIComponent("Too many attempts or security checks unavailable. Please try again later."));}
+  try {
+    await limitSignIn("login", email);
+  } catch (error) {
+    const message = error instanceof SecurityCheckUnavailable
+      ? "Sign-in is temporarily unavailable. Please try again later."
+      : "Too many sign-in attempts. Please wait before trying again.";
+    redirect("/login?error=" + encodeURIComponent(message));
+  }
 
   let supabase;
   try {
