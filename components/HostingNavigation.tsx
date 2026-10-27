@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard } from "lucide-react";
+import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard, Archive, Mail, Database, Send } from "lucide-react";
 import { HOSTING_SECTIONS } from "@/lib/hostingWorkspace";
 import { cn } from "@/lib/utils";
 
 const icons = {
+  backups: Archive, email: Mail, databases: Database, forms: Send,
   servers: Server,
   packages: Package,
   services: Layers,

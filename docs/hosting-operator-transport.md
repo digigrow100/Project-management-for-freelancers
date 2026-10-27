@@ -25,3 +25,25 @@ The additive migration is tested in PGlite 0.5.10 and has no browser table/RPC g
 `node tests/hosting-operator-protocol.cjs` checks exact typed schemas, secret exclusion, body bounds, missing credentials and default-off behavior. `NODE_PATH=<pglite-0.5.10>/node_modules node tests/hosting-operator-database.cjs` exercises real SQL claims, cancellation locks, scoped credentials, receipts, revocation and browser role denial. For the cross-repository offline flow also set `HMS_AUTOMATION_SOURCE=<automation checkout>`; a disposable Python signer/adapter/Intake harness produces a real project intent outcome and the SQL receipt binds it back to the exact service. All test secrets are generated or known disposable fixture bytes. No live private key, token or client data is used.
 
 Typecheck, lint and production build are required. Source tests and reference HTTPS round trips do not count as live VPS or independent service acceptance.
+
+
+## Initial hosting launch update — 27 October 2026
+
+The owner authorized the initial hosting launch. The transport and controls migrations
+were applied with history versions20261027182003 and20261027182025. Source filenames
+match those actual versions; do not replay older proposed migration versions. All3
+transport tables retain RLS and no browser grants. Enrollment remains off until the
+real operator, public keys, per-service mapping and private credentials are configured.
+
+Canonical live project is Digigrow Team / hqproject.com, not the older Hamza duplicate.
+The portal includes device signing, sealed passwords, scoped email/database/Forms and
+backup controls. Unreleased feature links/pages/APIs are hidden from clients; admin
+Operations displays Testing labels. Default flags are not proof of service health.
+
+CI runs the actual root dependencies and isolated Node/SQL tests. Full cross-repository
+browser verification can use HMS_PORTAL_APP_ROOT, HMS_AUTOMATION_SOURCE and optional
+HMS_BROWSER_RUNTIME_ROOT. Use synthetic data and an isolated build; never point these
+fixtures at production. The owner launch authorization expires only when hosting is
+functional, not merely when this UI deploys. Obtain approval for later production
+changes again after launch. Keep uncertain jobs, nonces and receipts on rollback.
+

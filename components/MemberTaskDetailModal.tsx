@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { CalendarDays, Check, CheckCircle2, Circle, ClipboardList, FileText, Flag, Play, Sparkles, X } from "lucide-react";
-import type { Task, TaskPriority } from "@/lib/types";
-import { startFocusTaskAction, toggleChecklistItemAction, updateMemberTaskBasicsAction } from "@/lib/actions";
+import type { Task, TaskPriority, SeoWorkflowItem } from "@/lib/types";
+import { getAssignedTaskWorkflowAction, startFocusTaskAction, toggleChecklistItemAction, updateMemberTaskBasicsAction } from "@/lib/actions";
+import { SeoWorkflowPanel } from "./SeoWorkflowPanel";
 import { cn } from "@/lib/utils";
 
 export function MemberTaskDetailModal({
@@ -16,6 +17,19 @@ export function MemberTaskDetailModal({
   projectName?: string;
   onClose: () => void;
 }) {
+  const [workflowItem, setWorkflowItem] = useState<SeoWorkflowItem | null>(null);
+  const [workflowError, setWorkflowError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setWorkflowItem(null);
+    setWorkflowError("");
+    getAssignedTaskWorkflowAction(task.id).then((item) => {
+      if (active) setWorkflowItem(item);
+    }).catch(() => {
+      if (active) setWorkflowError("Could not load saved project details. Reopen this task to retry.");
+    });
+    return () => { active = false; };
+  }, [task.id]);
   const [isPending, startTransition] = useTransition();
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const [dueDate, setDueDate] = useState(task.dueDate ?? "");
@@ -86,6 +100,9 @@ export function MemberTaskDetailModal({
           {task.fallbackTemplateKey?.startsWith("review:") && <Link href={`/projects/${task.projectId}?seoTab=${task.fallbackTemplateKey.split(":")[1]}`} className="mb-4 inline-block rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-base-950">Open review details and findings</Link>}
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">
             <main className="min-w-0 space-y-5">
+              {workflowError && <p role="alert" className="text-sm text-red-300">{workflowError}</p>}
+              {workflowItem && <SeoWorkflowPanel key={workflowItem.id} projectId={task.projectId} module={workflowItem.module} title="Project login, contact and placement details" items={[workflowItem]} initiallyOpen />}
+
               <section>
                 <div className="mb-2 flex items-center gap-2">
                   <FileText size={16} className="text-accent-400" />

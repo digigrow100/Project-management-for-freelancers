@@ -93,3 +93,4 @@ end $$;
 revoke all on function public.freelance_hq_hosting_operator_cancel_guard() from public,anon,authenticated;
 create trigger hosting_operator_cancel_guard before update of status on public.freelance_hq_hosting_jobs
 for each row execute function public.freelance_hq_hosting_operator_cancel_guard();
+

@@ -5,7 +5,8 @@ const fixture=harness?python('fixture'):null;
 (async()=>{
  const db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table freelance_hq_profiles(id uuid primary key,role text);create table freelance_hq_clients(id uuid primary key);`);
  await db.exec(fs.readFileSync('supabase/migrations/20261020202238_hosting_management.sql','utf8'));
- await db.exec(fs.readFileSync('supabase/migrations/20261021211549_hosting_operator_transport.sql','utf8'));
+ await db.exec(fs.readFileSync('supabase/migrations/20261027182003_hosting_operator_transport.sql','utf8'));
+ await db.exec(fs.readFileSync('supabase/migrations/20261027182025_hosting_operator_controls.sql','utf8'));
  const server=fixture?.server??id(),other=id(),actor=id(),client=fixture?.client??id(),service=fixture?.service??id(),job=id(),pkg=id();
  await db.query(`insert into auth.users(id) values($1)`,[actor]);
  await db.query(`insert into freelance_hq_hosting_servers(id,name,hostname) values($1,'Test','test.invalid'),($2,'Other','other.invalid')`,[server,other]);
@@ -32,5 +33,10 @@ const fixture=harness?python('fixture'):null;
  if(fixture)assert.equal((await db.query('select project from freelance_hq_hosting_operator_mappings where service_id=$1',[service])).rows[0].project,final.project);
  await db.query(`update freelance_hq_hosting_operators set enabled=false where server_id=$1`,[server]);await assert.rejects(ack(final),/denied/);
  for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(db.query('select * from freelance_hq_hosting_operators'),/permission denied/);await assert.rejects(poll(),/permission denied/);await db.exec('reset role');}
- await db.close();console.log('Operator database'+(fixture?' + Python adapter + real Intake + project binding':'')+': claims, isolation, revocation, receipt transitions and browser denial PASS');
+ const configJob=id();await db.query(`insert into freelance_hq_hosting_jobs(id,service_id,kind,requested_by,idempotency_key) values($1,$2,'configure',$3,$4)`,[configJob,service,actor,id()]);
+ const longBody=JSON.stringify({request:{operation:'env.set',payload:{sealed:'a'.repeat(90000)}}});
+ await db.query(`insert into freelance_hq_hosting_operator_deliveries(id,job_id,server_id,body,body_sha256,expires_at) values($1,$2,$3,$4,$5,now()+interval '5 minutes')`,[id(),configJob,server,longBody,'f'.repeat(64)]);
+ await assert.rejects(db.query(`update freelance_hq_hosting_operator_deliveries set body=$1 where job_id=$2`,['€'.repeat(50000),configJob]),/body_check/);
+ await db.close();console.log('Extended configure kind and UTF-8 body bound PASS');console.log('Operator database'+(fixture?' + Python adapter + real Intake + project binding':'')+': claims, isolation, revocation, receipt transitions and browser denial PASS');
 })().catch(e=>{console.error(e);process.exit(1)});
+

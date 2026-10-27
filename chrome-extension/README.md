@@ -50,3 +50,11 @@ The extension does not capture keystrokes, passwords, form fields, screenshots, 
 - Reporting remains work/website/project focused; Chrome profile identity is only a device-level technical detail.
 - When Chrome shows the host-permission **Allow** dialog, the extension saves the pending code before opening that dialog.
 - If Chrome closes the extension popup during permission approval, reopening the extension restores the code and automatically finishes pairing when permission has already been granted. The user should not need to paste the same code twice.
+
+## Recovery update — 1.2.5
+
+Failed sync requests now wait before retrying. The cooldown survives browser/worker restarts; pending batches remain within the existing bounded local queue. The popup shows when sync is paused. A quota restriction still needs to be resolved by the project owner. Activity collection and existing queue capacity limits are unchanged.
+
+For an existing unpacked installation, replace the files in the same extension folder and click Reload in chrome://extensions. Keep the same installation; do not uninstall, clear storage or re-pair just to update, as those actions can discard pending data. Extract the complete ZIP so request-gate.js is present. Screen sharing always requires the user's normal permission and never restarts automatically.
+
+Server changes must be deployed separately; a GitHub update does not update an already installed Chrome extension.

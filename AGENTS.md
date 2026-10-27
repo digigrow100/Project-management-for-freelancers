@@ -169,7 +169,7 @@ Hosting now provides server/package/client/service records, separate billing (in
 - Hosting Clients includes a one-click POST “Open client portal” read-only inspection. The original admin authentication remains unchanged. A domain-separated HMAC-signed, actor/client-bound, HTTP-only Strict SameSite cookie expires in 30 minutes; every request rechecks effective and database-backed admin access and target existence/status. The client shell shows an admin banner and return action; client writes are rejected server-side, not merely hidden. Start/return events are audited under the real admin. Logout clears the inspection cookie. `20261020211243_hosting_admin_client_summary.sql` provides client-scoped admin totals with no browser RPC grant; applied live and checked with rollback for target scoping, non-admin denial and closed-client denial.
 - `/auth/invite` handles invitation code/token-hash and fragment flows. Configure this exact app URL in Supabase Auth redirect allowlist before sending client invitations. Invitations are only sent by an explicit admin form action.
 - `/api/cron/hosting-renewals` requires `CRON_SECRET`; scheduled renewal invoicing is off by default. Manual generation works without it. Paying a period's invoice advances its service due date once. No email reminders or online payment gateway are connected.
-- Server entries and service activation remain admin declarations. Note-only jobs remain `awaiting_connection`; the new signed manual transport is OFF by default. `operatorProtocol.ts`, `operator.ts`, bounded `operatorBody.ts`, `/api/hosting-operator` (exact machine-auth middleware exception only) and its admin/MFA/same-origin `/dispatch` endpoint implement per-server scoped claims and receipts. Migration `20261021211549_hosting_operator_transport.sql` adds private operator enrollments (disabled by default), host mappings and delivery records with service-role-only invoker RPCs; not applied live in this change. Existing host keys/roles/signatures remain authoritative. `cancel`/delete/rollback are not executable v1 operations; no shell execution or private signing keys enter the portal. Admin Operations distinguishes delivery/receipt observation from request status. Do not infer a running website from applied Intake intent. See `docs/hosting-operator-transport.md`; evidence/storage/recovery live enrollment and VPS installation still need owner inputs and approval.
+- Server entries and service activation remain admin declarations. Note-only jobs remain `awaiting_connection`; the new signed manual transport is OFF by default. `operatorProtocol.ts`, `operator.ts`, bounded `operatorBody.ts`, `/api/hosting-operator` (exact machine-auth middleware exception only) and its admin/MFA/same-origin `/dispatch` endpoint implement per-server scoped claims and receipts. Migration `20261027182003_hosting_operator_transport.sql` adds private operator enrollments (disabled by default), host mappings and delivery records with service-role-only invoker RPCs; applied live during the approved initial launch; enrollments remain disabled. Existing host keys/roles/signatures remain authoritative. `cancel`/delete/rollback are not executable v1 operations; no shell execution or private signing keys enter the portal. Admin Operations distinguishes delivery/receipt observation from request status. Do not infer a running website from applied Intake intent. See `docs/hosting-operator-transport.md`; evidence/storage/recovery live enrollment and VPS installation still need owner inputs and approval.
 - Desktop sidebar gives the navigation the full space between the fixed header/switcher and account footer. Rows keep a minimum 40px height without shrinking; `overflow-y-auto` scrolls only when the list exceeds that available space. There is no competing flex spacer. The sidebar scrollbar track/thumb are hidden in Firefox/WebKit while wheel, touch and keyboard scrolling remain available.
 - `WorkspaceProvider`, `HostingNavigation` and `hostingWorkspace.ts` preserve desktop/mobile switching. Team-only floating tools are unmounted in Hosting; existing team routines remain intact.
 - Checks: normal typecheck/lint/build, `node tests/hosting-workspaces.cjs` and `node tests/hosting-security.cjs` and `node tests/hosting-client-scope.cjs`. Isolated PostgreSQL integration: install pinned `@electric-sql/pglite@0.5.10` outside the repo and run `NODE_PATH=<install>/node_modules node tests/hosting-database.cjs` (verify the installed version used in release notes).
@@ -205,6 +205,10 @@ Always enforce permissions server-side, not only by hiding UI.
 ---
 
 # Projects and Task Workflow
+
+Root `/` sends effective admins to `/admin` and keeps the member focus dashboard for effective members. The obsolete root admin overview is removed; project detail routes remain. TaskDetailModal also uses a viewport-bounded body portal, fixed header/footer and internal scrolling. Assigned workflow task popups reuse SeoWorkflowPanel for login/contact/placement editing; their server loader verifies the saved task owner and project access. Workflow forms expose the saved login/contact fields consistently, preserve encrypted passwords and require explicit password reveal.
+
+AdminWorkflowLauncher (Start My Work, including related team requests) uses a body portal and a viewport-bounded fixed-height flex dialog. Header and action footer do not grow with the queue; the middle content scrolls. Very short screens also permit scrolling inside the bounded header/footer. Close, Cancel and Escape dismiss without completing work; focus stays inside the dialog and returns on dismissal. Background scrolling is locked only while visible.
 
 Deferring a task closes only the acting member’s open time entries for that task; other tasks and members keep their timers. Simple pauses go to the queue tail; scheduled returns and admin requests appear in Pending.
 
@@ -637,7 +641,7 @@ Latest relevant migration families in this repo include:
 
 # Deployment and Verification Rules
 
-User hold: do not trigger Vercel or push/merge app changes until the user explicitly authorizes deployment. Prepare and verify changes locally.
+The user explicitly authorized release of the pending team-app fixes on 25 October 2026: admin/workflow popup sizing, root admin dashboard routing, and workflow login/contact editing from assigned member tasks. This authorization does not cover unrelated hosting/operator draft PRs.
 
 Main branch:
 - `main`
@@ -733,6 +737,12 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Employee monitoring extension v1.2.5 adds persisted, shared cooldown state after failed requests (1/2/4/8/15-minute backoff, jitter and bounded Retry-After; direct 402 waits at least 15 minutes), a single in-flight authenticated request per context and 20-second network timeouts. Failed upload batches remain queued within the existing 500-event/100-prompt bounds; those existing overflow limits still apply. Screen-share polling cannot overlap and now sends the required installation/device headers. A per-server-instance 60-second outage circuit returns sanitized 503/Retry-After without caching successful authentication or bypassing revocation. Popup reports paused sync. Login now distinguishes an unavailable security backend from a genuine rate-limit denial while still failing closed. This reduces retries; it does not lift Supabase quota restrictions. Extension users must update/reload locally; no production deployment or database change is included.
+
+- Consolidated the authorized team-app release: bounded admin workflow/task popups, root admin dashboard redirect, consistent workflow login/contact fields and direct assigned-member editing. No schema changes. Deployment status must be verified against the Digigrow project serving hqproject.com and the lake.vercel.app alias.
+
+- Fixed the screenshot-confirmed Start My Work popup in AdminWorkflowLauncher: centered, bounded viewport height, scrollable related tasks, compact persistent actions, Close/Cancel/Escape and focus containment. This is distinct from TaskDetailModal. Browser fixtures passed with 1 and 150 tasks at 1920×1080, 1366×768, 1024×600, 390×844, 320×480 and 844×390, including transformed-parent containment and Escape dismissal. Deployment remains on user hold.
+
 - Registered the owner-verified Contabo server1 inventory as draft (4 vCPU, 8 GiB RAM, 150 GiB physical disk; nominal totals, not free allocation). Its admin-only Connection page reads digest-bound, owner-authored health/services reports from the existing restricted GitHub/Windows bridge via server-only HOSTING_BRIDGE_GITHUB_TOKEN (Issues read-only, pinned repository/account). Reports older than 24h are historical; checking does not execute an audit or prove production readiness. No SSH, provisioning or production operator is enabled.
 
 - Refreshed authenticator screens with responsive white/blue HouseMySite styling. Settings → Security and client Account link to own-account authenticator management. Removal requires explicit confirmation, a fresh code for an owned verified factor, active session and rate limiting; refresh session after removal. Hosting admin MFA remains mandatory.
@@ -813,4 +823,81 @@ If you change how the app works and do not update this file, the task is incompl
 
 - Added the role-aware Extensions page, persistent downloads, own-device disconnect and another-profile pairing controls. Fixed missing dashboard download for stale paired devices.
 
-- 2026-10-22: Implemented default-off signed outbound operator transport with bounded schemas, per-server claims/receipts, mapping and cancellation guards, separate admin delivery observations and isolated PostgreSQL tests. No live migration, credential enrollment, production deployment or VPS installation/enablement in this batch.
+## Supabase recovery and request reduction — 2026-10-27 (local preparation)
+
+Owner reports Supabase recharge. Live read-only checks confirm PostgreSQL17.6 and
+all18 hosting tables have RLS enabled with no anon/authenticated/PUBLIC table grants.
+All3 operator transport tables are still absent. The earlier outage retry fix is in
+unmerged draft#230 at21b6e02; current main53c3327 contains the approved#229 popup
+changes, while latest observed READY production uses5a3a4dd. Do not call new fixes live.
+
+Additional LOCAL fixes: employeeActivity loads one lazy matcher snapshot per upload,
+not per event/prompt (100-event batch2 matcher reads instead of up to200). The snapshot
+is never shared across requests or identities; definitions refresh on the next batch.
+Personal-summary queries now filter profiles/devices/prompts/sessions by employee
+before transfer; device fields are explicit. Full monthly activity pagination remains.
+AdminMyWorkTime and EmployeeActivityOverview use60-second visible-only nonoverlapping
+polling with20-second timeout, bounded failure/402/Retry-After cooldown, cancellation,
+late-response discard and stop on401/403. Visibility changes cannot bypass cooldown.
+No authentication identity, success result or revocation cache was added.
+
+Review source at pm-retry (new files/tests) and portal-full-local (current main53c3327
+web snapshot +#230 sources + local hosting overlay). The local snapshot excludes
+public assets/download ZIPs/native shells and MUST NOT be deployed as a complete repo.
+Existing#230 retains its original source-matching1.2.5 ZIP; update/reload unpacked
+extensions after a future approved release. New app edits remain local under the
+previous source-push/deployment hold. No SQL migration, Auth setting or production
+change has been made. Exact new tests10 and prior backoff12/security checks pass;
+full actual dependency TypeScript/lint and fresh optimized build pass (same4 old
+hook warnings). The first build hit stale generated export cleanup; preserved the
+old .next tree and rebuilt cleanly. Source was not deleted to repair build outputs.
+
+- Personal work widget display freshness allows150s for checkpoint/poll lag, while live extrapolation is capped at90s. Verified time rows and reports are unchanged.
+
+## Hosting launch authorization — 2026-10-27
+
+The owner explicitly authorizes reviewed changes needed to bring hosting live:
+source pushes, required PR merges, hosting-specific migrations, app deployment,
+VPS setup and connection work. Do not pause for another approval for those launch
+steps. This overrides the earlier source/deployment hold ONLY for this launch.
+Once hosting is live, request approval again for later production changes. Keep
+unrelated projects, purchases and destructive customer data operations outside scope.
+Preserve current services/data and rollback points; authorization does not turn a
+fixture result into live acceptance. Never request or publish private credentials.
+
+## Hosting controls release — 2026-10-27
+
+Canonical live app: Digigrow Team project prj_uaskxWpvMZK26bJn0VDboJBdqqbI,
+hqproject.com (lake.vercel.app alias). The Hamza project is an older duplicate;
+do not use its deployment state as evidence for this live app. PR230 is merged
+at0ab9c3eedc292db9f0d17afa813d4da4c11ac307; canonical production deployment
+5EkNShGpjwvqiCi55cDbakXejv67 is READY. APP_URL=https://hqproject.com is now
+configured for the next production build to make scoped API origins explicit.
+
+New hosting source: admin/client Email, Database, Form Email API and Backups pages;
+private authenticated/same-origin/rate-limited typed gateways; admin inspection is
+read-only. Feature publication is server-side and default-off; clients get no link,
+page or API access for unreleased features. Admin Operations shows testing/release
+settings separately from actual health. HOSTING_CLIENT_FEATURES is an explicit
+allowlist; do not publish a feature before the real provider/worker is enrolled.
+Passwords are X25519/HKDF/AES-GCM sealed on device after independent host-key pinning.
+Forms keys are one-time display with explicit rotation/revocation and fixed sender/
+recipient paid entitlement; no online checkout is claimed. Restore prepares isolated
+staging only; uncertain work never automatically retries or activates live data.
+
+OperatorSigner/context/dispatch use a non-extractable scoped device key, public-key
+enrollment and exact typed server requests. No private signing key reaches the
+portal. Actual provider changes also require the separate reviewed owner signature.
+The operator process itself is not installed just because the portal page is live.
+
+Migrations now use the ACTUAL production history versions20261027182003 and
+20261027182025. Exactly these2 migrations were applied via the Supabase connector.
+All3 transport tables have RLS, no browser grants,0 enrolled operators; expanded job
+kind/body constraints verified by isolated SQL tests. Previous proposed timestamps
+were replaced so future migration tooling cannot apply the same tables twice.
+No customer data export/import occurred. Keep runtime/feature flags absent until
+private enrollment, storage/evidence/backup and provider acceptance are completed.
+
+Owner approval covers only the initial hosting launch. Once it is live, obtain
+approval for later production changes again. No unrelated purchase or destructive
+customer operation is implied. Source tests/CI and live acceptance remain distinct.

@@ -41,7 +41,7 @@ const LOGIN_METHODS = [
 ] as const;
 
 function supportsLogin(module: SeoWorkflowModule) {
-  return module === "social_media" || module === "local_listing" || module === "web_2_0";
+  return module !== "blog_onsite";
 }
 
 export function SeoWorkflowPanel({
@@ -49,14 +49,16 @@ export function SeoWorkflowPanel({
   module,
   title,
   items,
+  initiallyOpen = false,
 }: {
   projectId: string;
   module: SeoWorkflowModule;
   title: string;
   items: SeoWorkflowItem[];
+  initiallyOpen?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
-  const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [openItemId, setOpenItemId] = useState<string | null>(initiallyOpen ? items[0]?.id ?? null : null);
   const [saveMessage, setSaveMessage] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const done = items.filter((item) => item.status === "done").length;
@@ -121,7 +123,7 @@ export function SeoWorkflowPanel({
           const isOpen = openItemId === item.id;
           const steps = item.details.steps ?? [];
           const showLogin = supportsLogin(module);
-          const showGuestFields = module === "guest_blogging";
+          const showGuestFields = showLogin;
 
           return (
             <div key={item.id} className="rounded-xl border border-base-700/60 bg-base-900/45 p-3">
@@ -281,10 +283,10 @@ export function SeoWorkflowPanel({
                             </div>
                           )}
                         </Field>
-                        <Field label="Profile / Listing URL">
+                        <Field label="Live Profile / Listing / Placement URL">
                           <input name="profileUrl" defaultValue={item.profileUrl} placeholder="https://..." className={inputClass} />
                         </Field>
-                        {module === "local_listing" && (
+                        {showLogin && (
                           <Field label="Verification">
                             <select name="verificationStatus" defaultValue={item.verificationStatus} className={inputClass}>
                               <option value="">Not set</option>
@@ -301,7 +303,7 @@ export function SeoWorkflowPanel({
 
                   {showGuestFields && (
                     <div>
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Guest blogging details</p>
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Contact and placement details</p>
                       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                         <Field label="Contact Name">
                           <input name="contactName" defaultValue={item.contactName} placeholder="Site owner / editor" className={inputClass} />
@@ -343,9 +345,6 @@ export function SeoWorkflowPanel({
                             <option value="rejected">Rejected</option>
                           </select>
                         </Field>
-                        <Field label="Article / Placement URL">
-                          <input name="profileUrl" defaultValue={item.profileUrl} placeholder="https://..." className={inputClass} />
-                        </Field>
                       </div>
                     </div>
                   )}
@@ -361,7 +360,7 @@ export function SeoWorkflowPanel({
                   </Field>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-accent-400">
+                    <button type="submit" disabled={isPending} className="inline-flex items-center gap-1.5 rounded-md bg-accent-500 px-3 py-2 text-xs font-semibold text-base-950 hover:bg-accent-400">
                       <Save size={13} /> Save details
                     </button>
                     {item.hasPassword && showLogin && (

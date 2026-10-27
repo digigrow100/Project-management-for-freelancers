@@ -541,3 +541,4 @@ begin
 end $$;
 revoke all on function public.freelance_hq_hosting_client_summary(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.freelance_hq_hosting_client_summary(uuid,uuid) to service_role;
+
