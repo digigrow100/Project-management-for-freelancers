@@ -935,3 +935,7 @@ customer operation is implied. Source tests/CI and live acceptance remain distin
 ## 2026-10-28 — Member login destination correction
 
 The hosting-host root redirect now applies only to effective admins. Team members keep their existing assigned-work dashboard instead of being sent to the customer-only /client guard and receiving404. Verified hosting identities still use the existing /client redirect and enrollment/MFA/ownership checks. No passwords, roles, account links or customer permissions change. Regression tests exercise the actual root page for both hosts and admin/member/customer identities.
+
+## 2026-10-28 — Authenticator issuer branding
+
+New TOTP enrollments explicitly set issuer and friendlyName to House My Site, so authenticator QR labels no longer inherit localhost or the Supabase Site URL. Existing verified factors, secrets, codes, MFA checks and removal controls are unchanged. Existing authenticator entries can be renamed inside the authenticator app without removing the factor or re-enrolling.

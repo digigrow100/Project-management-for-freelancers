@@ -21,7 +21,7 @@ export async function securityAction(previous:SecurityState,form:FormData):Promi
    for(const f of factors.data.all.filter(f=>f.factor_type==='totp'&&f.status==='unverified')){
     const removed=await auth.auth.mfa.unenroll({factorId:f.id});if(removed.error)throw new Error('Could not restart setup. Try again later.');
    }
-   const enrolled=await auth.auth.mfa.enroll({factorType:'totp',friendlyName:'HouseMySite authenticator'});
+   const enrolled=await auth.auth.mfa.enroll({factorType:'totp',friendlyName:'House My Site',issuer:'House My Site'});
    if(enrolled.error)throw new Error('Could not start authenticator setup. Try again later.');
    return {factorId:enrolled.data.id,qr:enrolled.data.totp.qr_code};
   }
