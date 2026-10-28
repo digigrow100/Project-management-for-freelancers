@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest) {
   if (hosting && (request.nextUrl.pathname === "/sitemap.xml" || isHostingProbePath(request.nextUrl.pathname))) {
     return finish(new NextResponse("Not found", {status:404}));
   }
-  if(isAdminOnlyPath(request.nextUrl.pathname) && !adminNetworkAllowed(request.headers,process.env)) {
+  if(isAdminOnlyPath(request.nextUrl.pathname) && !adminNetworkAllowed(request.headers,{VERCEL:process.env.VERCEL,ADMIN_ALLOWED_IPS:process.env.ADMIN_ALLOWED_IPS})) {
     return finish(new NextResponse("Admin access is restricted to approved networks.", {status:403,headers:{"Cache-Control":"private, no-store"}}));
   }
   // Supabase can fall back to the configured Site URL and append a PKCE
