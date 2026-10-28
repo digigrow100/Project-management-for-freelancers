@@ -20,6 +20,7 @@ jobs:
       - run: node --test tests/extension-batch-matching.cjs tests/visible-polling.cjs
       - run: node --experimental-strip-types --test tests/operator-controls.test.cjs tests/operator-upload.test.cjs tests/hosting-operator-protocol.cjs tests/backupProtocol.test.mjs tests/manager.test.cjs tests/client-release.test.cjs
       - run: node tests/hosting-operator-database.cjs
+      - run: node --test tests/hosting-domain-security.cjs
       - run: npm run typecheck
       - run: npm run lint
       - run: node tests/hosting-workspaces.cjs
