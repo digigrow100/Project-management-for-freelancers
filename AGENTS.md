@@ -234,13 +234,40 @@ sends or receives a filesystem path, UID or provider ID.
 `WebsiteSourcePanel` shows one lifecycle label derived from the private service's report
 (`lifecycle()`): Uploaded, Staged, Awaiting owner approval, Staging/Publishing, Live on the
 server, Failed (previous site restored) and Uncertain (review required, further changes
-blocked). Next.js/Node sources are listed as staged only ("needs the reviewed build and runtime
-pipeline") and offer no publish button; the VPS also refuses them. "Live" means files written,
+blocked). Node.js sources (without a Next.js standalone build) are listed as unsupported and offer
+no publish button; the VPS also refuses them (Next.js: see the next section). "Live" means files written,
 committed and a one-time marker served by the VPS; DNS/SSL stay on the Domains page.
 `tests/hosting-source-lifecycle.cjs` covers every state and the no-live-without-proof rule;
 `tests/hosting-sources.cjs` covers gating, scoping, strict responses and (with
 HMS_AUTOMATION_SOURCE) the real Python queue. ZIP upload now targets a dedicated listener (see the
 automation repo's `docs/website-publishing.md`); the ticket format is unchanged.
+
+### Next.js build, activation, rollback and recovery (source only; not deployed)
+
+A released tree whose runtime is `nextjs` is built on the private service, never in the portal or
+the browser. `source.build` (`service`, `tree`, `request_key`, `variables`) queues an isolated build; it
+needs HOSTING_SOURCES_ENABLED + HOSTING_PUBLISHING_ENABLED + **HOSTING_NEXTJS_ENABLED**=approved, the
+`sources` client feature, an active client, a non-read-only session and the usual service/client
+scoping. Build variables are plain, non-secret settings (`NEXT_PUBLIC_*` values reach browsers):
+names `[A-Z][A-Z0-9_]{0,63}`, at most 32, values at most 2048 printable characters; reserved names
+(`PATH`, `NODE_*`, `NPM_*`, `LD_*`, `HMS_*`, proxies ...) and secret-looking names are rejected by
+the schema before any request is made. Runtime secrets are never sent through the portal (they are
+set by the operator on the VPS with `scripts/services/nextjs_runtime_env.py`). A build needs no owner
+approval because nothing live changes; **activation** is the ordinary `source.request` `publish` of the
+built tree (and `rollback` / `source.recover`) and still needs the independent owner signature bound to
+the exact artifact digest. The portal never signs anything and the server holds no owner private key.
+
+`source.status` now carries `nextjs`: `state` (`none`, `queued`, `building`, `built`,
+`awaiting_approval`, `starting`, `live`, `failed`, `rolled_back`, `uncertain`), `live`, and up to 12
+`builds` (artifact digest, Next.js version, redacted log tail, failure reason). The schema refuses a
+lifecycle that claims more than the publication proves (`live` needs a live Next.js publication with
+health evidence; an uncertain publication forces `uncertain`; a tree is `publishable` only with a
+successful build). `lifecycle()` shows the stage in plain language. Trees carry `buildable`. Static and
+PHP behaviour is unchanged; a live static/PHP site cannot be switched to Next.js (or back) yet.
+Test: `tests/hosting-nextjs.cjs` (strict schemas, gates, proof rules; with HMS_AUTOMATION_SOURCE and
+root it also drives the real gateway -> queue -> worker -> isolated build -> runtime -> routed health ->
+status flow, rollback, failed build and an uncertain/recovered activation via
+`tests/fixtures/hosting-nextjs-harness.py`). Not live: nothing here has run on the VPS.
 
 ### Hosting hostname and search privacy
 

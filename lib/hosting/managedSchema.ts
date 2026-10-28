@@ -3,6 +3,10 @@ const id=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/),uuid=z.string().uu
 const sealed=z.string().min(80).max(3000).regex(/^[A-Za-z0-9_-]+={0,2}$/);
 const treeId=z.string().regex(/^[a-f0-9]{32}$/),sourceNumber=z.number().int().positive().max(Number.MAX_SAFE_INTEGER),sourceVersion=z.number().int().min(0).max(1000000);
 // Conservative git ref check; the private service applies the authoritative rules again.
+// Build-time variables are plain, non-secret values (they can end up in browser code); secrets are runtime settings configured outside the build.
+const RESERVED_BUILD_VARIABLE=/^(PATH|HOME|USER|LOGNAME|SHELL|PWD|OLDPWD|TMPDIR|TMP|TEMP|CI|IFS|ENV|BASH_ENV|NODE_[A-Z0-9_]*|NPM_[A-Z0-9_]*|LD_[A-Z0-9_]*|HMS_[A-Z0-9_]*|NEXT_TELEMETRY_DISABLED|[A-Z]*_PROXY|SSL_[A-Z0-9_]*|SUDO_[A-Z0-9_]*|PYTHON[A-Z0-9_]*|GIT_[A-Z0-9_]*|DYLD_[A-Z0-9_]*|LC_[A-Z0-9_]*|LANG)$/;
+const buildVariableName=z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/).refine(n=>!RESERVED_BUILD_VARIABLE.test(n)&&(n.startsWith('NEXT_PUBLIC_')||!/(secret|password|passwd|token|private|credential|api_?key|auth)/i.test(n)));
+export const buildVariables=z.record(buildVariableName,z.string().max(2048).regex(/^[^\u0000-\u001f\u007f]*$/)).refine(v=>Object.keys(v).length<=32);
 const sourceBranch=z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/).refine(v=>!v.includes('..')&&!v.includes('//')&&!v.endsWith('/')&&!v.endsWith('.')&&!v.split('/').some(p=>p.startsWith('.')||p.endsWith('.lock')));
 export const SOURCE_UPLOAD_MAX_BYTES=64*1024*1024;
 export const managedOperation=z.discriminatedUnion('operation',[
@@ -23,6 +27,7 @@ export const serviceCommand=z.discriminatedUnion('action',[
  z.object({action:z.literal('source.switch'),service:uuid,installation_id:sourceNumber,repository_id:sourceNumber,branch:sourceBranch,expected_version:sourceVersion}).strict(),
  z.object({action:z.literal('source.disconnect'),service:uuid,expected_version:sourceVersion}).strict(),
  z.object({action:z.literal('source.request'),service:uuid,operation:z.enum(['deploy','export','publish','rollback']),request_key:uuid,tree:treeId.nullable()}).strict(),
+ z.object({action:z.literal('source.build'),service:uuid,tree:treeId,request_key:uuid,variables:buildVariables}).strict(),
  z.object({action:z.literal('source.recover'),service:uuid,job:treeId,request_key:uuid}).strict(),
  z.object({action:z.literal('source.discard'),service:uuid,tree:treeId}).strict(),
  z.object({action:z.literal('source.upload_ticket'),service:uuid,size:z.number().int().min(22).max(SOURCE_UPLOAD_MAX_BYTES),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
@@ -42,20 +47,35 @@ export type ManagedInventory=z.infer<typeof managedInventory>;
 
 
 const sourceRepository=z.object({installation_id:z.number().int().positive(),repository_id:z.number().int().positive(),full_name:z.string().regex(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/).max(140),branch:z.string().min(1).max(200),write:z.boolean()}).strict();
-const sourceResult=z.record(z.union([z.string().max(200),z.number(),z.boolean(),z.null(),z.array(z.string().max(1024)).max(50)]));
-export const sourceJob=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','applying','done','failed','uncertain','cancelled']),operation:z.enum(['deploy','export','publish','rollback','recover']),source:z.enum(['github','tree','release','job']),tree:treeId.nullable(),created:z.number().int().nonnegative(),result:sourceResult.nullable(),live_verified:z.boolean()}).strict()
+const sourceHealth=z.object({ok:z.literal(true),checked:z.number().int().nonnegative(),status:z.number().int().nullable(),root_status:z.number().int().nullable(),tls:z.boolean()}).strict();
+const sourceResult=z.record(z.union([z.string().max(200),z.number(),z.boolean(),z.null(),z.array(z.string().max(1024)).max(50),sourceHealth]));   // a completed publication reports its health evidence
+export const sourceJob=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','applying','done','failed','uncertain','cancelled']),operation:z.enum(['deploy','export','publish','rollback','recover','build']),source:z.enum(['github','tree','release','job']),tree:treeId.nullable(),created:z.number().int().nonnegative(),result:sourceResult.nullable(),live_verified:z.boolean()}).strict()
  .refine(j=>j.live_verified===(['publish','rollback'].includes(j.operation)&&j.state==='done'),'live');
-export const sourceTree=z.object({id:treeId,kind:z.enum(['zip','github']),state:z.enum(['staged','released']),files:z.number().int().nonnegative(),bytes:z.number().int().nonnegative(),created:z.number().int().nonnegative(),manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/),runtime:z.enum(['static','php','nextjs','node','unknown']),publishable:z.boolean()}).strict()
- .refine(t=>t.publishable===['static','php'].includes(t.runtime),'publishable');
+export const sourceTree=z.object({id:treeId,kind:z.enum(['zip','github']),state:z.enum(['staged','released']),files:z.number().int().nonnegative(),bytes:z.number().int().nonnegative(),created:z.number().int().nonnegative(),manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/),runtime:z.enum(['static','php','nextjs','node','unknown']),publishable:z.boolean(),buildable:z.boolean()}).strict()
+ // Static and PHP are always publishable; Next.js only once built (the status carries the proof); Node and unknown never.
+ .refine(t=>['static','php'].includes(t.runtime)?t.publishable:t.runtime==='nextjs'||!t.publishable,'publishable')
+ .refine(t=>t.buildable===(t.runtime==='nextjs'&&t.state==='released'),'buildable');
 export const sourcePublication=z.object({state:z.enum(['none','live','uncertain']),runtime:z.enum(['static','php','nextjs','node','unknown']).nullable(),live_tree:treeId.nullable(),live_since:z.number().int().nonnegative().nullable(),previous_tree:treeId.nullable(),rollback_available:z.boolean(),
  health:z.object({ok:z.literal(true),checked:z.number().int().nonnegative(),status:z.number().int().nullable(),root_status:z.number().int().nullable(),tls:z.boolean()}).strict().nullable(),live_verified:z.boolean()}).strict()
  .refine(p=>p.state==='live'?p.health!==null&&p.live_verified===true&&p.live_tree!==null:!p.live_verified&&p.health===null&&p.live_tree===null&&!p.rollback_available,'publication');   // live always carries health evidence
+export const NEXTJS_STATES=['none','queued','building','built','awaiting_approval','starting','live','failed','rolled_back','uncertain'] as const;
+export const sourceBuild=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),tree:treeId,state:z.enum(['building','built','failed']),created:z.number().int().nonnegative(),finished:z.number().int().nonnegative().nullable(),artifact_sha256:z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+ reason:z.string().max(60).nullable(),message:z.string().max(300).nullable(),phase:z.string().max(20).nullable(),summary:z.string().max(6000).nullable(),next_version:z.string().max(40).nullable(),variable_names:z.array(buildVariableName).max(32),files:z.number().int().nonnegative().nullable(),bytes:z.number().int().nonnegative().nullable()}).strict()
+ .refine(b=>b.state==='built'?b.artifact_sha256!==null&&b.reason===null:b.artifact_sha256===null,'build');
+export const sourceNextjs=z.object({state:z.enum(NEXTJS_STATES),live:z.boolean(),job:z.string().regex(/^[a-f0-9]{32}$/).nullable(),error:z.string().max(60).nullable(),reason:z.string().max(100).nullable(),builds:z.array(sourceBuild).max(12)}).strict();
 export const sourceStatus=z.object({service:uuid,version:z.number().int().nonnegative(),repository:sourceRepository.nullable(),jobs:z.array(sourceJob).max(5),trees:z.array(sourceTree).max(5),
- current:z.object({tree:treeId,released:z.number().int().nonnegative()}).strict().nullable(),publication:sourcePublication,published_to_web_root:z.boolean(),live_verified:z.boolean()}).strict()
- .refine(s=>s.published_to_web_root===(s.publication.state==='live')&&s.live_verified===s.publication.live_verified,'live');
+ nextjs:sourceNextjs,current:z.object({tree:treeId,released:z.number().int().nonnegative()}).strict().nullable(),publication:sourcePublication,published_to_web_root:z.boolean(),live_verified:z.boolean()}).strict()
+ .refine(s=>s.published_to_web_root===(s.publication.state==='live')&&s.live_verified===s.publication.live_verified,'live')
+ // The Next.js lifecycle can never claim more than the publication record proves.
+ .refine(s=>s.nextjs.live===(s.publication.state==='live'&&s.publication.runtime==='nextjs'),'nextjs live')
+ .refine(s=>s.nextjs.state!=='live'||(s.nextjs.live&&s.live_verified),'nextjs live evidence')
+ .refine(s=>s.publication.state!=='uncertain'||s.nextjs.state==='uncertain','nextjs uncertain')
+ .refine(s=>s.trees.every(t=>t.runtime!=='nextjs'||!t.publishable||s.nextjs.builds.some(b=>b.tree===t.id&&b.state==='built')),'publishable build')
+ .refine(s=>s.trees.every(t=>t.runtime==='nextjs'||!s.nextjs.builds.some(b=>b.tree===t.id)),'build tree');
 export const sourceRepositories=z.object({service:uuid,version:z.number().int().nonnegative(),repository:sourceRepository.nullable(),available:z.array(z.object({installation_id:z.number().int().positive(),repository_id:z.number().int().positive(),full_name:sourceRepository.shape.full_name,write:z.boolean()}).strict()).max(200)}).strict();
 export const sourceTreeSummary=z.object({id:treeId,kind:z.literal('zip'),files:z.number().int().nonnegative(),bytes:z.number().int().nonnegative(),manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/),activated:z.literal(false)}).strict();
 export const sourceUploadTicket=z.object({url:z.string().url(),ticket:z.string().regex(/^[A-Za-z0-9_-]{1,2048}$/),signature:z.string().regex(/^[a-f0-9]{64}$/),expires:z.number().int().positive(),max_bytes:z.number().int().positive()}).strict();
 export type SourceStatus=z.infer<typeof sourceStatus>;
 export type SourceRepositories=z.infer<typeof sourceRepositories>;
 export type SourceJob=z.infer<typeof sourceJob>;
+export type SourceBuild=z.infer<typeof sourceBuild>;

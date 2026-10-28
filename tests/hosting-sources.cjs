@@ -25,7 +25,7 @@ const esbuild=require('esbuild');
  let version=0,bound=null,publication={state:'none',runtime:null,live_tree:null,live_since:null,previous_tree:null,rollback_available:false,health:null,live_verified:false},published=false,treeRuntime='static';
  const synthetic=()=>{
   const c=wire.command;
-  const status=()=>({service:c.service,version,repository:bound,jobs:[],trees:[],current:null,publication,published_to_web_root:published,live_verified:publication.live_verified});
+  const status=()=>({service:c.service,version,repository:bound,jobs:[],trees:[],nextjs:{state:'none',live:false,job:null,error:null,reason:null,builds:[]},current:null,publication,published_to_web_root:published,live_verified:publication.live_verified});
   if(mode==='foreign')return {...status(),service:other};
   if(mode==='extra')return {...status(),secret:'x'};
   if(c.action==='source.connect'||c.action==='source.switch'){version=c.expected_version+1;bound=repository(mode==='mismatch'?999:c.repository_id,c.branch);return status();}
