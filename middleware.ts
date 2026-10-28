@@ -22,6 +22,16 @@ export async function middleware(request: NextRequest) {
   if (hosting && (request.nextUrl.pathname === "/sitemap.xml" || isHostingProbePath(request.nextUrl.pathname))) {
     return finish(new NextResponse("Not found", {status:404}));
   }
+  // Reports only this connection, never the private allowlist or credentials.
+  if(request.nextUrl.pathname === "/login/network-check") {
+    const env={VERCEL:process.env.VERCEL,ADMIN_ALLOWED_IPS:process.env.ADMIN_ALLOWED_IPS};
+    return finish(NextResponse.json({
+      clientIp:env.VERCEL==='1'?request.headers.get('x-vercel-forwarded-for'):null,
+      trustedRuntime:env.VERCEL==='1',
+      policyConfigured:!!env.ADMIN_ALLOWED_IPS,
+      allowed:adminNetworkAllowed(request.headers,env)
+    },{headers:{"Cache-Control":"private, no-store","X-Robots-Tag":HOSTING_ROBOTS_TAG}}));
+  }
   if(isAdminOnlyPath(request.nextUrl.pathname) && !adminNetworkAllowed(request.headers,{VERCEL:process.env.VERCEL,ADMIN_ALLOWED_IPS:process.env.ADMIN_ALLOWED_IPS})) {
     return finish(new NextResponse("Admin access is restricted to approved networks.", {status:403,headers:{"Cache-Control":"private, no-store"}}));
   }

@@ -77,3 +77,17 @@ test('middleware blocks admin paths before Auth while keeping team, customer and
  assert.equal((await middleware(req('/hosting','192.0.2.10'))).status,307); // IP is not authentication
  s.signedIn=true;for(const p of ['/','/today','/settings','/client'])assert.equal((await middleware(req(p))).status,200,p);
 });
+
+test('network check reports only current connection without exposing private allowlist',async()=>{
+ configure();const {middleware}=await load('middleware.ts');
+ const req=ip=>new NextRequest('https://web.housemysite.com/login/network-check',{headers:{host:'web.housemysite.com','x-vercel-forwarded-for':ip}});
+ for(const [ip,allowed] of [['192.0.2.10',true],['192.0.2.99',false]]){
+  const response=await middleware(req(ip));assert.equal(response.status,200);
+  const data=await response.json();assert.deepEqual(data,{clientIp:ip,trustedRuntime:true,policyConfigured:true,allowed});
+  assert.match(response.headers.get('cache-control'),/no-store/);
+  assert(!JSON.stringify(data).includes('198.51.100.20'));
+ }
+ delete process.env.VERCEL;
+ const data=await (await middleware(req('192.0.2.10'))).json();assert.equal(data.clientIp,null);assert.equal(data.allowed,false);
+ configure();
+});
