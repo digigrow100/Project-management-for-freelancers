@@ -1,3 +1,4 @@
+import {requireAdminNetworkForUser} from "./adminNetwork";
 import "server-only";
 import { redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
@@ -7,6 +8,7 @@ export async function requireHostingSession(admin=false,verificationFlow=false) 
  const auth=createAuthClient();
  const {data:{user},error}=await auth.auth.getUser();
  if(error||!user)redirect('/login');
+ await requireAdminNetworkForUser(user.id);
  const {data:{session},error:sessionError}=await auth.auth.getSession();
  if(sessionError||!session||session.user.id!==user.id)redirect('/login/security?expired=1');
  let sid:string;
@@ -26,6 +28,7 @@ export async function requireEnrolledMfa() {
  const auth=createAuthClient();
  const {data:{user},error}=await auth.auth.getUser();
  if(error||!user)redirect('/login');
+ await requireAdminNetworkForUser(user.id);
  if(user.factors?.some(f=>f.status==='verified')){
   const level=await auth.auth.mfa.getAuthenticatorAssuranceLevel();
   if(level.error||level.data?.currentLevel!=='aal2')redirect('/login/security');

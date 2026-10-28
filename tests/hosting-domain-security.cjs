@@ -19,7 +19,8 @@ async function load(file){
  }}]});
  const mod={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,mod,mod.exports);return mod.exports;
 }
-function req(url,host='web.housemysite.com'){return new NextRequest('https://'+host+url,{headers:{host}});}
+function req(url,host='web.housemysite.com'){return new NextRequest('https://'+host+url,{headers:{host,'x-vercel-forwarded-for':'192.0.2.10'}});}
+process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10';
 process.env.SUPABASE_URL='https://fixture.supabase.co';process.env.SUPABASE_ANON_KEY='fixture';process.env.APP_URL='https://hqproject.com';
 
 test('robots and exploit probes reject cheaply, with noindex and no auth/database call',async()=>{
