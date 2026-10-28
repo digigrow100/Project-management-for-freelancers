@@ -178,8 +178,9 @@ and cheap probe rejection, not an authentication boundary or a promise that all
 malicious clients are unreachable. Keep server-side sessions, ownership, MFA and
 rate limits. Do not install a blanket bot challenge on machine API routes.
 
-On hosting-root entry, effective admins go to /hosting and other signed-in users
-to /client; their existing authorization checks still apply. Hosting login labels
+On hosting-root entry, effective admins go to /hosting, team members retain their
+assigned-work dashboard, and verified hosting identities go to /client through
+the existing identity guard. Their existing authorization checks still apply. Hosting login labels
 HouseMySite; the legacy login branding and team dashboard remain unchanged.
 `tests/hosting-domain-security.cjs` exercises real middleware/response handling,
 early crawler responses without auth calls, exact-host origin selection, foreign
@@ -233,7 +234,7 @@ Always enforce permissions server-side, not only by hiding UI.
 
 # Projects and Task Workflow
 
-Root `/` sends effective admins to `/admin` and keeps the member focus dashboard for effective members. The obsolete root admin overview is removed; project detail routes remain. TaskDetailModal also uses a viewport-bounded body portal, fixed header/footer and internal scrolling. Assigned workflow task popups reuse SeoWorkflowPanel for login/contact/placement editing; their server loader verifies the saved task owner and project access. Workflow forms expose the saved login/contact fields consistently, preserve encrypted passwords and require explicit password reveal.
+Root `/` sends effective admins to `/hosting` on web.housemysite.com and `/admin` on other hosts, and keeps the member focus dashboard for effective members on every host. Hosting customers are routed to `/client` by the existing verified hosting-identity check in getAuthenticatedProfile; the team member role alone never grants hosting-client access. The obsolete root admin overview is removed; project detail routes remain. TaskDetailModal also uses a viewport-bounded body portal, fixed header/footer and internal scrolling. Assigned workflow task popups reuse SeoWorkflowPanel for login/contact/placement editing; their server loader verifies the saved task owner and project access. Workflow forms expose the saved login/contact fields consistently, preserve encrypted passwords and require explicit password reveal.
 
 AdminWorkflowLauncher (Start My Work, including related team requests) uses a body portal and a viewport-bounded fixed-height flex dialog. Header and action footer do not grow with the queue; the middle content scrolls. Very short screens also permit scrolling inside the bounded header/footer. Close, Cancel and Escape dismiss without completing work; focus stays inside the dialog and returns on dismissal. Background scrolling is locked only while visible.
 
@@ -930,3 +931,7 @@ private enrollment, storage/evidence/backup and provider acceptance are complete
 Owner approval covers only the initial hosting launch. Once it is live, obtain
 approval for later production changes again. No unrelated purchase or destructive
 customer operation is implied. Source tests/CI and live acceptance remain distinct.
+
+## 2026-10-28 — Member login destination correction
+
+The hosting-host root redirect now applies only to effective admins. Team members keep their existing assigned-work dashboard instead of being sent to the customer-only /client guard and receiving404. Verified hosting identities still use the existing /client redirect and enrollment/MFA/ownership checks. No passwords, roles, account links or customer permissions change. Regression tests exercise the actual root page for both hosts and admin/member/customer identities.
