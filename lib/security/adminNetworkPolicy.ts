@@ -8,13 +8,13 @@ function canonicalIpv4(value: string): string | null {
   return parts.join('.');
 }
 export function adminNetworkAllowed(requestHeaders:RequestHeaders, env:NetworkEnvironment):boolean {
-  // Only the Vercel-managed client address is trusted. Never fall back to a
-  // client-supplied X-Forwarded-For, X-Real-IP, cookie, query or form value.
+  // Vercel overwrites X-Forwarded-For at its edge. Trust it only in that runtime;
+  // never use X-Real-IP, custom forwarded headers, cookies or form values.
   if(env.VERCEL!=='1')return false;
   const configured=(env.ADMIN_ALLOWED_IPS??'').split(',').map(value=>value.trim());
   if(!configured.length || configured.some(value=>!canonicalIpv4(value)))return false;
   const allowed=new Set(configured.map(value=>canonicalIpv4(value)));
-  const raw=requestHeaders.get('x-vercel-forwarded-for');
+  const raw=requestHeaders.get('x-forwarded-for');
   if(!raw || raw.includes(','))return false;
   const address=canonicalIpv4(raw);
   return address!==null && allowed.has(address);
