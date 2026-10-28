@@ -32,8 +32,10 @@ export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=
   setMessage(action==='source.disconnect'?'Repository disconnected. Website files were not deleted.':'Repository saved. Older queued work was cancelled.');
  }
  async function request(operation:'deploy'|'export',tree:string|null){
-  const k=service+':'+operation+':'+(tree??'github');if(!keys.current.has(k))keys.current.set(k,crypto.randomUUID());
+  // Keep the key only while a submission is unresolved; it is bound to the binding version so a retry after a repository change cannot hit an idempotency conflict.
+  const k=service+':'+(status?.version??0)+':'+operation+':'+(tree??'github');if(!keys.current.has(k))keys.current.set(k,crypto.randomUUID());
   const job=sourceJob.parse(await call({action:'source.request',service,operation,request_key:keys.current.get(k),tree}));
+  keys.current.delete(k);
   setMessage('Request recorded ('+job.id+'). It needs separate owner approval. Nothing has changed on the website.');await load();
  }
  async function upload(file:File){
@@ -48,6 +50,8 @@ export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=
  }
  async function discard(tree:string){sourceStatus.parse(await call({action:'source.discard',service,tree}));setMessage('Staged files removed.');await load();}
  const active=Boolean(status?.jobs.some(j=>['queued','applying','uncertain'].includes(j.state)));
+ // Queued requests await approval and are cancelled by a repository change; running or uncertain work must be reviewed first.
+ const running=Boolean(status?.jobs.some(j=>['applying','uncertain'].includes(j.state)));
  return <section className="space-y-5 rounded-xl border border-blue-200 bg-white p-5 text-slate-900"><h2 className="text-lg font-semibold">Website source</h2>
   <p className="text-sm text-slate-600">Connect a GitHub repository, or upload a ZIP of your website. Deploys and exports are checked on the server and need separate owner approval; they never change your live site on their own.</p>
   <form onSubmit={e=>{e.preventDefault();void run(()=>load());}} className="space-y-3"><label className="block text-sm">Hosting service<select className={input} required value={service} disabled={busy} onChange={e=>{setService(e.target.value);setStatus(null);setRepos(null);setMessage('');}}><option value="">Choose a service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><button className={button} disabled={busy||!service}>Load source status</button></form>
@@ -56,7 +60,7 @@ export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=
    {!readOnly&&repos?<div className="space-y-3 border-t pt-4"><label className="block text-sm">{status.repository?'Switch to repository':'Repository'}<select className={input} value={repo} disabled={busy} onChange={e=>setRepo(e.target.value)}><option value="">Choose an authorized repository</option>{repos.available.map(r=><option key={r.repository_id} value={String(r.repository_id)}>{r.full_name}{r.write?'':' (read-only)'}</option>)}</select>{!repos.available.length?<span className="text-xs text-slate-500">No repositories are authorized for your account yet. Ask support to enroll your GitHub installation.</span>:null}</label>
     <label className="block text-sm">Branch<input className={input} value={branch} onChange={e=>setBranch(e.target.value)} maxLength={200} disabled={busy}/></label>
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirm} disabled={busy} onChange={e=>setConfirm(e.target.checked)}/>I understand this changes where future deploys and exports use code from. Existing website files are not deleted.</label>
-    <div className="flex flex-wrap gap-3">{status.repository?<><button type="button" className={button} disabled={busy||!confirm||!repo||active} onClick={()=>void run(()=>change('source.switch'))}>Switch repository</button><button type="button" className={quiet} disabled={busy||!confirm||active} onClick={()=>void run(()=>change('source.disconnect'))}>Disconnect</button></>:<button type="button" className={button} disabled={busy||!confirm||!repo} onClick={()=>void run(()=>change('source.connect'))}>Connect repository</button>}</div></div>:null}
+    <div className="flex flex-wrap gap-3">{status.repository?<><button type="button" className={button} disabled={busy||!confirm||!repo||running} onClick={()=>void run(()=>change('source.switch'))}>Switch repository</button><button type="button" className={quiet} disabled={busy||!confirm||running} onClick={()=>void run(()=>change('source.disconnect'))}>Disconnect</button></>:<button type="button" className={button} disabled={busy||!confirm||!repo} onClick={()=>void run(()=>change('source.connect'))}>Connect repository</button>}</div></div>:null}
    {!readOnly?<div className="space-y-3 border-t pt-4"><div className="flex flex-wrap gap-3"><button type="button" className={button} disabled={busy||!status.repository||active} onClick={()=>void run(()=>request('deploy',null))}>Request deploy from GitHub</button></div>
     {uploadEnabled?<label className="block text-sm">Upload website ZIP (max 64 MB)<input className={input} type="file" accept=".zip,application/zip" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void run(()=>upload(file));}}/></label>:<p className="text-xs text-slate-500">ZIP upload is not enabled yet.</p>}</div>:null}
    {status.trees.length?<div className="space-y-2 border-t pt-4"><h3 className="text-sm font-medium">Stored website files</h3><ul className="space-y-2">{status.trees.map(t=><li key={t.id} className="rounded-lg border p-3 text-sm"><p>{t.kind==='zip'?'ZIP upload':'GitHub fetch'} · {t.files} files · {t.state==='staged'?'staged, not live':'released, not live'}</p><p className="break-all text-xs text-slate-500">Manifest {t.manifest_sha256}</p>
