@@ -49,7 +49,7 @@ export const sourceTree=z.object({id:treeId,kind:z.enum(['zip','github']),state:
  .refine(t=>t.publishable===['static','php'].includes(t.runtime),'publishable');
 export const sourcePublication=z.object({state:z.enum(['none','live','uncertain']),runtime:z.enum(['static','php','nextjs','node','unknown']).nullable(),live_tree:treeId.nullable(),live_since:z.number().int().nonnegative().nullable(),previous_tree:treeId.nullable(),rollback_available:z.boolean(),
  health:z.object({ok:z.literal(true),checked:z.number().int().nonnegative(),status:z.number().int().nullable(),root_status:z.number().int().nullable(),tls:z.boolean()}).strict().nullable(),live_verified:z.boolean()}).strict()
- .refine(p=>p.live_verified===(p.state==='live'&&p.health!==null)&&(p.state==='live'||(p.live_tree===null&&!p.rollback_available)),'publication');
+ .refine(p=>p.state==='live'?p.health!==null&&p.live_verified===true&&p.live_tree!==null:!p.live_verified&&p.health===null&&p.live_tree===null&&!p.rollback_available,'publication');   // live always carries health evidence
 export const sourceStatus=z.object({service:uuid,version:z.number().int().nonnegative(),repository:sourceRepository.nullable(),jobs:z.array(sourceJob).max(5),trees:z.array(sourceTree).max(5),
  current:z.object({tree:treeId,released:z.number().int().nonnegative()}).strict().nullable(),publication:sourcePublication,published_to_web_root:z.boolean(),live_verified:z.boolean()}).strict()
  .refine(s=>s.published_to_web_root===(s.publication.state==='live')&&s.live_verified===s.publication.live_verified,'live');

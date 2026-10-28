@@ -121,7 +121,7 @@ const esbuild=require('esbuild');
 
  // A website is only reported live when the private service proves it: inconsistent "live" claims are rejected.
  const live={state:'live',runtime:'static',live_tree:released,live_since:5,previous_tree:null,rollback_available:false,health:{ok:true,checked:5,status:200,root_status:200,tls:false},live_verified:true};
- for(const [name,patch,claimed] of [['live without health',{health:null},true],['verified without live',{state:'none',live_tree:null,live_since:null,health:null},false],['unverified live flag',{live_verified:false},true],
+ for(const [name,patch,claimed] of [['live without health',{health:null},true],['live, unverified, without health',{health:null,live_verified:false},true],['live without a live tree',{live_tree:null},true],['verified without live',{state:'none',live_tree:null,live_since:null,health:null},false],['unverified live flag',{live_verified:false},true],
   ['rollback while not live',{state:'uncertain',live_tree:null,rollback_available:true,live_verified:false,health:null},false],['unknown runtime',{runtime:'ruby'},true]]){
   publication={...live,...patch};published=claimed;
   await assert.rejects(()=>serviceRequest(owner,{action:'source.status',service}),name);
