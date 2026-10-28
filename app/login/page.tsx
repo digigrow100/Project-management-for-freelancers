@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { loginAction } from "./actions";
+import { headers } from "next/headers";
+import { isHostingPortalHost } from "@/lib/hosting/portalHost";
 
 export default function LoginPage({ searchParams }: { searchParams: { error?: string } }) {
+  const hosting = isHostingPortalHost(headers().get("host"));
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
       <div className="w-full max-w-sm rounded-xl2 border border-base-700/60 bg-base-850 p-6 shadow-card">
@@ -10,7 +13,7 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-500/15 text-accent-400">
             <Leaf size={18} />
           </span>
-          <span className="text-lg font-semibold text-neutral-100">Freelance HQ</span>
+          <span className="text-lg font-semibold text-neutral-100">{hosting ? "HouseMySite" : "Freelance HQ"}</span>
         </div>
 
         <form action={loginAction} className="flex flex-col gap-3">

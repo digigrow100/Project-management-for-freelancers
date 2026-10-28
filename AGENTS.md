@@ -159,6 +159,33 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Team Management / Hosting workspaces
 
+### Hosting hostname and search privacy
+
+The owner-selected hosting address is `https://web.housemysite.com`.
+`lib/hosting/portalHost.ts` is the explicit hostname/origin boundary, shared by
+middleware and `getSiteOrigin()`. Match the real Host exactly (case-insensitive,
+optional standard443 port); never trust request Origin or arbitrary forwarded hosts
+to expand the allowlist. Hosting CSRF checks and recovery/invitation URLs select
+this trusted hosting origin; other hosts retain existing APP_URL behavior. The
+legacy/shared APP_URL value is not overwritten by this source change.
+
+For this hostname, middleware adds X-Robots-Tag noindex/nofollow/noarchive/nosnippet/
+noimageindex and private/no-store to redirects, errors and normal responses.
+robots.txt returns Disallow:/ before Supabase access, sitemap.xml and common secret/
+WordPress probe paths return404 before any auth/DB call. Next configuration also
+covers static assets with the host-scoped noindex header. These are search privacy
+and cheap probe rejection, not an authentication boundary or a promise that all
+malicious clients are unreachable. Keep server-side sessions, ownership, MFA and
+rate limits. Do not install a blanket bot challenge on machine API routes.
+
+On hosting-root entry, effective admins go to /hosting and other signed-in users
+to /client; their existing authorization checks still apply. Hosting login labels
+HouseMySite; the legacy login branding and team dashboard remain unchanged.
+`tests/hosting-domain-security.cjs` exercises real middleware/response handling,
+early crawler responses without auth calls, exact-host origin selection, foreign
+Origin rejection, machine-route compatibility and static noindex scope.
+
+
 Admins can switch between Team Management (`/admin`) and Hosting (`/hosting`) from the desktop sidebar or mobile top bar. `WorkspaceProvider` derives the workspace from the URL, so refresh, deep links and browser Back retain the correct navigation. Returning to Team Management opens the existing admin dashboard and restores its existing menus.
 
 Hosting now provides server/package/client/service records, separate billing (invoices, manual payments/refunds, expenses, reviewed payment claims), renewal invoice generation, domain DNS/TLS checks, support threads, append-only audit events and settings. All new tables use `freelance_hq_hosting_`; migration `20261020202238_hosting_management.sql` is additive; `20261020205241_hosting_indexes.sql` covers ownership/audit foreign keys. Both were applied to the existing Freelance HQ Supabase project and live financial transaction checks passed with rollback (no retained test customers or payments). Agency records are not migrated; an optional client link is explicit.
@@ -736,6 +763,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Added the owner-selected web.housemysite.com hosting origin, hosting entry/login branding, scoped noindex headers and robots/probe responses. Kept existing shared-app origin fallback, authenticated route/MFA/ownership checks and machine protocols. Added domain-security regression tests to CI.
 
 - Employee monitoring extension v1.2.5 adds persisted, shared cooldown state after failed requests (1/2/4/8/15-minute backoff, jitter and bounded Retry-After; direct 402 waits at least 15 minutes), a single in-flight authenticated request per context and 20-second network timeouts. Failed upload batches remain queued within the existing 500-event/100-prompt bounds; those existing overflow limits still apply. Screen-share polling cannot overlap and now sends the required installation/device headers. A per-server-instance 60-second outage circuit returns sanitized 503/Retry-After without caching successful authentication or bypassing revocation. Popup reports paused sync. Login now distinguishes an unavailable security backend from a genuine rate-limit denial while still failing closed. This reduces retries; it does not lift Supabase quota restrictions. Extension users must update/reload locally; no production deployment or database change is included.
 

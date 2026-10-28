@@ -17,6 +17,7 @@ const nextConfig = {
   poweredByHeader: false,
   async headers() {
     return [
+      {source:"/:path*",has:[{type:"host",value:"web\\.housemysite\\.com"}],headers:[{key:"X-Robots-Tag",value:"noindex, nofollow, noarchive, nosnippet, noimageindex"}]},
       {source:"/client/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},
       {source:"/hosting/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},
       {source:"/login/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},

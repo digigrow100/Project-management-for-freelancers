@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { isHostingPortalHost } from "@/lib/hosting/portalHost";
 import { getCurrentProfile } from "@/lib/auth";
 import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
 import { getEmployeeActivitySummary } from "@/lib/employeeActivity";
@@ -7,6 +9,9 @@ import { ensureIdleSeoTaskForMember, getMyTasks, listMemberSeoModuleAssignments,
 export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const profile = await getCurrentProfile();
+  if (isHostingPortalHost(headers().get("host"))) {
+    redirect(profile?.role === "admin" ? "/hosting" : "/client");
+  }
   if (!profile) redirect("/client");
   if (profile.role === "admin") redirect("/admin");
   await ensureIdleSeoTaskForMember(profile.id);
