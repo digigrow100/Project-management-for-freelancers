@@ -25,6 +25,7 @@ export const HOSTING_SECTIONS = [
   { key: "email", label: "Email Accounts", description: "Manage scoped mailboxes through reviewed provider requests." },
   { key: "databases", label: "Databases", description: "Manage scoped databases through reviewed provider requests." },
   { key: "forms", label: "Form Email API", description: "Manage paid website form accounts and server API keys." },
+  { key: "sources", label: "Website Source", description: "Connect GitHub, upload ZIP files and request reviewed deploy or export jobs." },
   { key: "backups", label: "Backups & Restore", description: "Review verified recovery dates and prepare isolated restores." },
   { key: "operations", label: "Server Operations", description: "Review requests waiting for a connected server operator." },
   { key: "activity", label: "Activity", description: "Review hosting administration and billing events." },

@@ -1,6 +1,6 @@
 // Server callers pass private environment settings. Only the resulting feature
 // names may be sent to a client component; never pass the environment itself.
-export const CLIENT_RELEASE_FEATURES = ['email', 'databases', 'forms', 'backups'] as const;
+export const CLIENT_RELEASE_FEATURES = ['email', 'databases', 'forms', 'backups', 'sources'] as const;
 export type ClientReleaseFeature = typeof CLIENT_RELEASE_FEATURES[number];
 export type ReleaseSettings = Readonly<Record<string, string | undefined>>;
 

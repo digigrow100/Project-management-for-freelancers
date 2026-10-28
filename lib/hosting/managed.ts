@@ -3,7 +3,8 @@ import {createHmac,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {requireHostingAdmin,requireHostingClient} from './auth';
 import {getSupabase} from '@/lib/supabaseClient';
-import {serviceCommand,managedInventory,formProject} from './managedSchema';
+import {serviceCommand,managedInventory,formProject,sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,sourceUploadTicket,SOURCE_UPLOAD_MAX_BYTES} from './managedSchema';
+import {clientFeatureEnabled} from './clientRelease';
 export class ServiceDenied extends Error{}
 export type ServiceScope={actor:string;readOnly:boolean;owner?:boolean;sites:Map<string,{client:string;name:string}>};
 export async function serviceScope(owner:boolean):Promise<ServiceScope>{
@@ -13,9 +14,13 @@ export async function serviceScope(owner:boolean):Promise<ServiceScope>{
  const result=await query;if(result.error||!result.data||result.data.length>100)throw Error('Service scope unavailable');
  return {actor,readOnly,owner,sites:new Map(result.data.map(row=>[String(row.id),{client:String(row.client_id),name:String(row.name)}]))};
 }
+const SOURCE_ACTIONS=['source.status','source.repositories','source.connect','source.switch','source.disconnect','source.request','source.discard','source.upload_ticket'] as const;
+type Command=z.infer<typeof serviceCommand>;
+type SourceCommand=Extract<Command,{action:typeof SOURCE_ACTIONS[number]}>;
+function isSourceCommand(command:Command):command is SourceCommand{return (SOURCE_ACTIONS as readonly string[]).includes(command.action);}
 export async function serviceRequest(scope:ServiceScope,raw:unknown){
  const result=serviceCommand.safeParse(raw);if(!result.success)throw new ServiceDenied();const command=result.data;
- if(scope.readOnly&&!['inventory','forms.list','forms.status'].includes(command.action))throw new ServiceDenied();
+ if(scope.readOnly&&!['inventory','forms.list','forms.status','source.status','source.repositories'].includes(command.action))throw new ServiceDenied();
  const service='service'in command?command.service:'project'in command?command.project:null;if(service&&!scope.sites.has(service))throw new ServiceDenied();
  let wireCommand:unknown=command;
  if(command.action==='hosting.domain.request'||command.action==='hosting.domain.status'){
@@ -49,11 +54,29 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
    wireCommand={action:command.action,service:row.id,client:row.client_id,server:row.server_id,package:row.package_id,domain:row.primary_domain,request_key:command.request_key};
   }
  }
+ if(isSourceCommand(command)){
+  // Client or owner scope; ownership is the saved service→client relation, never a browser field.
+  if(process.env.HOSTING_SOURCES_ENABLED!=='approved'||(scope.owner!==true&&!clientFeatureEnabled('sources',process.env)))throw new ServiceDenied();
+  const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',command.service).single();
+  if(found.error||!found.data||found.data.client_id!==scope.sites.get(command.service)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
+  if(command.action!=='source.status'&&command.action!=='source.repositories'){
+   const client=await getSupabase().from('freelance_hq_hosting_clients').select('status').eq('id',found.data.client_id).single();
+   if(client.error||client.data?.status!=='active')throw new ServiceDenied();
+  }
+  wireCommand={...command,client:found.data.client_id};
+ }
  if(process.env.HOSTING_SERVICES_ENABLED!=='approved')throw Error('Service not enrolled');
  const separateForms=command.action.startsWith('forms.')&&process.env.HOSTING_FORMS_ORIGIN;
  const origin=separateForms||process.env.HOSTING_SERVICES_ORIGIN,key=separateForms?process.env.HOSTING_FORMS_PORTAL_KEY:process.env.HOSTING_SERVICES_PORTAL_KEY;
  if(!origin||!key||key.length<32)throw Error('Service not enrolled');const url=new URL(origin);
  if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Invalid private origin');
+ if(command.action==='source.upload_ticket'){
+  // The browser sends only ZIP bytes to the private service; this short ticket binds actor, service, size and digest.
+  if(process.env.HOSTING_SOURCES_UPLOAD_ENABLED!=='approved')throw new ServiceDenied();
+  const expires=Math.floor(Date.now()/1000)+300;
+  const ticket=Buffer.from(JSON.stringify({schema:1,actor:scope.actor,client:(wireCommand as {client:string}).client,service:command.service,sha256:command.sha256,size:command.size,nonce:randomUUID(),expires})).toString('base64url');
+  return sourceUploadTicket.parse({url:new URL('/v1/uploads',url).toString(),ticket,signature:createHmac('sha256',key).update('hms:upload-ticket:v1:'+ticket).digest('hex'),expires,max_bytes:SOURCE_UPLOAD_MAX_BYTES});
+ }
  const body=JSON.stringify({schema:1,actor:scope.actor,nonce:randomUUID(),expires:Math.floor(Date.now()/1000)+120,command:wireCommand});
  if(Buffer.byteLength(body)>32768)throw new ServiceDenied();
  const response=await fetch(new URL('/v1/services',url),{method:'POST',body,headers:{'Content-Type':'application/json','X-HMS-Services-Signature':createHmac('sha256',key).update('hms:services-portal:v1:'+body).digest('hex')},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});
@@ -78,6 +101,15 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
    z.object({service:z.literal(command.service),state:z.literal('not_requested'),live_verified:z.literal(false)}).strict(),
    z.object({service:z.literal(command.service),id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','applying','uncertain','provider_confirmed']),live_verified:z.literal(false)}).strict()
   ]).parse(value);return status;
+ }
+ if(isSourceCommand(command)){
+  if(command.action==='source.request')return sourceJob.parse(value);
+  if(command.action==='source.repositories'){const list=sourceRepositories.parse(value);if(list.service!==command.service)throw new ServiceDenied();return list;}
+  const status=sourceStatus.parse(value);if(status.service!==command.service)throw new ServiceDenied();
+  // Recheck that the private service applied exactly the requested repository change.
+  if((command.action==='source.connect'||command.action==='source.switch')&&(status.repository?.repository_id!==command.repository_id||status.repository.installation_id!==command.installation_id||status.repository.branch!==command.branch||status.version!==command.expected_version+1))throw new ServiceDenied();
+  if(command.action==='source.disconnect'&&(status.repository!==null||status.version!==command.expected_version+1))throw new ServiceDenied();
+  return status;
  }
  if(command.action==='inventory'){const inventory=managedInventory.parse(value);if(inventory.service!==command.service)throw new ServiceDenied();return inventory;}
  if(command.action==='forms.list'){

@@ -187,6 +187,38 @@ marks a service Active from queue/provider acknowledgement. Existing client APIs
 cannot submit these commands. Runtime must be upgraded/enrolled before enabling.
 Source integration is NOT evidence of a live worker or verified website/SSL.
 
+### Website source control: GitHub, ZIP, deploy, export (source only; not deployed)
+
+New `source.*` commands on the existing authenticated services API
+(`/api/hosting-services`, owner or client scope): `source.status`,
+`source.repositories`, `source.connect`, `source.switch`, `source.disconnect`,
+`source.request` (deploy/export), `source.discard` and `source.upload_ticket`.
+Schemas live in `lib/hosting/managedSchema.ts`; handling is in
+`lib/hosting/managed.ts` (`isSourceCommand`); UI is `WebsiteSourcePanel` on
+`/hosting/sources` (owner) and `/client/sources` (client, release feature
+`sources` in HOSTING_CLIENT_FEATURES). Required switches:
+HOSTING_SERVICES_ENABLED=approved and HOSTING_SOURCES_ENABLED=approved; ZIP upload
+also needs HOSTING_SOURCES_UPLOAD_ENABLED=approved. All default off.
+
+Ownership: the browser sends only a service UUID (plus repository/installation IDs
+chosen from the list the VPS returned, a branch, version numbers and request keys).
+The server re-reads the saved service, requires its client to equal the signed-in
+client scope, requires an active hosting client for changes, and sends the saved
+client to the VPS, which independently resolves ownership from the confirmed
+provisioning receipt and its own actor membership file. Read-only/admin-view
+sessions can only call `source.status`/`source.repositories`. Deploy and export are
+only queued here; they require a separate owner Ed25519 approval and the explicit
+one-shot `apply-source` worker on the VPS. Responses are strict-parsed; a change
+response must show exactly the requested repository and version+1. ZIP bytes never
+pass through Vercel: `source.upload_ticket` signs a 5-minute ticket (actor, client,
+service, size, SHA-256) with the existing portal key and the browser posts the ZIP
+directly to the private service. Nothing here publishes to a customer web root,
+marks a service Active, or proves a site is live; every response carries
+`published_to_web_root:false` and `live_verified:false`. GitHub authorization is an
+owner-enrolled grants file on the VPS, not OAuth. See the automation repo's
+`docs/website-source-integration.md`. Test: `tests/hosting-sources.cjs` (set
+HMS_AUTOMATION_SOURCE to also drive the real Python gateway/SQLite).
+
 ### Hosting hostname and search privacy
 
 The owner-selected hosting address is `https://web.housemysite.com`.
