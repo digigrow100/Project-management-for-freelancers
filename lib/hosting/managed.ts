@@ -14,7 +14,7 @@ export async function serviceScope(owner:boolean):Promise<ServiceScope>{
  const result=await query;if(result.error||!result.data||result.data.length>100)throw Error('Service scope unavailable');
  return {actor,readOnly,owner,sites:new Map(result.data.map(row=>[String(row.id),{client:String(row.client_id),name:String(row.name)}]))};
 }
-const SOURCE_ACTIONS=['source.status','source.repositories','source.connect','source.switch','source.disconnect','source.request','source.discard','source.upload_ticket'] as const;
+const SOURCE_ACTIONS=['source.status','source.repositories','source.connect','source.switch','source.disconnect','source.request','source.discard','source.recover','source.upload_ticket'] as const;
 type Command=z.infer<typeof serviceCommand>;
 type SourceCommand=Extract<Command,{action:typeof SOURCE_ACTIONS[number]}>;
 function isSourceCommand(command:Command):command is SourceCommand{return (SOURCE_ACTIONS as readonly string[]).includes(command.action);}
@@ -59,6 +59,8 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
   if(process.env.HOSTING_SOURCES_ENABLED!=='approved'||(scope.owner!==true&&!clientFeatureEnabled('sources',process.env)))throw new ServiceDenied();
   const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',command.service).single();
   if(found.error||!found.data||found.data.client_id!==scope.sites.get(command.service)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
+  // Writing to a customer's website root is a separate release switch from staging and GitHub work.
+  if((command.action==='source.recover'||(command.action==='source.request'&&(command.operation==='publish'||command.operation==='rollback')))&&process.env.HOSTING_PUBLISHING_ENABLED!=='approved')throw new ServiceDenied();
   if(command.action!=='source.status'&&command.action!=='source.repositories'){
    const client=await getSupabase().from('freelance_hq_hosting_clients').select('status').eq('id',found.data.client_id).single();
    if(client.error||client.data?.status!=='active')throw new ServiceDenied();
@@ -103,7 +105,12 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
   ]).parse(value);return status;
  }
  if(isSourceCommand(command)){
-  if(command.action==='source.request')return sourceJob.parse(value);
+  if(command.action==='source.request'||command.action==='source.recover'){
+   const job=sourceJob.parse(value);
+   // The private service must have queued exactly the operation that was requested.
+   if(command.action==='source.recover'?job.operation!=='recover':job.operation!==command.operation||(command.operation==='publish'&&job.tree!==command.tree)||(command.operation==='export'&&job.tree!==command.tree))throw new ServiceDenied();
+   return job;
+  }
   if(command.action==='source.repositories'){const list=sourceRepositories.parse(value);if(list.service!==command.service)throw new ServiceDenied();return list;}
   const status=sourceStatus.parse(value);if(status.service!==command.service)throw new ServiceDenied();
   // Recheck that the private service applied exactly the requested repository change.
