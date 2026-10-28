@@ -42,9 +42,9 @@ test('exact allowlist rejects spoofed, ambiguous, absent, malformed and untruste
  const {adminNetworkAllowed:allowed}=await load('lib/security/adminNetworkPolicy.ts');
  const env={VERCEL:'1',ADMIN_ALLOWED_IPS:'192.0.2.10,198.51.100.20,203.0.113.30'};
  for(const ip of ['192.0.2.10','198.51.100.20','203.0.113.30','::ffff:192.0.2.10'])assert(allowed(new Headers({'x-forwarded-for':ip}),env));
- for(const ip of ['192.0.2.11','192.0.2.10, 198.51.100.40','192.000.2.10','192.0.2.10:443','::1','attacker'])assert(!allowed(new Headers({'x-forwarded-for':ip,'x-real-ip':'192.0.2.10','x-real-ip':'192.0.2.10'}),env));
+ for(const ip of ['192.0.2.11','192.0.2.10, 198.51.100.40','192.000.2.10','192.0.2.10:443','::1','attacker'])assert(!allowed(new Headers({'x-forwarded-for':ip,'x-real-ip':'192.0.2.10','x-vercel-forwarded-for':'192.0.2.10'}),env));
  assert(!allowed(new Headers({'x-real-ip':'192.0.2.10'}),env));
- for(const invalid of [{},{...env,VERCEL:undefined},{...env,ADMIN_ALLOWED_IPS:''},{...env,ADMIN_ALLOWED_IPS:'192.0.2.10,garbage'},{...env,ADMIN_ALLOWED_IPS:'0.0.0.0/0'}])assert(!allowed(new Headers({'x-real-ip':'192.0.2.10'}),invalid));
+ for(const invalid of [{},{...env,VERCEL:undefined},{...env,ADMIN_ALLOWED_IPS:''},{...env,ADMIN_ALLOWED_IPS:'192.0.2.10,garbage'},{...env,ADMIN_ALLOWED_IPS:'0.0.0.0/0'}])assert(!allowed(new Headers({'x-forwarded-for':'192.0.2.10'}),invalid));
 });
 test('actual actor authorization, MFA/session guards and APIs deny existing admins after network changes',async()=>{
  configure();const auth=await load('lib/auth.ts');const mfa=await load('lib/security/mfa.ts');const api=await load('app/api/admin/activity-settings/route.ts');

@@ -4,7 +4,7 @@ Admin browser access requires an approved public IPv4 address in the private
 ADMIN_ALLOWED_IPS Vercel setting (comma-separated exact addresses, no CIDRs).
 No list values are included in source or sent to the browser.
 
-Only x-vercel-forwarded-for in a Vercel runtime is trusted. Missing/malformed
+Only x-forwarded-for in a Vercel runtime is trusted. Missing/malformed
 configuration, ambiguous headers and unlisted IPv6 addresses deny admin access.
 IPv4-mapped addresses normalize. No query, cookie or development bypass exists.
 Never fall back to caller-supplied forwarded headers. Review any new upstream proxy.
