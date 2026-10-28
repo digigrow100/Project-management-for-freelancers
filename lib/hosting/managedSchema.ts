@@ -9,6 +9,8 @@ export const managedOperation=z.discriminatedUnion('operation',[
  z.object({operation:z.literal('delete'),resource:id,confirm:id}).strict()
 ]);
 export const serviceCommand=z.discriminatedUnion('action',[
+ z.object({action:z.literal('hosting.domain.request'),service:uuid,domain:uuid,operation:z.enum(['attach','ssl']),request_key:uuid}).strict(),
+ z.object({action:z.literal('hosting.domain.status'),service:uuid,domain:uuid}).strict(),
  z.object({action:z.literal('hosting.provision'),service:uuid,request_key:uuid}).strict(),
  z.object({action:z.literal('hosting.status'),service:uuid}).strict(),
  z.object({action:z.literal('inventory'),service:uuid,kind:z.enum(['email','database'])}).strict(),

@@ -18,6 +18,19 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
  if(scope.readOnly&&!['inventory','forms.list','forms.status'].includes(command.action))throw new ServiceDenied();
  const service='service'in command?command.service:'project'in command?command.project:null;if(service&&!scope.sites.has(service))throw new ServiceDenied();
  let wireCommand:unknown=command;
+ if(command.action==='hosting.domain.request'||command.action==='hosting.domain.status'){
+  if(scope.owner!==true||process.env.HOSTING_DOMAIN_AUTOMATION_ENABLED!=='approved')throw new ServiceDenied();
+  const [site,domain]=await Promise.all([
+   getSupabase().from('freelance_hq_hosting_services').select('id,client_id,primary_domain,status').eq('id',command.service).single(),
+   getSupabase().from('freelance_hq_hosting_domains').select('id,service_id,client_id,hostname').eq('id',command.domain).single()
+  ]);
+  if(site.error||domain.error||!site.data||!domain.data||site.data.client_id!==scope.sites.get(command.service)?.client||domain.data.client_id!==site.data.client_id||domain.data.service_id!==site.data.id||domain.data.hostname!==site.data.primary_domain||!['pending','active'].includes(site.data.status))throw new ServiceDenied();
+  if(command.action==='hosting.domain.request'){
+   const client=await getSupabase().from('freelance_hq_hosting_clients').select('status').eq('id',site.data.client_id).single();
+   if(client.error||client.data?.status!=='active')throw new ServiceDenied();
+  }
+  wireCommand={action:command.action,service:site.data.id,client:site.data.client_id,domain:domain.data.hostname,...(command.action==='hosting.domain.request'?{operation:command.operation,request_key:command.request_key}:{})};
+ }
  if(command.action==='hosting.provision'||command.action==='hosting.status'){
   if(scope.owner!==true||process.env.HOSTING_PROVISIONING_ENABLED!=='approved')throw new ServiceDenied();
   const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,server_id,package_id,primary_domain,status').eq('id',command.service).single();
@@ -47,6 +60,18 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
  if(!response.ok||!response.body)throw Error('Service outcome unavailable');const reader=response.body.getReader();let bytes=0,text='';const decoder=new TextDecoder();
  try{for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>1024*1024)throw Error('Response exceeds budget');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();reader.releaseLock();}
  const value:unknown=JSON.parse(text);
+ const domainJob=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','waiting_dns','applying','uncertain','provider_confirmed']),operation:z.enum(['attach','ssl']),live_verified:z.literal(false)}).strict();
+ if(command.action==='hosting.domain.request')return domainJob.parse(value);
+ if(command.action==='hosting.domain.status'){
+  const expected=wireCommand as {domain:string};
+  const status=z.object({service:z.literal(command.service),domain:z.literal(expected.domain),job:domainJob.nullable(),
+   observation:z.object({dns:z.enum(['matched','mismatch','unavailable']),tls:z.enum(['valid','not_verified']),expires:z.number().int().positive().nullable(),checked:z.number().int().nonnegative(),fresh:z.boolean()}).strict().nullable(),live_verified:z.boolean()}).strict().parse(value);
+  const observation=status.observation,now=Math.floor(Date.now()/1000);
+  // Recheck freshness/expiry here; never accept an inconsistent remote green flag.
+  if(observation&&(observation.checked>now||observation.fresh!==(now-observation.checked<=900)))throw new ServiceDenied();
+  const valid=Boolean(observation&&observation.fresh&&observation.dns==='matched'&&observation.tls==='valid'&&observation.expires&&observation.expires>now);
+  if(status.live_verified!==valid)throw new ServiceDenied();return status;
+ }
  if(command.action==='hosting.provision')return z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','applying','uncertain','provider_confirmed']),live_verified:z.literal(false)}).strict().parse(value);
  if(command.action==='hosting.status'){
   const status=z.union([

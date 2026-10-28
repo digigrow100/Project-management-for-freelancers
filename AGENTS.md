@@ -161,6 +161,21 @@ Never edit an old migration that may already have run in production. Add a new m
 
 ### Provisioning gateway integration (source only; not deployed)
 
+Owner-only primary-domain controls now use `hosting.domain.request` and
+`hosting.domain.status` behind HOSTING_DOMAIN_AUTOMATION_ENABLED=approved. Both
+service and domain UUIDs are resolved to current saved records; client, service
+and exact primary hostname must agree. No browser hostname/provider ID is trusted.
+Extra aliases and subdomains are excluded. The private worker rechecks confirmed
+provisioning ownership, gates Let's Encrypt flags on all advertised addresses
+matching enrolled public VPS addresses, and never equates flags with a valid cert.
+The Domains page shows saved DNS/TLS observations with a 15-minute freshness limit.
+The portal independently rejects inconsistent expiry/freshness/green responses.
+These controls do not change DNS, purchase domains, or make a site Active.
+Runtime observation and its optional timer need deployment enrollment; no timer,
+renewal or live SSL acceptance is implied by source tests. The read-only root
+group broker uses a credential-checked local socket, keeping worker
+NoNewPrivileges=yes without granting sudo. See companion automation docs.
+
 `hosting.provision` and `hosting.status` use the existing authenticated services API.
 They require a real hosting admin, MFA/session/IP guards, same origin, rate limits,
 and HOSTING_PROVISIONING_ENABLED=approved. Browser requests contain only service ID
@@ -777,6 +792,10 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Added owner-only primary-domain link/SSL request and saved-status controls,
+  authoritative service/domain ownership checks, strict TLS observation validation
+  and isolated regression tests. No production flag, timer or deployment enabled.
 
 - Added the owner-selected web.housemysite.com hosting origin, hosting entry/login branding, scoped noindex headers and robots/probe responses. Kept existing shared-app origin fallback, authenticated route/MFA/ownership checks and machine protocols. Added domain-security regression tests to CI.
 
