@@ -178,8 +178,9 @@ and cheap probe rejection, not an authentication boundary or a promise that all
 malicious clients are unreachable. Keep server-side sessions, ownership, MFA and
 rate limits. Do not install a blanket bot challenge on machine API routes.
 
-On hosting-root entry, effective admins go to /hosting and other signed-in users
-to /client; their existing authorization checks still apply. Hosting login labels
+On hosting-root entry, effective admins go to /hosting, team members retain their
+assigned-work dashboard, and verified hosting identities go to /client through
+the existing identity guard. Their existing authorization checks still apply. Hosting login labels
 HouseMySite; the legacy login branding and team dashboard remain unchanged.
 `tests/hosting-domain-security.cjs` exercises real middleware/response handling,
 early crawler responses without auth calls, exact-host origin selection, foreign
