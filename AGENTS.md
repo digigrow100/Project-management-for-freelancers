@@ -939,3 +939,11 @@ The hosting-host root redirect now applies only to effective admins. Team member
 ## 2026-10-28 — Authenticator issuer branding
 
 New TOTP enrollments explicitly set issuer and friendlyName to House My Site, so authenticator QR labels no longer inherit localhost or the Supabase Site URL. Existing verified factors, secrets, codes, MFA checks and removal controls are unchanged. Existing authenticator entries can be renamed inside the authenticator app without removing the factor or re-enrolling.
+
+## 2026-10-28 — Admin IP allowlist
+
+Admin access requires ADMIN_ALLOWED_IPS (comma-separated exact IPv4 addresses, private Vercel Production/Preview setting) and the Vercel-managed x-vercel-forwarded-for header. Missing/malformed configuration, untrusted runtime, absent/ambiguous IP or unlisted IPv6 fail closed for admin access; never fall back to caller-supplied forwarded headers. IPv4-mapped addresses normalize. No development or query/cookie bypass exists. Other hosts/aliases share the same role guard.
+
+Middleware returns403 early for known admin-only paths. The verified-user MFA/session guards additionally re-read the private profile role and restrict actual admins on shared pages, API routes, server actions, password updates and MFA management; members and customers retain their existing scope. Password sign-in signs out denied admins; an existing admin session gets no bypass. Admin member/client inspection remains tied to the actual admin identity. Unknown roles never gain privileges. No private allowlist values are committed.
+
+The allowlist does not modify SSH, ISPConfig, Vercel/Supabase dashboards, public mail/DNS or authenticated operator/cron/device protocols. No blanket site-level Trusted IPs or WAF challenge is installed. Recovery: use the separately authenticated Vercel account to correct ADMIN_ALLOWED_IPS and redeploy; no public recovery bypass. Do not roll back to older unguarded deployments as a normal recovery step. Retain current deployment/source and env metadata for review. CI includes strict policy and actual auth/MFA/login integration regressions.

@@ -1,3 +1,4 @@
+import {requireAdminNetworkForUser} from "@/lib/security/adminNetwork";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
@@ -8,6 +9,7 @@ import './security.css';
 export const dynamic='force-dynamic';
 export default async function SecurityPage({searchParams}:{searchParams:{expired?:string;manage?:string;removed?:string;saved?:string}}){
  const auth=createAuthClient();const {data:{user},error}=await auth.auth.getUser();if(error||!user)redirect('/login');
+ await requireAdminNetworkForUser(user.id);
  const manage=searchParams.manage==='1';
  if(manage)await requireEnrolledMfa();
  const factors=await auth.auth.mfa.listFactors();

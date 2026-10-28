@@ -1,3 +1,4 @@
+import {requireAdminNetworkForRole} from "./security/adminNetwork";
 import { requireEnrolledMfa } from "./security/mfa";
 import { createAuthClient } from "./supabase/server";
 import * as store from "./store";
@@ -31,7 +32,7 @@ export async function getAuthenticatedProfile(): Promise<Profile | null> {
 
   try {
     const existing = await store.getProfile(user.id);
-    if (existing) return existing;
+    if (existing) {requireAdminNetworkForRole(existing.role);return existing;}
 
     const role = "member";
     const name = user.email?.split("@")[0] ?? "";

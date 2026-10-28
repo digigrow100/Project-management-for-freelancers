@@ -1,4 +1,5 @@
 "use server";
+import {assertAdminNetworkForUser,AdminNetworkDenied} from "@/lib/security/adminNetwork";
 import { limitSignIn, rateLimit, SecurityCheckUnavailable } from "@/lib/security/rateLimit";
 import { requireEnrolledMfa } from "@/lib/security/mfa";
 import {cookies} from "next/headers";
@@ -35,12 +36,20 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
   }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     redirect(`/login?error=${encodeURIComponent("Sign-in failed. Check your details and try again.")}`);
   }
 
+  try {
+    if(!data.user)throw new Error("Missing authenticated user.");
+    await assertAdminNetworkForUser(data.user.id);
+  } catch(error) {
+    await supabase.auth.signOut();
+    if(error instanceof AdminNetworkDenied)redirect("/login/network-restricted");
+    redirect("/login?error="+encodeURIComponent("Sign-in is temporarily unavailable. Please try again later."));
+  }
   redirect("/");
 }
 
