@@ -127,6 +127,12 @@ const esbuild=require('esbuild');
  await assert.rejects(()=>serviceRequest(member,linkCommand));
  await assert.rejects(()=>serviceRequest(member,linkCommand,{internal:false}));
  env.HOSTING_GITHUB_ENABLED='';await assert.rejects(()=>serviceRequest(member,linkCommand,{internal:true}));env.HOSTING_GITHUB_ENABLED='approved';
+ // a full snapshot (300 repositories with long names) fits the signed request budget; every other command keeps the smaller one
+ remoteStatus=ghStatus();
+ const big=Array.from({length:300},(_,n)=>({id:n+1,full_name:'a'.repeat(39)+'/'+'b'.repeat(100)}));
+ assert.ok(JSON.stringify(big).length>30000);
+ await serviceRequest(member,{action:'source.github_link',service,installation_id:7,github_user_id:99,github_login:'octo',repositories:big},{internal:true});
+ assert.equal(wire.command.repositories.length,300);
  // --- status and policy controls -----------------------------------------------------------------------------------------------------------------
  remoteStatus=ghStatus();
  assert.equal((await serviceRequest(member,{action:'source.github_status',service})).installations[0].installation_id,7);
