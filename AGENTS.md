@@ -1116,3 +1116,7 @@ Live preview diagnosis showed trustedRuntime=true and policyConfigured=true but 
 ## 2026-10-29 — Verified GitHub connection and automatic deployment (source only)
 
 GitHub App connection through portal OAuth with signed state and a one-time nonce cookie; the user token is used for three reads and dropped, only the verified result reaches the private service (internal-only `source.github_link`, up to 64 KiB so a full 300-repository snapshot fits). Added `source.github_status`, `source.auto_revoke`, `source.auto_resume` and panel controls for an owner-signed, bounded auto-deploy policy. Gated by HOSTING_GITHUB_ENABLED / HOSTING_AUTODEPLOY_ENABLED; nothing is deployed or live. See "GitHub connection and automatic deployment".
+
+## 2026-10-29 — Owner approvals through a local signer and sealed runtime secrets (source only)
+
+Owner approvals and the automatic-deployment policy are signed on the owner's own computer (`scripts/signer/hms_signer.py`) and relayed by owner sessions only; runtime secrets are sealed in the browser to a pinned server key and never returned. The owner Website source page alone may connect to the local signer (`connect-src` exception for `http://127.0.0.1:47419`, tests/hosting-csp.cjs). Gated by HOSTING_NEXTJS_ENABLED, HOSTING_AUTODEPLOY_ENABLED and the key fingerprint settings; nothing is deployed or live. See "Owner approvals and runtime secrets".

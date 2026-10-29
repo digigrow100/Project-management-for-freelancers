@@ -1,15 +1,14 @@
 /** @type {import('next').NextConfig} */
+// The owner approval page alone may talk to the owner's own signing program on this computer (loopback, one exact port).
+const SIGNER_ORIGIN = "http://127.0.0.1:47419";
+const csp = (extraConnect = "") =>
+  "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.supabase.co; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co" + extraConnect + ";";
 const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=31536000" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-  {
-    key: "Content-Security-Policy",
-    value:
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.supabase.co; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co;",
-  },
 ];
 
 const nextConfig = {
@@ -22,8 +21,13 @@ const nextConfig = {
       {source:"/hosting/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},
       {source:"/login/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},
       {
-        source: "/:path*",
-        headers: securityHeaders,
+        // Every page except the owner's Website source page gets the strict policy.
+        source: "/:path((?!hosting/sources$).*)",
+        headers: [...securityHeaders, { key: "Content-Security-Policy", value: csp() }],
+      },
+      {
+        source: "/hosting/sources",
+        headers: [...securityHeaders, { key: "Content-Security-Policy", value: csp(" " + SIGNER_ORIGIN) }],
       },
     ];
   },
