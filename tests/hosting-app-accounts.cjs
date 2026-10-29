@@ -48,6 +48,13 @@ await q("update freelance_hq_hosting_services set status='active' where id=$1",[
 const svcB=await assign(clientB,starter,'other.example.test');const accB=await open(admin,svcB);
 await assert.rejects(record(status(),admin,accB),/does not match/);
 await assert.rejects(q("update freelance_hq_hosting_services set status='active' where id=$1",[svcB]),/not verified/);
+// an enforced account can be suspended; the receipt stays as history, nothing can be added, and Active cannot be re-entered without a fresh enforced state
+assert.equal((await record(status({state:'suspended',enforced:false,receipt_digest:null})))[0].s,'suspended');
+account=(await q('select * from freelance_hq_hosting_accounts where id=$1',[accA]))[0];assert.equal(account.status,'suspended');assert.equal(account.receipt_digest,'c'.repeat(64));
+await assert.rejects(q("select freelance_hq_hosting_add_site($1,$2,'while-suspended.example.test')",[admin,accA]),/enforced account/);
+await q("update freelance_hq_hosting_services set status='suspended' where id=$1",[svcA]);
+await assert.rejects(q("update freelance_hq_hosting_services set status='active' where id=$1",[svcA]),/not verified/);
+assert.equal((await record(status()))[0].s,'enforced');await q("update freelance_hq_hosting_services set status='active' where id=$1",[svcA]);
 const add=(host,acc=accA)=>q('select freelance_hq_hosting_add_site($1,$2,$3) id',[admin,acc,host]);
 await add('two.example.test');await add('three.example.test');
 await assert.rejects(add('four.example.test'),/allowance of this account is used/);

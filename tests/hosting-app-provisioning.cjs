@@ -16,7 +16,7 @@ const snapshot={schema:1,package_id:pkg,name:'App Business',version:1,limits,lim
 const tables={
  freelance_hq_hosting_services:[{id:service,client_id:client,server_id:server,package_id:pkg,status:'pending',assignment_key:assignment,package_snapshot:snapshot,primary_domain:'first.example.test'}],
  freelance_hq_hosting_accounts:[{id:account,service_id:service,client_id:client,server_id:server,package_id:pkg,package_version:1,assignment_key:assignment,limits_digest:digest,status:'requested'}],
- freelance_hq_hosting_account_sites:[{id:service,account_id:account,client_id:client,hostname:'first.example.test',is_primary:true},{id:second,account_id:account,client_id:client,hostname:'second.example.test',is_primary:false}],
+ freelance_hq_hosting_account_sites:[{id:service,account_id:account,client_id:client,hostname:'first.example.test',is_primary:true,status:'verified'},{id:second,account_id:account,client_id:client,hostname:'second.example.test',is_primary:false,status:'verified'}],
  freelance_hq_hosting_clients:[{id:client,status:'active'}],freelance_hq_hosting_packages:[{id:pkg,is_active:true}],freelance_hq_hosting_servers:[{id:server,status:'available'}],
  freelance_hq_hosting_package_servers:[{package_id:pkg,server_id:server}]};
 const rpcCalls=[];let rpcError=null,rpcData='enforced';
@@ -40,7 +40,7 @@ const sandbox={module:{exports:{}},exports:{},require,Buffer,TextDecoder,AbortSi
   return new Response(JSON.stringify({id:'a'.repeat(32),digest:'b'.repeat(64),state:'queued',live_verified:false}));
  }};
 sandbox.exports=sandbox.module.exports;vm.runInNewContext(build.outputFiles[0].text,sandbox);
-const {serviceRequest}=sandbox.module.exports;
+const {serviceRequest,signerContext}=sandbox.module.exports;
 const scope={actor,owner:true,readOnly:false,sites:new Map([[service,{client,name:'Fixture'}],[second,{client,name:'second.example.test'}]])};
 const provision={action:'hosting.app.provision',service,site:service,request_key:request};
 const denied=async(context,command,why)=>{const before=fetches;await assert.rejects(()=>serviceRequest(context,command),undefined,why);assert.equal(fetches,before,why+': nothing may reach the private service');};
@@ -95,5 +95,20 @@ const usageFor=(over={})=>Object.fromEntries(limitsMod.RESOURCE_FIELDS.map(f=>[f
 reply=()=>({account,usage:usageFor({disk_mb:entry('warn90',9)}),live_verified:false});
 const usage=await serviceRequest(scope,{action:'hosting.app.usage',service});assert.equal(usage.usage.traffic_mb.used,null);assert.equal(rpcCalls.at(-1)[0],'freelance_hq_hosting_record_app_usage');
 for(const body of [{account:id('d'),usage:usageFor(),live_verified:false},{account,usage:{disk_mb:entry('ok',1)},live_verified:false},{account,usage:{...usageFor(),invented:entry('ok',1)},live_verified:false},{account,usage:usageFor({disk_mb:{...entry('ok',1),extra:1}}),live_verified:false}]){reply=()=>body;await assert.rejects(()=>serviceRequest(scope,{action:'hosting.app.usage',service}));}
+// ---- additional websites follow their account AND their parent contract (source commands and signer context)
+env.HOSTING_SOURCES_ENABLED='approved';env.HOSTING_PUBLISHING_ENABLED='approved';
+const sourceCall={action:'source.status',service:second};
+const reaches=async(why)=>{const before=fetches;reply=()=>({});await assert.rejects(()=>serviceRequest(scope,sourceCall));assert.ok(fetches>before,why+': should reach the private service');};
+const blocked=async(why)=>{const before=fetches;await assert.rejects(()=>serviceRequest(scope,sourceCall));assert.equal(fetches,before,why+': must not reach the private service');};
+tables.freelance_hq_hosting_accounts[0].status='enforced';
+await reaches('verified website of an enforced account with an active parent');
+assert.deepEqual({...await signerContext(scope,second)},{service:second,client,actor});
+await touch('freelance_hq_hosting_services',{status:'cancelled'},async()=>{await blocked('parent contract cancelled');await assert.rejects(()=>signerContext(scope,second));})();
+await touch('freelance_hq_hosting_services',{status:'suspended'},()=>blocked('parent contract suspended'))();
+await touch('freelance_hq_hosting_accounts',{status:'suspended'},async()=>{await blocked('account suspended');await assert.rejects(()=>signerContext(scope,second));})();
+await touch('freelance_hq_hosting_accounts',{status:'provider_confirmed'},()=>blocked('account not enforced'))();
+tables.freelance_hq_hosting_account_sites[1].status='reserved';await blocked('website not verified');await assert.rejects(()=>signerContext(scope,second));tables.freelance_hq_hosting_account_sites[1].status='verified';
+await assert.rejects(()=>signerContext({...scope,owner:false},second));await assert.rejects(()=>signerContext({...scope,sites:new Map()},second));
+tables.freelance_hq_hosting_accounts[0].status='requested';
 console.log('PASS App account request building, contract/tamper denial, answer binding, receipt recording, unknown usage'+(python?', real Python gateway/SQLite queue':''));
 })().catch(error=>{console.error(error);process.exitCode=1});

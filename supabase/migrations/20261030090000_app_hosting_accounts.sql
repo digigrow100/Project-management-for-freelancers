@@ -20,7 +20,8 @@ create table public.freelance_hq_hosting_accounts(
  usage_at timestamptz,
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(),
- check((status='enforced')=(receipt is not null and receipt_digest is not null))
+ -- enforced REQUIRES a receipt; a suspended or uncertain account keeps the receipt it was verified with (history), it can never be Active again without a new enforced state
+ check(status<>'enforced' or (receipt is not null and receipt_digest is not null))
 );
 create table public.freelance_hq_hosting_account_sites(
  id uuid primary key default gen_random_uuid(),

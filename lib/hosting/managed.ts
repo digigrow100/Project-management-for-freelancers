@@ -26,6 +26,21 @@ type SourceCommand=Extract<Command,{action:typeof SOURCE_ACTIONS[number]}>;
 type AppCommand=Extract<Command,{action:'hosting.app.provision'|'hosting.app.status'|'hosting.app.usage'}>;
 function isAppCommand(command:Command):command is AppCommand{return command.action==='hosting.app.provision'||command.action==='hosting.app.status'||command.action==='hosting.app.usage';}
 function isSourceCommand(command:Command):command is SourceCommand{return (SOURCE_ACTIONS as readonly string[]).includes(command.action);}
+type SiteRecord={id:string;client_id:string;status:string};
+// The saved contract service, or an additional website of an App Hosting account. An additional website is usable only when its own provider objects are
+// verified, its account is enforced AND the parent contract is still pending/active (suspending or cancelling the contract stops its websites too).
+async function siteRecord(id:string):Promise<SiteRecord|null>{
+ const db=getSupabase();
+ const direct=await db.from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',id).single();
+ if(!direct.error&&direct.data)return direct.data as SiteRecord;
+ const extra=await db.from('freelance_hq_hosting_account_sites').select('id,client_id,status,account_id').eq('id',id).single();
+ if(extra.error||!extra.data||extra.data.status!=='verified')return null;
+ const account=await db.from('freelance_hq_hosting_accounts').select('status,client_id,service_id').eq('id',extra.data.account_id).single();
+ if(account.error||!account.data||account.data.status!=='enforced'||account.data.client_id!==extra.data.client_id)return null;
+ const parent=await db.from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',account.data.service_id).single();
+ if(parent.error||!parent.data||parent.data.client_id!==extra.data.client_id||!['pending','active'].includes(parent.data.status))return null;
+ return {id:String(extra.data.id),client_id:String(extra.data.client_id),status:parent.data.status as string};
+}
 async function appRows(serviceId:string,siteId:string):Promise<Rows>{
  const db=getSupabase();
  const [service,account]=await Promise.all([
@@ -108,15 +123,7 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
  if(isSourceCommand(command)){
   // Client or owner scope; ownership is the saved service→client relation, never a browser field.
   if(process.env.HOSTING_SOURCES_ENABLED!=='approved'||(scope.owner!==true&&!clientFeatureEnabled('sources',process.env)))throw new ServiceDenied();
-  const direct=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',command.service).single();
-  let found:{error:unknown;data:{id:string;client_id:string;status:string}|null}={error:direct.error,data:direct.data as {id:string;client_id:string;status:string}|null};
-  if(found.error||!found.data){
-   // An additional website of an App Hosting account is usable only once its provider objects and the account's controls are verified.
-   const extra=await getSupabase().from('freelance_hq_hosting_account_sites').select('id,client_id,status,account_id').eq('id',command.service).single();
-   const account=extra.data?await getSupabase().from('freelance_hq_hosting_accounts').select('status,client_id').eq('id',extra.data.account_id).single():null;
-   if(extra.error||!extra.data||!account||account.error||account.data?.status!=='enforced'||account.data.client_id!==extra.data.client_id||extra.data.status!=='verified')throw new ServiceDenied();
-   found={error:null,data:{id:String(extra.data.id),client_id:String(extra.data.client_id),status:'active'}};
-  }
+  const found:{error:unknown;data:SiteRecord|null}={error:null,data:await siteRecord(command.service)};
   if(found.error||!found.data||found.data.client_id!==scope.sites.get(command.service)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
   // Writing to a customer's website root is a separate release switch from staging and GitHub work.
   if((command.action==='source.recover'||command.action==='source.build'||(command.action==='source.request'&&(command.operation==='publish'||command.operation==='rollback')))&&process.env.HOSTING_PUBLISHING_ENABLED!=='approved')throw new ServiceDenied();
@@ -261,7 +268,7 @@ export async function signerContext(scope:ServiceScope,rawService:unknown){
  const service=z.string().uuid().safeParse(rawService);
  if(!service.success||scope.owner!==true||scope.readOnly||!scope.sites.has(service.data))throw new ServiceDenied();
  if(process.env.HOSTING_SOURCES_ENABLED!=='approved')throw new ServiceDenied();
- const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',service.data).single();
- if(found.error||!found.data||found.data.client_id!==scope.sites.get(service.data)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
+ const found:{error:unknown;data:SiteRecord|null}={error:null,data:await siteRecord(service.data)};
+ if(!found.data||found.data.client_id!==scope.sites.get(service.data)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
  return {service:found.data.id as string,client:found.data.client_id as string,actor:scope.actor};
 }
