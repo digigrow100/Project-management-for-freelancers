@@ -219,6 +219,29 @@ owner-enrolled grants file on the VPS, not OAuth. See the automation repo's
 `docs/website-source-integration.md`. Test: `tests/hosting-sources.cjs` (set
 HMS_AUTOMATION_SOURCE to also drive the real Python gateway/SQLite).
 
+### Website publishing, rollback and recovery (source only; not deployed)
+
+`source.request` now also accepts `publish` (a released, publishable tree) and `rollback`
+(no tree: the private service picks the retained previous release), and `source.recover`
+resolves an interrupted publication. All three need HOSTING_PUBLISHING_ENABLED=approved
+(separate from HOSTING_SOURCES_ENABLED), the same service/client scoping as every `source.*`
+command, an active client, a non-read-only session, and an independent owner signature on the
+VPS. Responses are strict-parsed: the queued job must be exactly the requested operation, and
+`published_to_web_root` / `live_verified` are accepted only when the publication object says the
+site is live **and** carries health evidence (`lib/hosting/managedSchema.ts`). The portal never
+sends or receives a filesystem path, UID or provider ID.
+
+`WebsiteSourcePanel` shows one lifecycle label derived from the private service's report
+(`lifecycle()`): Uploaded, Staged, Awaiting owner approval, Staging/Publishing, Live on the
+server, Failed (previous site restored) and Uncertain (review required, further changes
+blocked). Next.js/Node sources are listed as staged only ("needs the reviewed build and runtime
+pipeline") and offer no publish button; the VPS also refuses them. "Live" means files written,
+committed and a one-time marker served by the VPS; DNS/SSL stay on the Domains page.
+`tests/hosting-source-lifecycle.cjs` covers every state and the no-live-without-proof rule;
+`tests/hosting-sources.cjs` covers gating, scoping, strict responses and (with
+HMS_AUTOMATION_SOURCE) the real Python queue. ZIP upload now targets a dedicated listener (see the
+automation repo's `docs/website-publishing.md`); the ticket format is unchanged.
+
 ### Hosting hostname and search privacy
 
 The owner-selected hosting address is `https://web.housemysite.com`.
