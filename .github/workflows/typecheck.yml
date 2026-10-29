@@ -35,6 +35,7 @@ jobs:
       - run: node tests/hosting-approvals.cjs
       - run: node tests/hosting-csp.cjs
       - run: node tests/hosting-managed.cjs
+      - run: node tests/hosting-owner-panel.cjs
       - run: node tests/member-view-security.cjs
       - run: node tests/hosting-client-view.cjs
 
