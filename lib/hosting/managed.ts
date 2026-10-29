@@ -3,7 +3,7 @@ import {createHmac,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {requireHostingAdmin,requireHostingClient} from './auth';
 import {getSupabase} from '@/lib/supabaseClient';
-import {serviceCommand,managedInventory,formProject,sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,sourceUploadTicket,SOURCE_UPLOAD_MAX_BYTES} from './managedSchema';
+import {serviceCommand,githubLinkCommand,managedInventory,formProject,sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,githubStatus,sourceUploadTicket,SOURCE_UPLOAD_MAX_BYTES} from './managedSchema';
 import {clientFeatureEnabled} from './clientRelease';
 export class ServiceDenied extends Error{}
 export type ServiceScope={actor:string;readOnly:boolean;owner?:boolean;sites:Map<string,{client:string;name:string}>};
@@ -14,13 +14,13 @@ export async function serviceScope(owner:boolean):Promise<ServiceScope>{
  const result=await query;if(result.error||!result.data||result.data.length>100)throw Error('Service scope unavailable');
  return {actor,readOnly,owner,sites:new Map(result.data.map(row=>[String(row.id),{client:String(row.client_id),name:String(row.name)}]))};
 }
-const SOURCE_ACTIONS=['source.status','source.repositories','source.connect','source.switch','source.disconnect','source.request','source.build','source.discard','source.recover','source.upload_ticket'] as const;
-type Command=z.infer<typeof serviceCommand>;
+const SOURCE_ACTIONS=['source.status','source.repositories','source.connect','source.switch','source.disconnect','source.request','source.build','source.discard','source.recover','source.github_status','source.github_link','source.auto_revoke','source.auto_resume','source.upload_ticket'] as const;
+type Command=z.infer<typeof serviceCommand>|z.infer<typeof githubLinkCommand>;
 type SourceCommand=Extract<Command,{action:typeof SOURCE_ACTIONS[number]}>;
 function isSourceCommand(command:Command):command is SourceCommand{return (SOURCE_ACTIONS as readonly string[]).includes(command.action);}
-export async function serviceRequest(scope:ServiceScope,raw:unknown){
- const result=serviceCommand.safeParse(raw);if(!result.success)throw new ServiceDenied();const command=result.data;
- if(scope.readOnly&&!['inventory','forms.list','forms.status','source.status','source.repositories'].includes(command.action))throw new ServiceDenied();
+export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{internal?:boolean}={}){
+ const result=(options.internal===true?z.union([serviceCommand,githubLinkCommand]):serviceCommand).safeParse(raw);if(!result.success)throw new ServiceDenied();const command=result.data;
+ if(scope.readOnly&&!['inventory','forms.list','forms.status','source.status','source.repositories','source.github_status'].includes(command.action))throw new ServiceDenied();
  const service='service'in command?command.service:'project'in command?command.project:null;if(service&&!scope.sites.has(service))throw new ServiceDenied();
  let wireCommand:unknown=command;
  if(command.action==='hosting.domain.request'||command.action==='hosting.domain.status'){
@@ -63,7 +63,10 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
   if((command.action==='source.recover'||command.action==='source.build'||(command.action==='source.request'&&(command.operation==='publish'||command.operation==='rollback')))&&process.env.HOSTING_PUBLISHING_ENABLED!=='approved')throw new ServiceDenied();
   // Building customer code runs in the private isolated builder; it has its own release switch.
   if(command.action==='source.build'&&process.env.HOSTING_NEXTJS_ENABLED!=='approved')throw new ServiceDenied();
-  if(command.action!=='source.status'&&command.action!=='source.repositories'){
+  // Linking GitHub and resuming automatic deployment each have their own release switch; stopping automation is always allowed.
+  if(command.action==='source.github_link'&&(options.internal!==true||process.env.HOSTING_GITHUB_ENABLED!=='approved'))throw new ServiceDenied();
+  if(command.action==='source.auto_resume'&&(process.env.HOSTING_AUTODEPLOY_ENABLED!=='approved'||process.env.HOSTING_PUBLISHING_ENABLED!=='approved'))throw new ServiceDenied();
+  if(!['source.status','source.repositories','source.github_status'].includes(command.action)){
    const client=await getSupabase().from('freelance_hq_hosting_clients').select('status').eq('id',found.data.client_id).single();
    if(client.error||client.data?.status!=='active')throw new ServiceDenied();
   }
@@ -82,7 +85,7 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
   return sourceUploadTicket.parse({url:new URL('/v1/uploads',url).toString(),ticket,signature:createHmac('sha256',key).update('hms:upload-ticket:v1:'+ticket).digest('hex'),expires,max_bytes:SOURCE_UPLOAD_MAX_BYTES});
  }
  const body=JSON.stringify({schema:1,actor:scope.actor,nonce:randomUUID(),expires:Math.floor(Date.now()/1000)+120,command:wireCommand});
- if(Buffer.byteLength(body)>32768)throw new ServiceDenied();
+ if(Buffer.byteLength(body)>(command.action==='source.github_link'?65536:32768))throw new ServiceDenied();   // a full repository snapshot is larger than any other command
  const response=await fetch(new URL('/v1/services',url),{method:'POST',body,headers:{'Content-Type':'application/json','X-HMS-Services-Signature':createHmac('sha256',key).update('hms:services-portal:v1:'+body).digest('hex')},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});
  if(!response.ok||!response.body)throw Error('Service outcome unavailable');const reader=response.body.getReader();let bytes=0,text='';const decoder=new TextDecoder();
  try{for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>1024*1024)throw Error('Response exceeds budget');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();reader.releaseLock();}
@@ -112,6 +115,14 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown){
    // The private service must have queued exactly the operation that was requested.
    if(command.action==='source.build'?job.operation!=='build'||job.tree!==command.tree:command.action==='source.recover'?job.operation!=='recover':job.operation!==command.operation||(command.operation==='publish'&&job.tree!==command.tree)||(command.operation==='export'&&job.tree!==command.tree))throw new ServiceDenied();
    return job;
+  }
+  if(command.action==='source.github_status'||command.action==='source.github_link'||command.action==='source.auto_revoke'||command.action==='source.auto_resume'){
+   const github=githubStatus.parse(value);if(github.service!==command.service)throw new ServiceDenied();
+   // The private service must have applied exactly the requested change to the policy.
+   if(command.action==='source.github_link'&&!github.installations.some(i=>i.installation_id===command.installation_id&&i.state==='active'))throw new ServiceDenied();
+   if(command.action==='source.auto_revoke'&&github.auto.policy&&github.auto.policy.state!=='revoked')throw new ServiceDenied();
+   if(command.action==='source.auto_resume'&&(!github.auto.policy||github.auto.policy.state!=='active'))throw new ServiceDenied();
+   return github;
   }
   if(command.action==='source.repositories'){const list=sourceRepositories.parse(value);if(list.service!==command.service)throw new ServiceDenied();return list;}
   const status=sourceStatus.parse(value);if(status.service!==command.service)throw new ServiceDenied();

@@ -1,6 +1,6 @@
 "use client";
-import {useRef,useState} from 'react';
-import {sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,sourceUploadTicket,buildVariables,SOURCE_UPLOAD_MAX_BYTES,type SourceStatus,type SourceRepositories} from '@/lib/hosting/managedSchema';
+import {useEffect,useRef,useState} from 'react';
+import {sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,sourceUploadTicket,buildVariables,githubStatus,SOURCE_UPLOAD_MAX_BYTES,type SourceStatus,type SourceRepositories,type GithubStatus} from '@/lib/hosting/managedSchema';
 const button='rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
 const quiet='rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50';
 const input='mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900';
@@ -31,9 +31,10 @@ export function lifecycle(status:SourceStatus){
  if(status.trees.some(t=>t.state==='staged'))return {label:'Uploaded — not published',tone:'text-slate-700'};
  return {label:'Not published',tone:'text-slate-700'};
 }
-export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=false,publishingEnabled=false,nextjsEnabled=false}:{scope:'owner'|'client';services:{id:string;name:string}[];readOnly?:boolean;uploadEnabled?:boolean;publishingEnabled?:boolean;nextjsEnabled?:boolean}){
+export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=false,publishingEnabled=false,nextjsEnabled=false,githubEnabled=false,autodeployEnabled=false}:{scope:'owner'|'client';services:{id:string;name:string}[];readOnly?:boolean;uploadEnabled?:boolean;publishingEnabled?:boolean;nextjsEnabled?:boolean;githubEnabled?:boolean;autodeployEnabled?:boolean}){
  const [service,setService]=useState(''),[status,setStatus]=useState<SourceStatus|null>(null),[repos,setRepos]=useState<SourceRepositories|null>(null);
- const [variables,setVariables]=useState<Record<string,string>>({});
+ const [variables,setVariables]=useState<Record<string,string>>({}),[github,setGithub]=useState<GithubStatus|null>(null);
+ useEffect(()=>{const result=new URLSearchParams(window.location.search).get('github');if(result)setMessage(({linked:'GitHub connected. Choose a repository below.',requested:'GitHub asked an organisation owner to approve the installation. Come back after they approve it.',denied:'GitHub could not be verified for this account. Nothing was connected.',unavailable:'GitHub could not be reached. Try again.'} as Record<string,string>)[result]??'');},[]);
  const [repo,setRepo]=useState(''),[branch,setBranch]=useState('main'),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const lock=useRef(false),keys=useRef(new Map<string,string>());
  async function call(command:unknown){
@@ -49,6 +50,7 @@ export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=
   const next=sourceStatus.parse(await call({action:'source.status',service:id}));if(next.service!==id)throw Error();setStatus(next);
   if(!readOnly){const list=sourceRepositories.parse(await call({action:'source.repositories',service:id}));if(list.service!==id)throw Error();setRepos(list);setRepo('');}
   setConfirm(false);
+  try{const g=githubStatus.parse(await call({action:'source.github_status',service:id}));if(g.service!==id)throw Error();setGithub(g);}catch{setGithub(null);}
  }
  async function change(action:'source.connect'|'source.switch'|'source.disconnect'){
   if(!status||(action!=='source.disconnect'&&!repo)||!confirm)throw Error();
@@ -80,6 +82,17 @@ export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=
   if(job.operation!=='build'||job.tree!==tree)throw Error();
   keys.current.delete(k);setMessage('Build requested ('+job.id+'). It runs in an isolated environment and changes nothing on the live website. Activation needs separate owner approval.');await load();
  }
+ async function connectGithub(){
+  const response=await fetch('/api/hosting-github/start?scope='+scope,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({service}),redirect:'error',signal:AbortSignal.timeout(20000)});
+  if(!response.ok)throw Error();
+  const {url}=await response.json() as {url:string};
+  if(!/^https:\/\/github\.com\/apps\/[A-Za-z0-9-]+\/installations\/new\?state=/.test(url))throw Error();
+  window.location.assign(url);
+ }
+ async function autoControl(action:'source.auto_revoke'|'source.auto_resume'){
+  const next=githubStatus.parse(await call({action,service}));if(next.service!==service)throw Error();setGithub(next);
+  setMessage(action==='source.auto_revoke'?'Automatic deployment stopped. Nothing already live was changed.':'Automatic deployment resumed under the same owner-signed limits.');
+ }
  async function recover(jobId:string){
   const {k,key}=keyFor([service,'recover',jobId]);
   const job=sourceJob.parse(await call({action:'source.recover',service,job:jobId,request_key:key}));
@@ -108,6 +121,13 @@ export function WebsiteSourcePanel({scope,services,readOnly=false,uploadEnabled=
    <div className="rounded-lg border p-3 text-sm"><p className={'font-medium '+state.tone} aria-live="polite">Website status: {state.label}</p>
     {status.publication.state==='live'&&status.publication.health?<p className="mt-1 text-xs text-slate-500">Served by this server · {runtimes[status.publication.runtime??'unknown']} · health checked {new Date(status.publication.health.checked*1000).toLocaleString()}. DNS and SSL are shown on the Domains page.</p>:null}
     {status.repository?<p className="mt-2">{status.repository.full_name} · branch {status.repository.branch}<span className="block text-xs text-slate-500">{status.repository.write?'Read and write access':'Read-only access: export is unavailable'}</span></p>:<p className="mt-2">No repository connected.</p>}</div>
+   {github?<div className="space-y-2 border-t pt-4 text-sm"><h3 className="font-medium">GitHub</h3>
+    {github.installations.length?<ul className="space-y-1">{github.installations.map(i=><li key={i.installation_id}>{i.account_login} · linked as {i.github_login} · {i.repositories} repositories · {i.state==='active'?(i.write?'read and write':'read only'):<strong className="text-amber-700">{i.state} — reconnect GitHub</strong>}</li>)}</ul>:<p className="text-slate-600">GitHub is not connected for this account.</p>}
+    {!readOnly&&githubEnabled?<button type="button" className={quiet} disabled={busy} onClick={()=>void run(connectGithub)}>{github.installations.length?'Add or refresh GitHub access':'Connect GitHub'}</button>:null}
+    {github.auto.policy?<div className="rounded-lg border p-3"><p>Automatic deployment: <strong className={github.auto.policy.state==='active'?'text-green-700':'text-amber-700'}>{github.auto.policy.state}</strong>{github.auto.policy.reason?' ('+github.auto.policy.reason.replaceAll('_',' ')+')':''} · branch {github.auto.policy.branch} · {github.auto.policy.allow_activation?'goes live automatically':'stages only; you still approve going live'} · up to {github.auto.policy.max_per_day} per day · until {new Date(github.auto.policy.expires*1000).toLocaleDateString()}</p>
+     {github.auto.pending?<p className="text-xs text-slate-500">A newer push ({github.auto.pending.commit_sha.slice(0,7)}) is waiting its turn.</p>:null}
+     {github.auto.recent.length?<details className="text-xs text-slate-500"><summary>Recent automatic activity</summary><ul>{github.auto.recent.map((e,i)=><li key={i}>{new Date(e.created*1000).toLocaleString()} · {e.kind.replaceAll('_',' ')}{e.detail?' · '+e.detail:''}</li>)}</ul></details>:null}
+     {!readOnly?<div className="mt-2 flex gap-2">{github.auto.policy.state==='paused'&&autodeployEnabled?<button type="button" className={quiet} disabled={busy} onClick={()=>void run(()=>autoControl('source.auto_resume'))}>Resume</button>:null}{['active','paused'].includes(github.auto.policy.state)?<button type="button" className={quiet} disabled={busy} onClick={()=>void run(()=>autoControl('source.auto_revoke'))}>Stop automatic deployment</button>:null}</div>:null}</div>:null}</div>:null}
    {!readOnly&&repos?<div className="space-y-3 border-t pt-4"><label className="block text-sm">{status.repository?'Switch to repository':'Repository'}<select className={input} value={repo} disabled={busy} onChange={e=>setRepo(e.target.value)}><option value="">Choose an authorized repository</option>{repos.available.map(r=><option key={r.repository_id} value={String(r.repository_id)}>{r.full_name}{r.write?'':' (read-only)'}</option>)}</select>{!repos.available.length?<span className="text-xs text-slate-500">No repositories are authorized for your account yet. Ask support to enroll your GitHub installation.</span>:null}</label>
     <label className="block text-sm">Branch<input className={input} value={branch} onChange={e=>setBranch(e.target.value)} maxLength={200} disabled={busy}/></label>
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirm} disabled={busy} onChange={e=>setConfirm(e.target.checked)}/>I understand this changes where future deploys and exports use code from. Existing website files are not deleted.</label>
