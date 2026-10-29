@@ -104,7 +104,7 @@ async function ticketDetails(id: string, clientId?: string) {
 export async function adminTicket(id: string) { await requireHostingAdmin(); return ticketDetails(id); }
 export async function clientTicket(id: string) { const s=await requireHostingClient();return {...await ticketDetails(id,s.clientId),readOnly:s.adminView}; }
 const clientColumns = {
-  services:"id,client_id,package_id,server_id,name,primary_domain,status,price_minor,currency,billing_cycle,next_due_date,auto_invoice",
+  services:"id,client_id,package_id,server_id,name,primary_domain,status,price_minor,currency,billing_cycle,next_due_date,auto_invoice,package_snapshot",
   invoices:"id,number,client_id,service_id,currency,status,subtotal_minor,tax_minor,total_minor,issued_on,due_on,period_start,notes,terms",
   domains:"id,client_id,service_id,hostname,dns_status,dns_checked_at,ssl_status,ssl_checked_at,ssl_expires_at,expires_on,auto_renew",
   payments:"id,client_id,invoice_id,amount_minor,currency,direction,refund_of,method,reference,paid_on",
@@ -121,4 +121,17 @@ export async function clientOverview() {
   const s=await requireHostingClient();
   const [summary,config]=await Promise.all([s.adminView?getSupabase().rpc("freelance_hq_hosting_admin_client_summary",{p_actor:s.userId,p_client:s.clientId}):getSupabase().rpc("freelance_hq_hosting_client_summary",{p_user:s.userId,p_client:s.clientId}),settings()]);
   return {...checked<{services:number;tickets:number;outstanding:{currency:string;outstanding_minor:number}[]}>(summary),config};
+}
+
+// Customer-safe catalogue. No server IDs, internal notes, private policies or other customers.
+export async function clientPackages(){
+ await requireHostingClient();
+ return checked<HostingPackage[]>(await getSupabase().from(hostingTable('packages')).select('id,name,description,price_minor,currency,billing_cycle,resource_limits,limits_version,pricing_ready,product_kind,is_active').eq('product_kind','app_hosting').eq('is_active',true).order('disk_mb'));
+}
+
+export async function clientPlanAssignments(page=1){
+ const s=await requireHostingClient();
+ const index=Math.max(1,Math.min(100000,Math.floor(page)||1));
+ const result=await getSupabase().from(hostingTable('services')).select(clientColumns.services,{count:'exact'}).eq('client_id',s.clientId).not('package_snapshot','is',null).order('created_at',{ascending:false}).range((index-1)*25,index*25-1);
+ return {records:checked<HostingService[]>(result),total:result.count??0,page:index};
 }
