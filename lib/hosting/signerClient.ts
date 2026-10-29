@@ -1,10 +1,11 @@
 // Browser-side client for the owner's local signing companion (scripts/signer/hms_signer.py on the OWNER'S computer).
 // The portal never holds a signing key; this only carries a request to 127.0.0.1 and checks that what comes back is exactly what was asked for.
 import {z} from 'zod';
-import {signedApproval,signedPolicy,signature} from './managedSchema';
+import {signedApproval,signedPolicy,signature,managedApproval} from './managedSchema';
 export const SIGNER_ORIGIN='http://127.0.0.1:47419';
 const hello=z.object({signer:z.literal('hms-signer'),version:z.literal(1),fingerprint:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 const approvalReply=z.object({approval:signedApproval}).strict();
+const managedReply=z.object({approval:managedApproval}).strict();
 const policyReply=z.object({policy:signedPolicy,signature}).strict();
 export class SignerError extends Error{}
 type Fetcher=(url:string,init?:RequestInit)=>Promise<Response>;
@@ -33,6 +34,13 @@ export async function signApproval(request:{job:string;digest:string;intent:Reco
  // What was signed must be the request we showed: same job, digest and plan, and a short life.
  const a=reply.approval;
  if(a.job!==request.job||a.digest!==request.digest||a.plan!==request.plan||a.expires<=a.issued||a.expires-a.issued>request.seconds+60)throw new SignerError('The signer returned something other than what was requested.');
+ return a;
+}
+// A mailbox, mail-domain or database change: the signer recomputes the digest from the whole request, so the intent shown is what is signed.
+export async function signManaged(request:{job:string;digest:string;intent:Record<string,unknown>;target:string|null;seconds:number},token:string,fetcher:Fetcher=fetch){
+ const reply=managedReply.parse(await post('managed-approval',request,token,fetcher));
+ const a=reply.approval;
+ if(a.job!==request.job||a.digest!==request.digest||a.expires<=a.issued||a.expires-a.issued>request.seconds+60)throw new SignerError('The signer returned something other than what was requested.');
  return a;
 }
 export async function signPolicy(proposal:z.input<typeof policyProposal>,token:string,fetcher:Fetcher=fetch){

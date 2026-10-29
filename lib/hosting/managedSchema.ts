@@ -10,12 +10,26 @@ export const buildVariables=z.record(buildVariableName,z.string().max(2048).rege
 const sourceBranch=z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/).refine(v=>!v.includes('..')&&!v.includes('//')&&!v.endsWith('/')&&!v.endsWith('.')&&!v.split('/').some(p=>p.startsWith('.')||p.endsWith('.lock')));
 export const SOURCE_UPLOAD_MAX_BYTES=64*1024*1024;
 export const managedOperation=z.discriminatedUnion('operation',[
+ z.object({operation:z.literal('domain_create')}).strict(),
  z.object({operation:z.literal('create'),name:z.string().regex(/^[a-z][a-z0-9_]{0,15}$/),sealed}).strict(),
  z.object({operation:z.literal('password'),resource:id,sealed}).strict(),
  z.object({operation:z.literal('quota'),resource:id,quota_mb:z.number().int().positive().max(2147483647)}).strict(),
  z.object({operation:z.literal('enable'),resource:id}).strict(),z.object({operation:z.literal('disable'),resource:id}).strict(),
  z.object({operation:z.literal('delete'),resource:id,confirm:id}).strict()
 ]);
+export const MANAGED_STATES=['queued','applying','uncertain','restore_review','provider_confirmed','failed','abandoned'] as const;
+export const managedJob=z.object({id,state:z.enum(MANAGED_STATES),created:z.number().int().nonnegative(),approval_received:z.boolean(),operation:z.enum(['create','password','quota','enable','disable','delete','domain_create']),
+ target:z.string().max(254).nullable(),quota_mb:z.number().int().positive().optional()}).strict();
+export const managedInventory=z.object({service:uuid,kind:z.enum(['email','database']),enabled:z.boolean(),resources:z.array(z.object({id,name:z.string().max(254)}).strict()).max(1000),jobs:z.array(managedJob).max(50),
+ limits:z.object({max_resources:z.number().int().positive().max(1000),max_quota_mb:z.number().int().positive().nullable(),used:z.number().int().nonnegative(),pending_creates:z.number().int().nonnegative()}).strict(),
+ domain:z.object({name:z.string().max(254),managed:z.boolean(),present:z.boolean()}).strict().optional(),host_key:z.string().regex(/^[A-Za-z0-9_-]{43}=$/)}).strict()
+ .refine(i=>(i.kind==='email')===(i.domain!==undefined)&&(i.kind==='email')===(i.limits.max_quota_mb!==null),'inventory');
+export const managedRequestResult=z.object({id:treeId,digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(MANAGED_STATES)}).strict();
+// Owner approval of a mailbox/database/mail-domain request. The signed packet carries no plan: the job digest already covers the whole request.
+export const managedApproval=z.object({job:treeId,digest:z.string().regex(/^[a-f0-9]{64}$/),nonce:z.string().regex(/^[a-f0-9]{32}$/),issued:z.number().int().positive(),expires:z.number().int().positive(),signature:z.string().regex(/^[A-Za-z0-9+/]{86}==$/)}).strict();
+export const managedApprovalView=z.object({job:managedJob.omit({approval_received:true}).extend({digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),intent:z.record(z.unknown()),digest:z.string().regex(/^[a-f0-9]{64}$/),approval_received:z.boolean(),approvable:z.boolean()}).strict()
+ .refine(v=>v.digest===v.job.digest&&(!v.approvable||v.job.state==='queued'),'managed approval view');
+export const managedApprovalsPending=z.object({service:uuid,kind:z.enum(['email','database']),pending:z.array(managedApprovalView).max(5)}).strict();
 // Owner-signed documents are produced by the owner's local signer and only relayed here; the private service verifies the signature and every bound field.
 export const signature=z.string().regex(/^[A-Za-z0-9+/]{86}==$/);
 export const signedApproval=z.object({job:treeId,digest:z.string().regex(/^[a-f0-9]{64}$/),nonce:z.string().regex(/^[a-f0-9]{32}$/),issued:sourceNumber,expires:sourceNumber,plan:z.string().regex(/^[a-f0-9]{64}$/).nullable(),signature}).strict();
@@ -53,6 +67,10 @@ export const serviceCommand=z.discriminatedUnion('action',[
  z.object({action:z.literal('source.upload_ticket'),service:uuid,size:z.number().int().min(22).max(SOURCE_UPLOAD_MAX_BYTES),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
  z.object({action:z.literal('inventory'),service:uuid,kind:z.enum(['email','database'])}).strict(),
  z.object({action:z.literal('request'),service:uuid,kind:z.enum(['email','database']),request_key:uuid,operation:managedOperation}).strict(),
+ z.object({action:z.literal('managed.approvals_pending'),service:uuid,kind:z.enum(['email','database'])}).strict(),
+ z.object({action:z.literal('managed.approval_view'),service:uuid,kind:z.enum(['email','database']),job:treeId}).strict(),
+ z.object({action:z.literal('managed.approve'),service:uuid,kind:z.enum(['email','database']),job:treeId,approval:managedApproval}).strict(),
+ z.object({action:z.literal('managed.approval_withdraw'),service:uuid,kind:z.enum(['email','database']),job:treeId}).strict(),
  z.object({action:z.literal('forms.list')}).strict(),
  z.object({action:z.literal('forms.rotate'),project:uuid}).strict(),
  z.object({action:z.literal('forms.revoke'),project:uuid}).strict(),
@@ -61,7 +79,6 @@ export const serviceCommand=z.discriminatedUnion('action',[
  // A rollback chooses its own target on the private service; publish and export need an explicit released/staged tree.
  if(command.action==='source.request'&&(command.operation==='rollback'?command.tree!==null:command.operation!=='deploy'&&command.tree===null))ctx.addIssue({code:z.ZodIssueCode.custom,message:'tree'});
 });
-export const managedInventory=z.object({service:uuid,kind:z.enum(['email','database']),enabled:z.boolean(),resources:z.array(z.object({id,name:z.string().max(254)}).strict()).max(1000),jobs:z.array(z.object({id,state:z.enum(['queued','applying','uncertain','restore_review','provider_confirmed']),created:z.number().int().nonnegative()}).strict()).max(50),host_key:z.string().regex(/^[A-Za-z0-9_-]{43}=$/)}).strict();
 export const formProject=z.object({id:uuid,client:uuid,name:z.string().max(64),active:z.number().int().min(0).max(1),paid_until:z.number().int().nonnegative(),monthly_limit:z.number().int().positive().max(100000),used:z.number().int().nonnegative()}).strict();
 export type ManagedInventory=z.infer<typeof managedInventory>;
 
@@ -116,6 +133,8 @@ export const approvalView=z.object({job:sourceJob,intent:jsonRecord.nullable(),d
 export const approvalsPending=z.object({service:uuid,pending:z.array(approvalView).max(5)}).strict();
 export const secretKey=z.object({service:uuid,public_key:z.string().max(400).regex(/^-----BEGIN PUBLIC KEY-----\n[A-Za-z0-9+/=\n]+-----END PUBLIC KEY-----\n?$/),fingerprint:z.string().regex(/^[a-f0-9]{64}$/),format:z.literal('hms-secret-v1')}).strict();
 export const secretList=z.object({service:uuid,version:z.number().int().nonnegative(),secrets:z.array(z.object({name:secretName,updated:z.number().int().nonnegative()}).strict()).max(64)}).strict();
+export type ManagedJob=z.infer<typeof managedJob>;
+export type ManagedApprovalView=z.infer<typeof managedApprovalView>;
 export type ApprovalView=z.infer<typeof approvalView>;
 export type SecretList=z.infer<typeof secretList>;
 export type GithubStatus=z.infer<typeof githubStatus>;
