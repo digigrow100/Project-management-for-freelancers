@@ -159,6 +159,22 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Team Management / Hosting workspaces
 
+### Owner hosting control center and setup guidance
+
+`lib/hosting/panelCatalog.ts` maps every existing hosting tab to its features,
+next step and related pages. `components/hosting/PanelGuide.tsx` renders owner-only
+guides, grouped navigation on the Hosting overview, and a configuration overview
+on Overview/Settings. Labels describe portal switches only, never worker enrollment
+or live health. Backup enablement uses the actual gateway value `true`, not
+`approved`; source features include their parent gate dependencies.
+Unconfigured owner Email, Database, Forms, Source and Backup pages authenticate
+the admin first, then render setup guidance without loading provider scopes or the
+owner-bound backup context. Enabled pages reuse existing controls, signatures,
+protocols and permission checks. No env flags, client visibility, records, limits,
+private settings or VPS configuration are changed. Client pages remain unchanged.
+Regression: `node tests/hosting-panel-catalog.cjs` (real rendered components/pages,
+no secret rendering, all-tab navigation and denied owner/disabled-service cases).
+
 ### Provisioning gateway integration (source only; not deployed)
 
 Owner-only primary-domain controls now use `hosting.domain.request` and
@@ -917,6 +933,8 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Added the owner hosting control center, all-tab feature guides, connection-setting labels and safe setup pages for disabled integrations. Existing backend actions and client release gates are preserved.
+
 - Added owner-only primary-domain link/SSL request and saved-status controls,
   authoritative service/domain ownership checks, strict TLS observation validation
   and isolated regression tests. No production flag, timer or deployment enabled.
@@ -1128,3 +1146,4 @@ Audit of portal -> API -> worker -> ISPConfig found and fixed: no mail-domain li
 ## 2026-10-29 — Backup schedule, restore dates and scoped restore (source only)
 
 `RestoreControls` (owner and client Backups pages) shows each website's restore dates, protected default, the real schedule, an honest plain-language retention explanation (3 points in total incl. the day-14 default; 3 copies = one backup about every 30 days; anything after the newest backup is not recoverable) and any conflict between schedule, copy limit and the storage Object Lock (pruning pauses, nothing is deleted early). New protocol actions: `policy` (read-only safe), `schedule` (owner, 1..30 days), `plan_scope` (one website / all websites of one client / chosen websites; a client names only its own; shared mailboxes/databases are skipped unless acknowledged), and `apply` (owner only: the owner-signed, plan-bound `hms-restore-approval-v1` made with the local signer; a safety copy is taken first, failures are reverted). Strict validators for every private-service response run once, on the server (`backupPolicies`, `backupScopePlan`, `backupApplyResult`); the browser validates the portal-shaped output with `lib/hosting/backupView.ts` (`policiesView`, `scopePlanView`) and must never re-parse it as wire format. Once a live apply request has been sent, any failure or unconfirmed answer is an UNKNOWN outcome: the page says live data may have changed, disables further preparation/apply and tells the owner to reload and have the operator check — it never claims nothing changed; the owner Backups page joins the Website source page in the signer `connect-src` exception. Tests: `tests/backupProtocol.test.mjs` (with HMS_AUTOMATION_SOURCE it validates real responses from the automation backup chain). Not live: no storage bucket, evidence service, quiescence hook or live-restore adapter is enrolled.
+
