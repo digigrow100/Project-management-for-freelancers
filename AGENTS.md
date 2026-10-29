@@ -287,6 +287,30 @@ auto-deploy policy; the portal cannot create or extend a policy. Test: `tests/ho
 (with HMS_AUTOMATION_SOURCE it drives the real gateway, signed webhooks and an owner-signed policy via
 `tests/fixtures/hosting-github-gateway.py`). Not live: no GitHub App exists yet.
 
+### Owner approvals and runtime secrets (source only; not deployed)
+
+**Approvals.** The owner's Ed25519 key never reaches the portal, its database or the VPS. The owner runs
+`scripts/signer/hms_signer.py serve` (automation repo) on their own computer; `OwnerApprovalsPanel` (owner
+Website source page only) lists queued requests via `source.approvals_pending` / `source.approval_view`, asks the
+signer on `http://127.0.0.1:47419` (`lib/hosting/signerClient.ts`; pairing code typed by the owner, optional
+`HOSTING_SIGNER_FINGERPRINT` pin) and relays the signed result with `source.approve`. Every approval binds job
+digest (hash of the full intent, which the signer recomputes), the reviewed plan digest, expiry and a single-use
+nonce; the VPS verifies and consumes it. Only owner sessions can relay `source.approve`, `source.approval_withdraw`,
+`source.approvals_pending`, `source.approval_view` and `source.auto_install` (the latter also needs
+HOSTING_AUTODEPLOY_ENABLED + HOSTING_GITHUB_ENABLED + HOSTING_PUBLISHING_ENABLED). `signerContext()` /
+`POST /api/hosting-approvals/context` give the signer the service, client and actor derived from the saved
+service. When a browser blocks loopback, the panel offers the offline `sign-file` path. The signer cannot
+recompute the server plan digest; plan counts are shown as portal/server-reported.
+
+**Runtime secrets.** `RuntimeSecretsPanel` (HOSTING_NEXTJS_ENABLED; both scopes, not read-only) seals each value in
+the browser (`lib/hosting/secretSeal.ts`: ECDH P-256 + HKDF-SHA-256 + AES-256-GCM, AAD = format|service|name) to
+the server public key from `source.secret_key`, which must match `HOSTING_SECRETS_KEY_FINGERPRINT` (set by the
+operator from the VPS key; without it sealing refuses). `source.secret_put/list/delete` carry only ciphertext and
+names; no answer may contain a value (strict schemas) and names mirror the service's reserved list. Only the root
+runtime broker opens them at activation; changes need a new activation approval. Tests:
+`tests/hosting-approvals.cjs` (real gateway, real Signer class and a root-side opener with HMS_AUTOMATION_SOURCE).
+Not live: no signer key, secrets key or fingerprint exist on any server.
+
 ### Hosting hostname and search privacy
 
 The owner-selected hosting address is `https://web.housemysite.com`.

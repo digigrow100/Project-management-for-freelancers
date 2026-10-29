@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric import ec
+from modules.hosting import runtime_secrets
 from modules.hosting.auto_deploy import PREFIX, AutoDeploy
 from modules.hosting.github_links import GitHubLinks
 from modules.hosting.github_webhooks import GitHubWebhooks
@@ -61,6 +63,13 @@ installations = {int(k): v for k, v in packet.get('installations', {}).items()}
 links = GitHubLinks(db, installation_lookup=lambda i: installations[i])
 ops = SourceOperations(db, access=access, owner_key=owner.public_key(), reserve=lambda *a: True, grants=links, staging=root / 'staging', releases=root / 'releases')
 ops.links, ops.auto = links, AutoDeploy(ops, owner.public_key())
+# The runtime-secrets recipient key lives only in this temporary directory, standing in for the root-only key file on the VPS.
+secrets_path = root / 'secrets.key'
+if not secrets_path.exists():
+    secrets_path.write_bytes(ec.generate_private_key(ec.SECP256R1()).private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    secrets_path.chmod(0o600)
+secrets_private = serialization.load_pem_private_key(secrets_path.read_bytes(), password=None)
+ops.secrets.public_key_file = lambda: runtime_secrets.public_pem(secrets_private)
 gateway = ServiceGateway(None, Forms(), key=packet['key'], sources=ops)
 kind = packet.get('kind', 'gateway')
 if kind == 'gateway':
@@ -73,6 +82,24 @@ elif kind == 'policy':
     signature = base64.b64encode(owner.sign(PREFIX + canonical(document))).decode()
     ops.auto.install(document, signature, packet['actor'])
     print(json.dumps({'installed': document['id']}))
+elif kind == 'sign':
+    # Stands in for the owner's local signer program: the REAL Signer class, with the terminal confirmation answered "yes".
+    sys.path.insert(0, packet['signer_dir'])
+    import hms_signer
+    signer = hms_signer.Signer(owner, lambda text, code: True)
+    print(json.dumps(signer.sign(packet['what'], packet['payload'])))
+elif kind == 'open':
+    # Stands in for the root runtime broker: opens what the worker would hand it.
+    version, items = ops.secrets.snapshot(packet['service'])
+    print(json.dumps({'version': version, 'values': {i['name']: runtime_secrets.open_blob(secrets_private, packet['service'], i['name'], i['blob']) for i in items}}))
+elif kind == 'raw':
+    # Opens one blob exactly as given (negative tests: wrong website or name must not open).
+    try:
+        print(json.dumps({'value': runtime_secrets.open_blob(secrets_private, packet['service'], packet['name'], packet['blob'])}))
+    except runtime_secrets.SecretDenied:
+        print(json.dumps({'denied': True}))
+elif kind == 'public':
+    print(json.dumps({'pem': runtime_secrets.public_pem(secrets_private).decode(), 'fingerprint': runtime_secrets.fingerprint(secrets_private.public_key())}))
 elif kind == 'webhook':
     secret = packet['secret'].encode()
     raw = json.dumps(packet['payload']).encode()
