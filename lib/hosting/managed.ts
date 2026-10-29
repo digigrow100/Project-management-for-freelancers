@@ -85,7 +85,7 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
   return sourceUploadTicket.parse({url:new URL('/v1/uploads',url).toString(),ticket,signature:createHmac('sha256',key).update('hms:upload-ticket:v1:'+ticket).digest('hex'),expires,max_bytes:SOURCE_UPLOAD_MAX_BYTES});
  }
  const body=JSON.stringify({schema:1,actor:scope.actor,nonce:randomUUID(),expires:Math.floor(Date.now()/1000)+120,command:wireCommand});
- if(Buffer.byteLength(body)>32768)throw new ServiceDenied();
+ if(Buffer.byteLength(body)>(command.action==='source.github_link'?65536:32768))throw new ServiceDenied();   // a full repository snapshot is larger than any other command
  const response=await fetch(new URL('/v1/services',url),{method:'POST',body,headers:{'Content-Type':'application/json','X-HMS-Services-Signature':createHmac('sha256',key).update('hms:services-portal:v1:'+body).digest('hex')},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});
  if(!response.ok||!response.body)throw Error('Service outcome unavailable');const reader=response.body.getReader();let bytes=0,text='';const decoder=new TextDecoder();
  try{for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>1024*1024)throw Error('Response exceeds budget');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();reader.releaseLock();}

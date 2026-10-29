@@ -1088,3 +1088,7 @@ The allowlist does not modify SSH, ISPConfig, Vercel/Supabase dashboards, public
 
 Live preview diagnosis showed trustedRuntime=true and policyConfigured=true but x-vercel-forwarded-for absent. The guard denied everyone because it read that unavailable header. Use Vercel's documented edge-overwritten x-forwarded-for only when VERCEL=1. Non-Vercel runtimes, missing/ambiguous/malformed IPs still fail closed. Never trust x-real-ip or custom headers. Current-connection /login/network-check is no-store/noindex and reveals no private list/credentials. Regression fixtures now model the actual header; prior tests incorrectly assumed the unavailable header existed. Existing allowlist and all auth/MFA/role checks retained.
 
+
+## 2026-10-29 — Verified GitHub connection and automatic deployment (source only)
+
+GitHub App connection through portal OAuth with signed state and a one-time nonce cookie; the user token is used for three reads and dropped, only the verified result reaches the private service (internal-only `source.github_link`, up to 64 KiB so a full 300-repository snapshot fits). Added `source.github_status`, `source.auto_revoke`, `source.auto_resume` and panel controls for an owner-signed, bounded auto-deploy policy. Gated by HOSTING_GITHUB_ENABLED / HOSTING_AUTODEPLOY_ENABLED; nothing is deployed or live. See "GitHub connection and automatic deployment".
