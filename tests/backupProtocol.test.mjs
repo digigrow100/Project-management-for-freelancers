@@ -1,6 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {backupCommand,backupSites,BackupDenied} from '../lib/hosting/backupProtocol.ts';
+import {policiesView,scopePlanView,BackupViewDenied} from '../lib/hosting/backupView.ts';
+import {backupCommand,backupSites,backupPolicies,backupScopePlan,backupApplyResult,BackupDenied} from '../lib/hosting/backupProtocol.ts';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 const context={actor:'alice',owner:false,readOnly:false,sites:new Map([['a',{clientId:'ca',name:'Site A'}],['b',{clientId:'cb',name:'Site B'}]])};
 const selection=site=>({site,point:'p',components:['website']});
 test('client can select own single-client sites, never another client batch',()=>{
@@ -21,4 +24,74 @@ test('catalog response binds names locally and rejects scope/secret/duplicate/de
  const point={id:'p',captured:100,default:true,components:['website']}; const row={id:'a',copies:3,points:[point]};
  assert.equal(backupSites([row],context)[0].name,'Site A');
  for(const rows of [[{...row,id:'foreign'}],[{...row,secret:'leak'}],[row,row],[{...row,points:[point,point]}],[{...row,points:[point,{...point,id:'q'}]}],[{...row,points:[{...point,captured:Date.now()}]}]])assert.throws(()=>backupSites(rows,context),BackupDenied);
+});
+
+const owner={...context,owner:true};
+const sig='A'.repeat(86)+'==';
+const approval={job:'j'.repeat(1)==='j'?'abcdef0123456789abcdef0123456789':'',digest:'a'.repeat(64),nonce:'n1',issued:1700000000,expires:1700000300,signature:sig};
+test('policy is read-only safe; schedule is owner-only and bounded',()=>{
+ assert.equal(backupCommand({action:'policy'},{...context,readOnly:true}).action,'policy');
+ assert.throws(()=>backupCommand({action:'schedule',site:'a',interval_days:7},context),BackupDenied);
+ assert.throws(()=>backupCommand({action:'schedule',site:'a',interval_days:7},{...owner,readOnly:false,sites:new Map()}),BackupDenied);
+ for(const days of [0,31,true,'7',1.5])assert.throws(()=>backupCommand({action:'schedule',site:'a',interval_days:days},owner),BackupDenied);
+ assert.equal(backupCommand({action:'schedule',site:'a',interval_days:30},owner).interval_days,30);
+});
+test('scoped restore plans: a client names only its own, the administrator may cross clients, nothing else is accepted',()=>{
+ assert.equal(backupCommand({action:'plan_scope',scope:{type:'site',site:'a'}},context).scope.site,'a');
+ assert.equal(backupCommand({action:'plan_scope',scope:{type:'client',client:'ca'}},context).scope.client,'ca');
+ for(const scope of [{type:'site',site:'foreign'},{type:'client',client:'nobody'},{type:'sites',sites:['a','b']},{type:'all'},{type:'site',site:'a',extra:1},{type:'sites',sites:[]},{type:'sites',sites:['a','a']}])assert.throws(()=>backupCommand({action:'plan_scope',scope},context),BackupDenied,JSON.stringify(scope));
+ assert.equal(backupCommand({action:'plan_scope',scope:{type:'sites',sites:['a','b']}},owner).scope.sites.length,2);
+ assert.deepEqual(backupCommand({action:'plan_scope',scope:{type:'site',site:'a'},point:{a:'p'},accept_shared:['email:a-mail']},context).accept_shared,['email:a-mail']);
+ for(const extra of [{point:'oldest'},{point:{foreign:'p'}},{components:['logs']},{accept_shared:['email']},{accept_shared:['x:y']},{role:'owner'}])assert.throws(()=>backupCommand({action:'plan_scope',scope:{type:'site',site:'a'},...extra},context),BackupDenied,JSON.stringify(extra));
+ assert.throws(()=>backupCommand({action:'plan_scope',scope:{type:'site',site:'a'}},{...context,readOnly:true}),BackupDenied);
+});
+test('apply is the owner relaying their own signature; anything else is refused',()=>{
+ assert.equal(backupCommand({action:'apply',job:approval.job,approval},owner).approval.nonce,'n1');
+ assert.throws(()=>backupCommand({action:'apply',job:approval.job,approval},context),BackupDenied);
+ assert.throws(()=>backupCommand({action:'apply',job:approval.job,approval},{...owner,readOnly:true}),BackupDenied);
+ for(const bad of [{...approval,job:'other'},{...approval,digest:'x'},{...approval,signature:'short'},{...approval,expires:approval.issued},{...approval,extra:1},{...approval,plan:null}])assert.throws(()=>backupCommand({action:'apply',job:approval.job,approval:bad},owner),BackupDenied,JSON.stringify(bad).slice(0,50));
+});
+test('real responses from the automation backup chain satisfy the portal validators, and tampering is caught',{skip:!process.env.HMS_AUTOMATION_SOURCE},()=>{
+ const run=spawnSync('python',[fileURLToPath(new URL('./fixtures/hosting-backup-responses.py',import.meta.url)),process.env.HMS_AUTOMATION_SOURCE],{encoding:'utf8',cwd:process.env.HMS_AUTOMATION_SOURCE,env:{...process.env,PYTHONPATH:process.env.HMS_AUTOMATION_SOURCE}});
+ assert.equal(run.status,0,run.stderr);
+ const real=JSON.parse(run.stdout);
+ const ctx={actor:'owner',owner:true,readOnly:false,sites:new Map([['svc-shop',{clientId:'client-a',name:'Shop'}],['svc-blog',{clientId:'client-a',name:'Blog'}],['svc-platform',{clientId:'platform',name:'Portal'}]])};
+ const policies=backupPolicies(real.policy,ctx);
+ assert.equal(policies.length,2);assert.equal(policies[0].copies,3);assert.match(policies[0].explanation,/every 30 days/);assert.ok(policies[0].points.every(p=>p.components.length===4));
+ assert.equal(policiesView(JSON.parse(JSON.stringify(policies))).length,2);   // the browser validates the portal-shaped output
+ const plan=backupScopePlan(real.plan,ctx);
+ assert.equal(scopePlanView(JSON.parse(JSON.stringify(plan))).job,plan.job);
+ assert.deepEqual(plan.sites.map(s=>s.site).sort(),['svc-blog','svc-shop']);assert.equal(plan.plan.schema,1);
+ const applied=backupApplyResult(real.apply,ctx,plan.job);assert.equal(applied.state,'applied');
+ const command=backupCommand({action:'apply',job:plan.job,approval:real.approval},ctx);assert.equal(command.approval.job,plan.job);
+ // tampering
+ assert.throws(()=>backupPolicies([{...real.policy[0],secret:'x'}],ctx),BackupDenied);
+ assert.throws(()=>backupPolicies([{...real.policy[0],points:[{...real.policy[0].points[0],default:true},{...real.policy[0].points[1],default:true}]}],ctx),BackupDenied);
+ assert.throws(()=>backupPolicies([{...real.policy[0],id:'svc-unknown'}],ctx),BackupDenied);
+ assert.throws(()=>backupScopePlan({...real.plan,sites:[...real.plan.sites,real.plan.sites[0]]},ctx),BackupDenied);
+ assert.throws(()=>backupScopePlan({...real.plan,extra:1},ctx),BackupDenied);
+ assert.throws(()=>backupApplyResult({...real.apply,state:'applied',sites:real.apply.sites.map(s=>({...s,apply:'reverted'}))},ctx,plan.job),BackupDenied);
+ assert.throws(()=>backupApplyResult(real.apply,ctx,'f'.repeat(32)),BackupDenied);
+});
+
+test('what the portal route returns (already normalized) is accepted by the browser validators, not re-parsed as wire format',()=>{
+ const ctx={actor:'owner',owner:true,readOnly:false,sites:new Map([['svc-shop',{clientId:'client-a',name:'Shop'}]])};
+ const wirePolicy={id:'svc-shop',copies:3,default_point:'p1',schedule:{enabled:true,interval_days:30,interval_seconds:2592000,next_due:1900000000},baseline:{due:1800000000,taken:true},
+  recommended:{copies:3,rotating_slots:2,interval_days:30,covers_days:60,meets_window:true,raised_by_lock:false},conflicts:[{code:'lock',detail:'x'}],explanation:'every 30 days',object_lock_days:30,
+  points:[{id:'p1',captured:1700000000,default:true,components:['website','database']}]};
+ const normalized=backupPolicies([wirePolicy],ctx);
+ assert.throws(()=>backupPolicies(normalized,ctx),BackupDenied);          // the bug: parsing the portal's own output as wire format always fails
+ const shown=policiesView(JSON.parse(JSON.stringify(normalized)));      // what the browser actually receives after JSON
+ assert.equal(shown[0].defaultPoint,'p1');assert.equal(shown[0].schedule.intervalDays,30);assert.equal(shown[0].name,'Shop');
+ assert.throws(()=>policiesView([{...normalized[0],secret:'x'}]),BackupViewDenied);
+ const wirePlan={job:'a'.repeat(32),digest:'b'.repeat(64),plan:{schema:1,sites:[],expires:1900000000},sites:[{site:'svc-shop',point:'p1',captured:1700000000,components:['database'],missing_components:['email'],
+  skipped_shared:[{component:'database',resource:'res1',affects:[{site:'svc-shop'}],acknowledgement:'kind:res1'}],accepted_shared:[],covered_by_another_site:[]}]};
+ const plan=backupScopePlan(wirePlan,ctx);
+ assert.throws(()=>backupScopePlan(plan,ctx),BackupDenied);
+ const view=scopePlanView(JSON.parse(JSON.stringify(plan)));
+ assert.deepEqual(view.sites[0].missing,['email']);assert.equal(view.sites[0].skipped[0].acknowledgement,'kind:res1');
+ assert.throws(()=>scopePlanView({...plan,sites:[plan.sites[0],plan.sites[0]]}),BackupViewDenied);
+ assert.throws(()=>scopePlanView({...plan,extra:1}),BackupViewDenied);
+ const applied=backupApplyResult({job:plan.job,state:'applied',sites:[{site:'svc-shop',point:'p1',state:'validated',apply:'applied'}]},ctx,plan.job);
+ assert.equal(backupApplyResult(JSON.parse(JSON.stringify(applied)),ctx,plan.job).state,'applied');   // apply keeps the wire shape, so re-checking it is sound
 });

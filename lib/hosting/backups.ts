@@ -2,7 +2,7 @@ import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { requireHostingAdmin, requireHostingClient } from "./auth";
 import { getSupabase } from "@/lib/supabaseClient";
-import { backupCommand, backupSites, BackupDenied, type BackupContext } from "./backupProtocol";
+import { backupCommand, backupSites, backupPolicies, backupScopePlan, backupApplyResult, BackupDenied, type BackupContext } from "./backupProtocol";
 
 export async function backupContext(ownerMode:boolean):Promise<BackupContext>{
  let actor:string,clientId:string|undefined,readOnly=false;
@@ -32,6 +32,9 @@ export async function backupRequest(context:BackupContext,raw:unknown){
  finally{await reader.cancel();reader.releaseLock();}
  const result:unknown=JSON.parse(text);
  if(command.action==="list")return {sites:backupSites(result,context),readOnly:context.readOnly,owner:context.owner};
+ if(command.action==="policy")return {policies:backupPolicies(result,context),readOnly:context.readOnly,owner:context.owner};
+ if(command.action==="plan_scope")return backupScopePlan(result,context);
+ if(command.action==="apply")return backupApplyResult(result,context,command.job);
  if(!result||typeof result!=="object"||Array.isArray(result))throw new BackupDenied();
  const record=result as Record<string,unknown>;
  if(command.action==="plan"){

@@ -43,6 +43,13 @@ export async function signManaged(request:{job:string;digest:string;intent:Recor
  if(a.job!==request.job||a.digest!==request.digest||a.expires<=a.issued||a.expires-a.issued>request.seconds+60)throw new SignerError('The signer returned something other than what was requested.');
  return a;
 }
+// Replacing live data from a restore point: the signer recomputes the digest from the whole plan and shows every website, point and component.
+export async function signRestore(request:{job:string;digest:string;plan:Record<string,unknown>;seconds:number},token:string,fetcher:Fetcher=fetch){
+ const reply=managedReply.parse(await post('restore-approval',request,token,fetcher));
+ const a=reply.approval;
+ if(a.job!==request.job||a.digest!==request.digest||a.expires<=a.issued||a.expires-a.issued>request.seconds+60)throw new SignerError('The signer returned something other than what was requested.');
+ return a;
+}
 export async function signPolicy(proposal:z.input<typeof policyProposal>,token:string,fetcher:Fetcher=fetch){
  const wanted=policyProposal.parse(proposal);
  const reply=policyReply.parse(await post('autodeploy-policy',wanted,token,fetcher));

@@ -9,6 +9,8 @@ const assert=require('node:assert/strict');
   const found=policy(pathname);assert.equal(found.length,1,pathname+' must match exactly one policy');
   assert.ok(!found[0].includes('127.0.0.1'),pathname);assert.match(found[0],/connect-src 'self' https:\/\/\*\.supabase\.co wss:\/\/\*\.supabase\.co;/);
  }
+ for(const page of ['/hosting/backups']){const found=policy(page);assert.equal(found.length,1,page);assert.match(found[0],/http:\/\/127\.0\.0\.1:47419;/);}
+ for(const page of ['/client/backups','/client/sources','/hosting/backups/x','/hosting/email'])assert.ok(!policy(page)[0].includes('127.0.0.1'),page);
  const sources=policy('/hosting/sources');
  assert.equal(sources.length,1);
  assert.match(sources[0],/connect-src 'self' https:\/\/\*\.supabase\.co wss:\/\/\*\.supabase\.co http:\/\/127\.0\.0\.1:47419;/);
