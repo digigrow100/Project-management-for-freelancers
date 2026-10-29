@@ -17,6 +17,12 @@ export function HostingForm({action,returnPath,children,client=false,label="Save
 }
 export function Hidden({name,value}:{name:string;value:string}) {return <input type="hidden" name={name} value={value}/>;}
 export function Notice({error,saved}:{error?:string;saved?:string}) {return <>{error&&<p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-400">{error}</p>}{saved&&<p role="status" className="rounded-lg border border-accent-500/30 bg-accent-500/10 p-3 text-sm text-accent-300">Saved successfully.</p>}</>;}
-export function PageTitle({title,description}:{title:string;description?:string}) {return <header><h1 className="text-2xl font-semibold text-neutral-100">{title}</h1>{description&&<p className="mt-2 max-w-3xl text-sm text-neutral-400">{description}</p>}</header>;}
+export function PageTitle({title,description}:{title:string;description?:string}) {return <header className="hms-page-title"><h1 className="text-2xl font-semibold text-neutral-100">{title}</h1>{description&&<p className="mt-2 max-w-3xl text-sm text-neutral-400">{description}</p>}</header>;}
+export function StatusBadge({value}:{value:string}){
+ const lower=value.toLowerCase();
+ const tone=['active','available','paid','resolved','valid','matched','provider_confirmed','enabled'].includes(lower)?'success':['pending','awaiting_connection','queued','applying','pending_customer','awaiting_approval','not_requested'].includes(lower)?'pending':['failed','error','expired','suspended','uncertain','mismatch','rejected'].includes(lower)?'danger':'neutral';
+ return <span className={`hms-status hms-status-${tone}`}><span aria-hidden="true"/>{value.replaceAll('_',' ')}</span>;
+}
 export function Pagination({path,page,total}:{path:string;page:number;total:number}) {return <nav aria-label="Pagination" className="flex items-center justify-between text-sm text-neutral-400"><span>{total} records · Page {page}</span><div className="flex gap-4">{page>1&&<Link href={`${path}?page=${page-1}`} className="text-accent-300">Previous</Link>}{page*25<total&&<Link href={`${path}?page=${page+1}`} className="text-accent-300">Next</Link>}</div></nav>;}
 export const choices=(...values:string[])=>values.map(value=>({value,label:value.replaceAll('_',' ')}));
+

@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript');
+const React=require('react'),TestRenderer=require('react-test-renderer');
+const {act}=TestRenderer;
+function load(file){const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{module,exports:module.exports,require});return module.exports;}
+const {RecordTableView}=load('components/hosting/RecordTableView.tsx');
+const {RecordEditor}=load('components/hosting/RecordEditor.tsx');
+const rows=[{id:'one',status:'active',search:'example.test Alice Starter',cells:['example.test','Alice'],actions:React.createElement('a',{href:'/hosting/services?edit=one'},'Manage')},{id:'two',status:'pending',search:'shop.test Bob Business',cells:['shop.test','Bob'],actions:null}];
+let tree;
+act(()=>{tree=TestRenderer.create(React.createElement(RecordTableView,{columns:['Website','Client'],rows,emptyLabel:'No hosting services yet'}));});
+const renderedRows=()=>tree.root.findAllByType('tbody')[0].findAllByType('tr');
+assert.equal(renderedRows().length,2);
+act(()=>tree.root.findByProps({'aria-label':'Search records on this page'}).props.onChange({target:{value:' ALICE '}}));
+assert.equal(renderedRows().length,1);assert.match(JSON.stringify(tree.toJSON()),/example.test/);assert.ok(!JSON.stringify(tree.toJSON()).includes('shop.test'));
+act(()=>tree.root.findByProps({'aria-label':'Filter records by status'}).props.onChange({target:{value:'pending'}}));
+assert.equal(renderedRows().length,0);assert.match(JSON.stringify(tree.toJSON()),/No matching records/);
+act(()=>tree.root.findByType('button').props.onClick());assert.equal(renderedRows().length,2);
+act(()=>tree.update(React.createElement(RecordTableView,{columns:['Website'],rows:[],emptyLabel:'No hosting services yet'})));
+assert.match(JSON.stringify(tree.toJSON()),/No hosting services yet/);assert.ok(!JSON.stringify(tree.toJSON()).includes('example.test'));act(()=>tree.unmount());
+let shown=0,closed=0;const dialog={open:false,showModal(){this.open=true;shown++;},close(){this.open=false;closed++;},getBoundingClientRect:()=>({left:100,right:600,top:0,bottom:900})};
+act(()=>{tree=TestRenderer.create(React.createElement(RecordEditor,{title:'Add client',trigger:'Add client'},React.createElement('form',null,React.createElement('input',{name:'email'}))),{createNodeMock:element=>element.type==='dialog'?dialog:null});});
+assert.equal(shown,0);act(()=>tree.root.findByProps({'aria-haspopup':'dialog'}).props.onClick());assert.equal(shown,1);assert.equal(tree.root.findByProps({'aria-haspopup':'dialog'}).props['aria-expanded'],true);assert.equal(tree.root.findByType('input').props.name,'email');
+act(()=>tree.root.findByProps({'aria-label':'Close editor'}).props.onClick());assert.equal(closed,1);act(()=>tree.root.findByType('dialog').props.onClose());assert.equal(tree.root.findByProps({'aria-haspopup':'dialog'}).props['aria-expanded'],false);
+act(()=>tree.update(React.createElement(RecordEditor,{title:'Edit client',trigger:'Edit client',initiallyOpen:true},React.createElement('form'))));assert.equal(shown,2);act(()=>tree.unmount());
+const css=fs.readFileSync('app/(app)/hosting/hosting.css','utf8');assert.match(css,/\.hosting-shell \.theme-main/);assert.match(css,/100dvh/);assert.match(css,/prefers-reduced-motion/);
+console.log('PASS: real table search/status intersection/reset/empty state; editor open/close/edit auto-open and retained form.');

@@ -13,12 +13,12 @@ function FeatureBadge({feature}:{feature:PanelFeature}){
 // Owner workspace only. All routes keep their existing server authorization.
 export function PanelGuide({section}:{section:PanelSection}){
  const guide=PANEL_GUIDES[section];
- return <section aria-label={`${names.get(section)} guide`} className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 sm:p-5">
+ return <details aria-label={`${names.get(section)} guide`} className="hms-help"><summary>Page help & connection status</summary>
   <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-medium">What you can manage here</h2>{guide.feature?<FeatureBadge feature={guide.feature}/>:<span className={`${badge} border-neutral-600 text-neutral-300`}>Saved records</span>}</div>
   <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-neutral-300">{guide.items.map(item=><li key={item}>• {item}</li>)}</ul>
   <p className="mt-4 text-sm leading-6 text-neutral-400">{guide.next}</p>
   <nav aria-label="Related hosting pages" className="mt-4 flex flex-wrap gap-x-5 gap-y-2">{guide.related.map(key=><Link key={key} href={`/hosting/${key}`} prefetch={false} className="text-sm text-blue-300 underline-offset-4 hover:underline">{names.get(key)} →</Link>)}</nav>
- </section>;
+ </details>;
 }
 
 export function IntegrationOverview(){

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, Leaf, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore, Users, Activity , Chrome } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore, Users, Activity , Chrome } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -7,6 +7,7 @@ import { RefreshButton } from "./RefreshButton";
 import { logoutAction } from "@/app/login/actions";
 import { WorkspaceOnly, WorkspaceSwitcher } from "./WorkspaceProvider";
 import { HostingNavigation } from "./HostingNavigation";
+import {WorkspaceBrand} from "./hosting/WorkspaceChrome";
 
 const NAV = [
   { href: "/extensions", label: "Extensions", icon: Chrome },
@@ -41,12 +42,7 @@ export function Sidebar({
   return (
     <aside className="sidebar-themed hidden md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col border-r border-base-700/60 bg-base-900/80 backdrop-blur-sm pl-[calc(1rem+env(safe-area-inset-left))] pr-4 py-6 gap-6">
       <div className="flex shrink-0 items-center gap-2 px-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/15 text-accent-400">
-          <Leaf size={18} />
-        </span>
-        <span className="text-sm font-semibold tracking-wide text-neutral-100">
-          Freelance HQ
-        </span>
+        <WorkspaceBrand/>
         <RefreshButton className="ml-auto" />
       </div>
 
@@ -194,3 +190,4 @@ export function Sidebar({
     </aside>
   );
 }
+
