@@ -135,3 +135,22 @@ export async function clientPlanAssignments(page=1){
  const result=await getSupabase().from(hostingTable('services')).select(clientColumns.services,{count:'exact'}).eq('client_id',s.clientId).not('package_snapshot','is',null).order('created_at',{ascending:false}).range((index-1)*25,index*25-1);
  return {records:checked<HostingService[]>(result),total:result.count??0,page:index};
 }
+
+export type AppAccountView={id:string;service_id:string;service_name:string;status:string;capabilities:Record<string,boolean>|null;blocked_features:string[];
+ usage:Record<string,{limit:number;effective:number;used:number|null;percent:number|null;level:string;basis:string}>|null;usage_at:string|null;receipt_digest?:string|null;
+ sites:{id:string;hostname:string;is_primary:boolean;status:string}[]};
+async function appAccountViews(clientId:string|null,owner:boolean):Promise<AppAccountView[]>{
+ const db=getSupabase();
+ let query=db.from(hostingTable('accounts')).select('id,service_id,client_id,status,capabilities,blocked_features,usage,usage_at'+(owner?',receipt_digest':'')).order('created_at',{ascending:false}).limit(100);
+ if(clientId)query=query.eq('client_id',clientId);
+ const accounts=checked<Array<{id:string;service_id:string;status:string;capabilities:Record<string,boolean>|null;blocked_features:string[];usage:AppAccountView['usage'];usage_at:string|null;receipt_digest?:string|null}>>(await query);
+ if(!accounts.length)return [];
+ const ids=accounts.map(a=>a.id),serviceIds=accounts.map(a=>a.service_id);
+ const [sites,services]=await Promise.all([
+  db.from(hostingTable('account_sites')).select('id,account_id,hostname,is_primary,status').in('account_id',ids).order('slot').limit(1000),
+  db.from(hostingTable('services')).select('id,name').in('id',serviceIds).limit(100)]);
+ const siteRows=checked<Array<{id:string;account_id:string;hostname:string;is_primary:boolean;status:string}>>(sites),names=new Map(checked<Array<{id:string;name:string}>>(services).map(r=>[r.id,r.name]));
+ return accounts.map(a=>({...a,service_name:names.get(a.service_id)??'Hosting service',sites:siteRows.filter(r=>r.account_id===a.id).map(({id,hostname,is_primary,status})=>({id,hostname,is_primary,status}))}));
+}
+export async function adminAppAccounts(){await requireHostingAdmin();return appAccountViews(null,true);}
+export async function clientAppAccounts(){const s=await requireHostingClient();return appAccountViews(s.clientId,false);}

@@ -5,6 +5,7 @@ import {requireHostingAdmin,requireHostingClient} from './auth';
 import {getSupabase} from '@/lib/supabaseClient';
 import {serviceCommand,githubLinkCommand,managedInventory,formProject,sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,githubStatus,sourceUploadTicket,approvalView,approvalsPending,secretKey,secretList,managedRequestResult,managedApprovalView,managedApprovalsPending,SOURCE_UPLOAD_MAX_BYTES} from './managedSchema';
 import {clientFeatureEnabled} from './clientRelease';
+import {appJob,provisionWire,checkStatus,checkUsage,type Rows} from './appAccounts';
 export class ServiceDenied extends Error{}
 export type ServiceScope={actor:string;readOnly:boolean;owner?:boolean;sites:Map<string,{client:string;name:string}>};
 export async function serviceScope(owner:boolean):Promise<ServiceScope>{
@@ -12,12 +13,29 @@ export async function serviceScope(owner:boolean):Promise<ServiceScope>{
  if(owner){actor=(await requireHostingAdmin()).id;}else{const session=await requireHostingClient();actor=session.userId;client=session.clientId;readOnly=session.adminView||session.client.status!=='active';}
  let query=getSupabase().from('freelance_hq_hosting_services').select('id,client_id,name').order('id').limit(101);if(client)query=query.eq('client_id',client);
  const result=await query;if(result.error||!result.data||result.data.length>100)throw Error('Service scope unavailable');
- return {actor,readOnly,owner,sites:new Map(result.data.map(row=>[String(row.id),{client:String(row.client_id),name:String(row.name)}]))};
+ const sites=new Map(result.data.map(row=>[String(row.id),{client:String(row.client_id),name:String(row.name)}]));
+ // Additional websites of an App Hosting account are websites of their own client; the primary one is the contract service itself.
+ let extra=getSupabase().from('freelance_hq_hosting_account_sites').select('id,client_id,hostname').eq('is_primary',false).order('id').limit(101);if(client)extra=extra.eq('client_id',client);
+ const more=await extra;if(more.error||!more.data||more.data.length>100)throw Error('Service scope unavailable');
+ for(const row of more.data)if(!sites.has(String(row.id)))sites.set(String(row.id),{client:String(row.client_id),name:String(row.hostname)});
+ return {actor,readOnly,owner,sites};
 }
 const SOURCE_ACTIONS=['source.status','source.repositories','source.connect','source.switch','source.disconnect','source.request','source.build','source.discard','source.recover','source.github_status','source.github_link','source.auto_revoke','source.auto_resume','source.upload_ticket','source.approvals_pending','source.approval_view','source.approve','source.approval_withdraw','source.auto_install','source.secret_key','source.secret_list','source.secret_put','source.secret_delete'] as const;
 type Command=z.infer<typeof serviceCommand>|z.infer<typeof githubLinkCommand>;
 type SourceCommand=Extract<Command,{action:typeof SOURCE_ACTIONS[number]}>;
+type AppCommand=Extract<Command,{action:'hosting.app.provision'|'hosting.app.status'|'hosting.app.usage'}>;
+function isAppCommand(command:Command):command is AppCommand{return command.action==='hosting.app.provision'||command.action==='hosting.app.status'||command.action==='hosting.app.usage';}
 function isSourceCommand(command:Command):command is SourceCommand{return (SOURCE_ACTIONS as readonly string[]).includes(command.action);}
+async function appRows(serviceId:string,siteId:string):Promise<Rows>{
+ const db=getSupabase();
+ const [service,account]=await Promise.all([
+  db.from('freelance_hq_hosting_services').select('id,client_id,server_id,package_id,status,assignment_key,package_snapshot').eq('id',serviceId).single(),
+  db.from('freelance_hq_hosting_accounts').select('id,service_id,client_id,server_id,package_id,package_version,assignment_key,limits_digest,status').eq('service_id',serviceId).single()]);
+ if(service.error||account.error||!service.data||!account.data)throw new ServiceDenied();
+ const site=await db.from('freelance_hq_hosting_account_sites').select('id,account_id,client_id,hostname,is_primary').eq('id',siteId).single();
+ if(site.error||!site.data)throw new ServiceDenied();
+ return {service:service.data as Rows['service'],account:account.data as Rows['account'],site:site.data as Rows['site']};
+}
 export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{internal?:boolean}={}){
  const result=(options.internal===true?z.union([serviceCommand,githubLinkCommand]):serviceCommand).safeParse(raw);if(!result.success)throw new ServiceDenied();const command=result.data;
  if(scope.readOnly&&!['inventory','forms.list','forms.status','source.status','source.repositories','source.github_status','source.secret_list'].includes(command.action))throw new ServiceDenied();
@@ -57,6 +75,26 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
    wireCommand={action:command.action,service:row.id,client:row.client_id,server:row.server_id,package:row.package_id,domain:row.primary_domain,request_key:command.request_key};
   }
  }
+ let appRowsLoaded:Rows|undefined;
+ if(isAppCommand(command)){
+  // App Hosting accounts: owner only, own release switch, and the wire request is rebuilt from the stored contract (the browser sends only ids).
+  if(scope.owner!==true||process.env.HOSTING_APP_ACCOUNTS_ENABLED!=='approved')throw new ServiceDenied();
+  appRowsLoaded=await appRows(command.service,command.action==='hosting.app.provision'?command.site:command.service);
+  const rows=appRowsLoaded;
+  if(rows.service.client_id!==scope.sites.get(command.service)?.client||!['pending','active'].includes(rows.service.status))throw new ServiceDenied();
+  if(command.action==='hosting.app.provision'){
+   const [client,pkg,server,allowed]=await Promise.all([
+    getSupabase().from('freelance_hq_hosting_clients').select('status').eq('id',rows.service.client_id).single(),
+    getSupabase().from('freelance_hq_hosting_packages').select('is_active').eq('id',rows.service.package_id).single(),
+    getSupabase().from('freelance_hq_hosting_servers').select('status').eq('id',rows.service.server_id as string).single(),
+    getSupabase().from('freelance_hq_hosting_package_servers').select('server_id').eq('package_id',rows.service.package_id).eq('server_id',rows.service.server_id as string).single()]);
+   if(client.error||client.data?.status!=='active'||pkg.error||pkg.data?.is_active!==true||server.error||server.data?.status!=='available'||allowed.error||!allowed.data)throw new ServiceDenied();
+   try{wireCommand=provisionWire(rows,command.request_key);}catch{throw new ServiceDenied();}
+  }else{
+   try{checkStatus({account:rows.account.id,client:rows.account.client_id,assignment:rows.account.assignment_key,limits_digest:rows.account.limits_digest,package:rows.account.package_id,package_version:rows.account.package_version,state:'requested',enforced:false,plan_digest:'0'.repeat(64),capabilities:{},blocked_features:[],sites:[],jobs:[],receipt_digest:null,live_verified:false},rows);}catch{throw new ServiceDenied();}
+   wireCommand={action:command.action,account:rows.account.id,client:rows.account.client_id};
+  }
+ }
  if(command.action==='request'||command.action==='inventory'||command.action.startsWith('managed.')){
   // Mailboxes, mail domains and databases: the saved service->client relation decides, never a browser field, and a change needs a live client.
   const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',service as string).single();
@@ -70,7 +108,15 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
  if(isSourceCommand(command)){
   // Client or owner scope; ownership is the saved service→client relation, never a browser field.
   if(process.env.HOSTING_SOURCES_ENABLED!=='approved'||(scope.owner!==true&&!clientFeatureEnabled('sources',process.env)))throw new ServiceDenied();
-  const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',command.service).single();
+  const direct=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',command.service).single();
+  let found:{error:unknown;data:{id:string;client_id:string;status:string}|null}={error:direct.error,data:direct.data as {id:string;client_id:string;status:string}|null};
+  if(found.error||!found.data){
+   // An additional website of an App Hosting account is usable only once its provider objects and the account's controls are verified.
+   const extra=await getSupabase().from('freelance_hq_hosting_account_sites').select('id,client_id,status,account_id').eq('id',command.service).single();
+   const account=extra.data?await getSupabase().from('freelance_hq_hosting_accounts').select('status,client_id').eq('id',extra.data.account_id).single():null;
+   if(extra.error||!extra.data||!account||account.error||account.data?.status!=='enforced'||account.data.client_id!==extra.data.client_id||extra.data.status!=='verified')throw new ServiceDenied();
+   found={error:null,data:{id:String(extra.data.id),client_id:String(extra.data.client_id),status:'active'}};
+  }
   if(found.error||!found.data||found.data.client_id!==scope.sites.get(command.service)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
   // Writing to a customer's website root is a separate release switch from staging and GitHub work.
   if((command.action==='source.recover'||command.action==='source.build'||(command.action==='source.request'&&(command.operation==='publish'||command.operation==='rollback')))&&process.env.HOSTING_PUBLISHING_ENABLED!=='approved')throw new ServiceDenied();
@@ -119,6 +165,24 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
   if(observation&&(observation.checked>now||observation.fresh!==(now-observation.checked<=900)))throw new ServiceDenied();
   const valid=Boolean(observation&&observation.fresh&&observation.dns==='matched'&&observation.tls==='valid'&&observation.expires&&observation.expires>now);
   if(status.live_verified!==valid)throw new ServiceDenied();return status;
+ }
+
+ if(isAppCommand(command)&&appRowsLoaded){
+  const rows=appRowsLoaded;
+  try{
+   if(command.action==='hosting.app.provision'){const job=appJob.parse(value);return job;}
+   if(command.action==='hosting.app.status'){
+    const status=checkStatus(value,rows);
+    // The portal records the state; Active still needs the owner, and the database refuses it unless this receipt is the verified one.
+    const recorded=await getSupabase().rpc('freelance_hq_hosting_record_app_status',{p_actor:scope.actor,p_account:rows.account.id,p_status:status});
+    if(recorded.error)throw new ServiceDenied();
+    return {...status,recorded:String(recorded.data)};
+   }
+   const usage=checkUsage(value,rows.account.id);
+   const stored=await getSupabase().rpc('freelance_hq_hosting_record_app_usage',{p_actor:scope.actor,p_account:rows.account.id,p_usage:usage.usage});
+   if(stored.error)throw new ServiceDenied();
+   return usage;
+  }catch(error){if(error instanceof ServiceDenied)throw error;throw new ServiceDenied();}
  }
  if(command.action==='hosting.provision')return z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','applying','uncertain','provider_confirmed']),live_verified:z.literal(false)}).strict().parse(value);
  if(command.action==='hosting.status'){

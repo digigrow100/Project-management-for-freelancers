@@ -5,6 +5,8 @@ import {OperatorSigner} from "@/components/hosting/OperatorSigner";
 import {SignedOperatorDelivery} from "@/components/hosting/SignedOperatorDelivery";
 import {FeatureReleaseStatus} from "@/components/hosting/FeatureReleaseStatus";
 import {ProvisioningPanel} from "@/components/hosting/ProvisioningPanel";
+import {AppAccountPanel} from "@/components/hosting/AppAccountPanel";
+import {adminAppAccounts} from "@/lib/hosting/store";
 import {PrimaryDomainPanel} from "@/components/hosting/PrimaryDomainPanel";
 import { notFound } from "next/navigation";
 import { HOSTING_SECTIONS } from "@/lib/hostingWorkspace";
@@ -27,11 +29,13 @@ export default async function HostingSectionPage({params,searchParams}:{params:{
  key==='clients'?adminAccess():Promise.resolve([]),key==='packages'?adminPackageServers():Promise.resolve([]),key==='clients'?agencyClients():Promise.resolve([]),
  ]);
  const path='/hosting/'+key;
+ const appAccounts=key==='services'&&process.env.HOSTING_APP_ACCOUNTS_ENABLED==='approved'?await adminAppAccounts():[];
  return <div className="space-y-6"><PageTitle title={section.label} description={section.description}/><Notice {...searchParams}/><PanelGuide section={key}/>{key==='operations'&&<FeatureReleaseStatus/>}
  {['servers','packages','clients','services','domains','expenses'].includes(key)&&<HostingEntityForm entity={key} initiallyOpen={searchParams.new==='1'} selectedPackage={searchParams.package} defaultCurrency={settings.default_currency} record={record as unknown as Record<string,unknown>|undefined} lookups={lookups} packageServers={packageServers} agencyClients={agency}/>}
  {key==='servers'&&<p className="text-sm text-neutral-500">Capacity and availability are admin declarations. Registering a server does not install an agent or connect it. No root passwords or SSH keys are stored in this portal.</p>}
  {key==='invoices'&&<InvoiceForm lookups={lookups} settings={settings}/>}
- {key==='services'&&process.env.HOSTING_PROVISIONING_ENABLED==='approved'&&<ProvisioningPanel services={lookups.services.map(({id,name,status,primary_domain})=>({id,name,status,primary_domain}))}/>}
+ {key==='services'&&process.env.HOSTING_PROVISIONING_ENABLED==='approved'&&<ProvisioningPanel services={lookups.services.filter(s=>!s.package_snapshot).map(({id,name,status,primary_domain})=>({id,name,status,primary_domain}))}/>}
+ {key==='services'&&process.env.HOSTING_APP_ACCOUNTS_ENABLED==='approved'&&<AppAccountPanel accounts={appAccounts} needAccount={lookups.services.filter(s=>s.package_snapshot&&s.status==='pending'&&s.server_id&&s.primary_domain&&!appAccounts.some(a=>a.service_id===s.id)).map(({id,name})=>({id,name}))}/>}
  {key==='domains'&&process.env.HOSTING_DOMAIN_AUTOMATION_ENABLED==='approved'&&<PrimaryDomainPanel domains={(page.records as HostingDomain[]).filter(d=>Boolean(d.service_id)&&lookups.services.some(s=>s.id===d.service_id&&s.client_id===d.client_id&&s.primary_domain===d.hostname)).map(d=>({id:d.id,hostname:d.hostname,service:d.service_id!}))}/>}
  {key==='operations'&&<div className={cardClass}><OperatorSigner jobs={(page.records as HostingJob[]).filter(item=>item.status==='awaiting_connection'&&item.kind!=='rollback').map(item=>({id:item.id,kind:item.kind,label:lookups.services.find(service=>service.id===item.service_id)?.name??'Hosting service'}))}/><details><summary className="cursor-pointer text-sm">Already have a signed request file?</summary><SignedOperatorDelivery/></details><h2 className="font-medium">Request a server operation</h2><p className="mt-2 text-sm text-neutral-400">Requests remain Awaiting connection. They do not execute commands or change your websites. Current VPS operator and evidence enrollment prerequisites still apply.</p><HostingForm action="job" returnPath={path} label="Queue reviewed request" className="mt-4"><Select label="Service" name="service_id" options={lookups.services.map(s=>({value:s.id,label:s.name}))}/><Select label="Operation" name="kind" options={choices('provision','deploy','configure','rollback','suspend','resume','cancel')}/><Area label="Operator instructions (no secrets)" name="note"/></HostingForm></div>}
  {key==='packages'&&<PackageCatalog packages={lookups.packages} owner/>}
