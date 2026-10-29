@@ -14,6 +14,7 @@
 .hosting-shell .hms-nav-group[open] .hms-group-chevron { transform:rotate(180deg); }
 .hosting-shell .theme-main { --base-950:255 255 255; --base-900:255 255 255; --base-850:255 255 255; --base-800:242 246 251; --base-700:222 229 239; --base-600:207 217 230; --base-500:116 134 158; --neutral-50:12 27 49; --neutral-100:20 36 64; --neutral-200:36 53 78; --neutral-300:61 78 103; --neutral-400:100 116 139; --neutral-500:100 116 139; --neutral-600:100 116 139; --neutral-700:207 217 230; --neutral-800:228 234 243; --neutral-900:242 246 251; --neutral-950:255 255 255; --accent-300:29 78 216; --accent-400:37 99 235; --accent-500:37 99 235; --accent-600:29 78 216; background:#f6f8fc; background-image:none; color:#142440; color-scheme:light; }
 .hosting-shell .theme-main > .mx-auto { max-width:1600px; padding:30px 32px 48px; }
+.hosting-shell > .flex-1 { min-width:0; }
 .hosting-shell .hms-topbar { min-height:75px; padding:16px 32px; align-items:center; justify-content:space-between; gap:16px; background:white; border-bottom:1px solid #e4eaf3; color:#142440; flex-shrink:0; }
 .hosting-shell .hms-search { display:flex; align-items:center; gap:9px; padding:9px 12px; border:1px solid #dfe6f0; border-radius:7px; color:#8090a7; background:white; }
 .hosting-shell .hms-search input { min-width:0; width:100%; border:0; padding:0; outline:none; background:transparent; color:#24354e; font-size:13px; }
