@@ -29,6 +29,9 @@ export const serviceCommand=z.discriminatedUnion('action',[
  z.object({action:z.literal('source.request'),service:uuid,operation:z.enum(['deploy','export','publish','rollback']),request_key:uuid,tree:treeId.nullable()}).strict(),
  z.object({action:z.literal('source.build'),service:uuid,tree:treeId,request_key:uuid,variables:buildVariables}).strict(),
  z.object({action:z.literal('source.recover'),service:uuid,job:treeId,request_key:uuid}).strict(),
+ z.object({action:z.literal('source.github_status'),service:uuid}).strict(),
+ z.object({action:z.literal('source.auto_revoke'),service:uuid}).strict(),
+ z.object({action:z.literal('source.auto_resume'),service:uuid}).strict(),
  z.object({action:z.literal('source.discard'),service:uuid,tree:treeId}).strict(),
  z.object({action:z.literal('source.upload_ticket'),service:uuid,size:z.number().int().min(22).max(SOURCE_UPLOAD_MAX_BYTES),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
  z.object({action:z.literal('inventory'),service:uuid,kind:z.enum(['email','database'])}).strict(),
@@ -75,6 +78,19 @@ export const sourceStatus=z.object({service:uuid,version:z.number().int().nonneg
 export const sourceRepositories=z.object({service:uuid,version:z.number().int().nonnegative(),repository:sourceRepository.nullable(),available:z.array(z.object({installation_id:z.number().int().positive(),repository_id:z.number().int().positive(),full_name:sourceRepository.shape.full_name,write:z.boolean()}).strict()).max(200)}).strict();
 export const sourceTreeSummary=z.object({id:treeId,kind:z.literal('zip'),files:z.number().int().nonnegative(),bytes:z.number().int().nonnegative(),manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/),activated:z.literal(false)}).strict();
 export const sourceUploadTicket=z.object({url:z.string().url(),ticket:z.string().regex(/^[A-Za-z0-9_-]{1,2048}$/),signature:z.string().regex(/^[a-f0-9]{64}$/),expires:z.number().int().positive(),max_bytes:z.number().int().positive()}).strict();
+// Verified GitHub links and the automatic-deployment policy as reported by the private service (the policy itself is owner-signed there).
+export const AUTO_POLICY_STATES=['active','paused','revoked','expired'] as const;
+export const autoPolicy=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),state:z.enum(AUTO_POLICY_STATES),repository_id:sourceNumber,branch:sourceBranch,allow_activation:z.boolean(),runtimes:z.array(z.enum(['static','php','nextjs'])).min(1).max(3),
+ max_per_day:z.number().int().min(1).max(10),expires:z.number().int().positive(),failures:z.number().int().min(0).max(1000),reason:z.string().max(60).nullable()}).strict();
+export const autoStatus=z.object({service:uuid,policy:autoPolicy.nullable(),pending:z.object({commit_sha:z.string().regex(/^[a-f0-9]{40}$/),received:z.number().int().nonnegative()}).strict().nullable(),
+ recent:z.array(z.object({kind:z.string().max(40),detail:z.string().max(120).nullable(),created:z.number().int().nonnegative()}).strict()).max(8)}).strict();
+export const githubInstallation=z.object({installation_id:sourceNumber,github_login:z.string().max(60),account_login:z.string().max(60),state:z.enum(['active','suspended','revoked']),write:z.boolean(),repositories:z.number().int().min(0).max(300)}).strict();
+export const githubStatus=z.object({service:uuid,installations:z.array(githubInstallation).max(20),auto:autoStatus}).strict()
+ .refine(g=>g.auto.service===g.service&&(g.auto.policy===null||g.auto.policy.state!=='active'||g.installations.some(i=>i.state==='active')),'github');   // an active policy always has an active installation behind it
+// Sent only by the server-side OAuth callback after GitHub itself vouched for the user and installation; never accepted from a browser.
+export const githubLinkCommand=z.object({action:z.literal('source.github_link'),service:uuid,installation_id:sourceNumber,github_user_id:sourceNumber,github_login:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/),
+ repositories:z.array(z.object({id:sourceNumber,full_name:z.string().regex(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/).max(140)}).strict()).max(300)}).strict();
+export type GithubStatus=z.infer<typeof githubStatus>;
 export type SourceStatus=z.infer<typeof sourceStatus>;
 export type SourceRepositories=z.infer<typeof sourceRepositories>;
 export type SourceJob=z.infer<typeof sourceJob>;

@@ -269,6 +269,24 @@ root it also drives the real gateway -> queue -> worker -> isolated build -> run
 status flow, rollback, failed build and an uncertain/recovered activation via
 `tests/fixtures/hosting-nextjs-harness.py`). Not live: nothing here has run on the VPS.
 
+### GitHub connection and automatic deployment (source only; not deployed)
+
+The GitHub App link is verified, not typed in. `POST /api/hosting-github/start` (session, CSRF, active
+non-read-only client, website in scope, HOSTING_GITHUB_ENABLED + HOSTING_SOURCES_ENABLED and the App/OAuth
+settings `HOSTING_GITHUB_APP_SLUG`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_STATE_KEY` >= 32 chars) sets a
+single-use HttpOnly nonce cookie and returns the fixed `github.com/apps/<slug>/installations/new` URL with
+an HMAC state (10 minutes; bound to actor, website, scope and nonce). `GET /api/hosting-github/callback`
+verifies state + cookie, exchanges the OAuth code, reads only `/user`, `/user/installations` and that
+installation's repositories, DROPS the user token, and sends only the verified result in an internal-only
+`source.github_link` command (a browser can never send it; `serviceRequest(..., {internal:true})`). The VPS
+re-asks GitHub with the App key and stores the link only for the website's client. The portal refuses a
+link response that does not show that installation as active. `source.github_status` (read-only members
+may look), `source.auto_revoke` (always allowed while enabled) and `source.auto_resume` (also needs
+HOSTING_AUTODEPLOY_ENABLED + HOSTING_PUBLISHING_ENABLED, and must end active) control an owner-signed
+auto-deploy policy; the portal cannot create or extend a policy. Test: `tests/hosting-github.cjs`
+(with HMS_AUTOMATION_SOURCE it drives the real gateway, signed webhooks and an owner-signed policy via
+`tests/fixtures/hosting-github-gateway.py`). Not live: no GitHub App exists yet.
+
 ### Hosting hostname and search privacy
 
 The owner-selected hosting address is `https://web.housemysite.com`.
