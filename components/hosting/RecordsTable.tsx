@@ -15,8 +15,9 @@ export function RecordsTable({section,records,lookups,client=false}:{section:str
    if(key==='invoice_id')return <Link className="text-accent-300 hover:underline" href={`${base}/invoices/${raw}`}>{String(row.invoice_number??'View invoice')}</Link>;
    if(key==='client_id')return lookups?.clients.find(c=>c.id===raw)?.name??'Client';
    if(key==='server_id')return lookups?.servers.find(c=>c.id===raw)?.name??'Unassigned';
-   if(key==='package_id')return lookups?.packages.find(c=>c.id===raw)?.name??'Package';
+   if(key==='package_id')return (row.package_snapshot as {name?:string}|undefined)?.name??lookups?.packages.find(c=>c.id===raw)?.name??'Package';
    if(key==='service_id')return lookups?.services.find(c=>c.id===raw)?.name??'Service';
+   if(key==='price_minor'&&(row.pricing_ready===false||(row.package_snapshot as {pricing_ready?:boolean}|undefined)?.pricing_ready===false))return 'Price not set';
    if(key.endsWith('_minor'))return row.currency?money(Number(raw),String(row.currency)):(Number(raw)/100).toFixed(2);
    if(typeof raw==='boolean')return <StatusBadge value={raw?'available':'unavailable'}/>;
    if(['status','dns_status','ssl_status','transport_status'].includes(key))return <StatusBadge value={String(raw)}/>;

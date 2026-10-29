@@ -22,7 +22,7 @@ async function rpc<T>(name:string,args:Record<string,unknown>):Promise<T> {
   const result=await getSupabase().rpc('freelance_hq_hosting_'+name,args);
   if(result.error) {
     const message=String(result.error.message);
-    const allowed=['Payment exceeds outstanding balance','Refund exceeds refundable amount','Only issued invoices accept payments','An invoice with payment history cannot be cancelled','Submission already reviewed','Invalid original payment','Service invoice ownership, currency or period mismatch','Idempotency key reused with different data'];
+    const allowed=['App Hosting server enforcement is not enrolled','App Hosting is not ready for billing','Assigned package contract is immutable','Payment exceeds outstanding balance','Refund exceeds refundable amount','Only issued invoices accept payments','An invoice with payment history cannot be cancelled','Submission already reviewed','Invalid original payment','Service invoice ownership, currency or period mismatch','Idempotency key reused with different data'];
     throw new Error(allowed.find(s=>message.includes(s)) || 'The operation could not be completed. Check the record, currency and amount.');
   }
   return result.data as T;
@@ -45,6 +45,11 @@ async function saveEntity(form:FormData,actor:string) {
     values={name:text(120).parse(str(form,'name')),hostname:domainName(str(form,'hostname')),ipv4,ipv6,provider:optionalText(120).parse(str(form,'provider')),region:optionalText(120).parse(str(form,'region')),status:z.enum(['draft','available','maintenance','disabled']).parse(str(form,'status')),disk_mb:integer(form,'disk_mb'),memory_mb:integer(form,'memory_mb'),notes:optionalText().parse(str(form,'notes'))};
   } else if(entity==='packages') {
     values={name:text(120).parse(str(form,'name')),description:optionalText().parse(str(form,'description')),price_minor:moneyMinor(str(form,'price')),currency:currency.parse(str(form,'currency')),billing_cycle:cycle.parse(str(form,'billing_cycle')),disk_mb:integer(form,'disk_mb'),inode_limit:str(form,'inode_limit')?z.coerce.number().int().positive().max(1000000000).parse(str(form,'inode_limit')):null,memory_mb:integer(form,'memory_mb'),cpu_percent:integer(form,'cpu_percent',10000),domain_limit:integer(form,'domain_limit',10000),email_limit:integer(form,'email_limit',100000),is_active:flag(form,'is_active')};
+    if(str(form,'product_kind')==='app_hosting'){
+      const {limitsFromForm}=await import('./packageLimits');
+      const limits=limitsFromForm(form);
+      Object.assign(values,{product_kind:'app_hosting',resource_limits:limits,pricing_ready:flag(form,'pricing_ready'),disk_mb:limits.disk_mb,inode_limit:limits.inode_limit,memory_mb:limits.memory_mb,cpu_percent:limits.cpu_percent,domain_limit:limits.website_limit,email_limit:limits.email_limit});
+    }
     const serverIds=z.array(uuid).max(100).parse(form.getAll('server_ids'));
     return rpc<string>('save_package',{p_actor:actor,p_id:id??randomUUID(),p_data:values,p_servers:serverIds});
   } else if(entity==='clients') {
@@ -66,6 +71,7 @@ async function saveEntity(form:FormData,actor:string) {
       const serverId=optionalId(form,'server_id');
       if(serverId) { const server=checked<{status:string}>(await getSupabase().from(hostingTable('servers')).select('status').eq('id',serverId).single()); if(server.status!=='available')throw new Error('Choose a server accepting new services.'); }
       values={client_id:clientId,package_id:packageId,server_id:serverId,name:text(120).parse(str(form,'name')),primary_domain:str(form,'primary_domain')?domainName(str(form,'primary_domain')):'',price_minor:pkg.price_minor,currency:pkg.currency,billing_cycle:pkg.billing_cycle,next_due_date:date.parse(str(form,'next_due_date')),auto_invoice:flag(form,'auto_invoice'),notes:optionalText().parse(str(form,'notes'))};
+      return rpc<string>('assign_service',{p_actor:actor,p_key:uuid.parse(str(form,'request_key')),p_data:values});
     }
   } else if(entity==='domains') {
     values={client_id:uuid.parse(str(form,'client_id')),service_id:optionalId(form,'service_id'),hostname:domainName(str(form,'hostname')),expires_on:str(form,'expires_on')?date.parse(str(form,'expires_on')):null,auto_renew:flag(form,'auto_renew'),notes:optionalText().parse(str(form,'notes'))};

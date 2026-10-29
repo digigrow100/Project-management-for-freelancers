@@ -38,9 +38,12 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
  }
  if(command.action==='hosting.provision'||command.action==='hosting.status'){
   if(scope.owner!==true||process.env.HOSTING_PROVISIONING_ENABLED!=='approved')throw new ServiceDenied();
-  const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,server_id,package_id,primary_domain,status').eq('id',command.service).single();
+  const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,server_id,package_id,primary_domain,status,package_snapshot').eq('id',command.service).single();
   if(found.error||!found.data||found.data.client_id!==scope.sites.get(command.service)?.client)throw new ServiceDenied();
   const row=found.data;
+  // Never send an extended App Hosting contract to the legacy one-site worker.
+  // Its ISPConfig template pin does not enforce account-wide DB/mail/traffic/runtime budgets.
+  if(row.package_snapshot&&command.action==='hosting.provision')throw new ServiceDenied();
   if(command.action==='hosting.status')wireCommand={...command,client:row.client_id};
   else{
    if(!row.server_id||!row.package_id||!row.primary_domain||row.status!=='pending')throw new ServiceDenied();

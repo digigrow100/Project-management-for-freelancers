@@ -6,6 +6,7 @@ import type { ClientReleaseFeature } from '@/lib/hosting/clientRelease';
 const items = [
  {href:"/client",label:"Overview",icon:Home},
  {href:"/client/services",label:"Hosting",icon:Server},
+ {href:"/client/plans",label:"Plans & limits",icon:Server},
  {href:"/client/email",label:"Email",icon:Mail},
  {href:"/client/databases",label:"Databases",icon:Database},
  {href:"/client/forms",label:"Form API",icon:Send},

@@ -159,6 +159,34 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Team Management / Hosting workspaces
 
+### App Hosting plan contracts
+
+`lib/hosting/packageLimits.ts` defines finite versioned App Starter/Business/Pro
+limits and their shared SQL/TS canonical SHA256 representation. Zero disables an
+optional resource; it never means unlimited. Package records carry product_kind,
+resource_limits, pricing_ready and limits_version. The additive app_hosting_packages
+migration creates the three unpriced plans and maps only the existing matching
+server; it does not mark the server available or enable any runtime.
+
+All new assignments use the admin-only transactional assign_service RPC, with
+idempotency and authoritative plan pricing. App assignments atomically snapshot
+name/version/limits/digest/pricing readiness. Editing a catalogue never changes
+existing contracts. Unpriced assignments cannot bill, and App assignments cannot be
+manually marked active. The legacy one-site provisioning worker cannot enforce all
+account-wide app/mail/database/traffic budgets, so managed.ts rejects dispatch of
+App contracts until a matching worker/enrollment integration is implemented. Do
+not bypass this to make the UI look live. These are real saved plan assignments,
+not proof of VPS enforcement. Existing standard packages retain their behavior.
+
+Owner Packages shows editable plans and links into service assignment. The new
+/client/plans catalogue authenticates the current customer, exposes only safe
+product columns and joins no other client's data. Assigned limits on customer
+services come only from their saved snapshot. No price is invented: seeded zero
+values are marked unpriced and must be explicitly confirmed before billing.
+Tests: hosting-package-contracts.cjs, hosting-package-views.cjs, provisioning,
+client-scope and existing security tests. No VPS, visibility release gates or
+Next.js/automatic deployment flags are changed by this update.
+
 ### Owner hosting visual system
 
 The owner `/hosting` workspace uses the approved navy sidebar / blue controls /
@@ -947,6 +975,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Added App Hosting package limits, unpriced Starter/Business/Pro catalogue records, customer plans and assigned limit snapshots, owner assignment links, transactional/idempotent service assignment and billing/activation guards. VPS enforcement remains pending and App contracts are blocked from the legacy worker.
 
 - Implemented the approved navy/blue owner Hosting UI across the existing tabs: grouped sidebar, light workspace, real overview list, current-page search/status filters, and right-side add/edit drawers. Existing server actions, financial controls, owner approvals and security gates are retained; no production hosting flags are enabled by the redesign.
 

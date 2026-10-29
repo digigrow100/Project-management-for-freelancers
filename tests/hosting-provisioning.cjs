@@ -48,6 +48,7 @@ const crypto=require('node:crypto');
  const before=fetches;
  for(const [context,cmd] of [[{...scope,owner:false},command],[{...scope,readOnly:true},command],[{...scope,sites:new Map()},command],[scope,{...command,client:'attacker'}]])await assert.rejects(()=>serviceRequest(context,cmd));
  assert.equal(fetches,before);
+ row.package_snapshot={schema:1};await assert.rejects(()=>serviceRequest(scope,command));assert.equal(fetches,before,'App contract must never reach the legacy worker');delete row.package_snapshot;
  serverStatus='draft';await assert.rejects(()=>serviceRequest(scope,command));assert.equal(fetches,before);serverStatus='available';
  env.HOSTING_PROVISIONING_ENABLED='';await assert.rejects(()=>serviceRequest(scope,command));env.HOSTING_PROVISIONING_ENABLED='approved';
  mode='foreign';await assert.rejects(()=>serviceRequest(scope,{action:'hosting.status',service}));
