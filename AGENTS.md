@@ -159,12 +159,27 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Team Management / Hosting workspaces
 
+### Owner hosting visual system
+
+The owner `/hosting` workspace uses the approved navy sidebar / blue controls /
+light content style in `app/(app)/hosting/hosting.css`, scoped by `WorkspaceFrame`
+and `.hosting-shell`. Team and separate client themes retain their existing scope.
+`WorkspaceChrome` supplies a page finder (not global record search), breadcrumbs
+and House My Site branding. `HostingNavigation` groups every existing tab without
+removing routes. `RecordEditor` uses an accessible native modal dialog for existing
+server forms; `RecordTableView` searches and filters only the current page's records.
+The overview displays saved records, admin-declared server availability and package
+allowances; it never claims measured usage or verified uptime. Preserve all existing
+authorization, action names, approvals, field names and release gates. This UI change
+does not enroll workers or activate hosting features. Regression: `tests/hosting-ui.cjs`
+and `tests/hosting-workspaces.cjs`, plus the existing hosting security suite.
+
 ### Owner hosting control center and setup guidance
 
 `lib/hosting/panelCatalog.ts` maps every existing hosting tab to its features,
 next step and related pages. `components/hosting/PanelGuide.tsx` renders owner-only
-guides, grouped navigation on the Hosting overview, and a configuration overview
-on Overview/Settings. Labels describe portal switches only, never worker enrollment
+collapsible guides and a configuration overview on Settings. The overview uses
+a real paginated service list and real counts. Labels describe portal switches only, never worker enrollment
 or live health. Backup enablement uses the actual gateway value `true`, not
 `approved`; source features include their parent gate dependencies.
 Unconfigured owner Email, Database, Forms, Source and Backup pages authenticate
@@ -933,6 +948,8 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Implemented the approved navy/blue owner Hosting UI across the existing tabs: grouped sidebar, light workspace, real overview list, current-page search/status filters, and right-side add/edit drawers. Existing server actions, financial controls, owner approvals and security gates are retained; no production hosting flags are enabled by the redesign.
+
 - Added the owner hosting control center, all-tab feature guides, connection-setting labels and safe setup pages for disabled integrations. Existing backend actions and client release gates are preserved.
 
 - Added owner-only primary-domain link/SSL request and saved-status controls,
@@ -1146,4 +1163,5 @@ Audit of portal -> API -> worker -> ISPConfig found and fixed: no mail-domain li
 ## 2026-10-29 — Backup schedule, restore dates and scoped restore (source only)
 
 `RestoreControls` (owner and client Backups pages) shows each website's restore dates, protected default, the real schedule, an honest plain-language retention explanation (3 points in total incl. the day-14 default; 3 copies = one backup about every 30 days; anything after the newest backup is not recoverable) and any conflict between schedule, copy limit and the storage Object Lock (pruning pauses, nothing is deleted early). New protocol actions: `policy` (read-only safe), `schedule` (owner, 1..30 days), `plan_scope` (one website / all websites of one client / chosen websites; a client names only its own; shared mailboxes/databases are skipped unless acknowledged), and `apply` (owner only: the owner-signed, plan-bound `hms-restore-approval-v1` made with the local signer; a safety copy is taken first, failures are reverted). Strict validators for every private-service response run once, on the server (`backupPolicies`, `backupScopePlan`, `backupApplyResult`); the browser validates the portal-shaped output with `lib/hosting/backupView.ts` (`policiesView`, `scopePlanView`) and must never re-parse it as wire format. Once a live apply request has been sent, any failure or unconfirmed answer is an UNKNOWN outcome: the page says live data may have changed, disables further preparation/apply and tells the owner to reload and have the operator check — it never claims nothing changed; the owner Backups page joins the Website source page in the signer `connect-src` exception. Tests: `tests/backupProtocol.test.mjs` (with HMS_AUTOMATION_SOURCE it validates real responses from the automation backup chain). Not live: no storage bucket, evidence service, quiescence hook or live-restore adapter is enrolled.
+
 

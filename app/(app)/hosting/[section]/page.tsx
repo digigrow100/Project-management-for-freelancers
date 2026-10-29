@@ -14,7 +14,7 @@ import { RecordsTable } from "@/components/hosting/RecordsTable";
 import { InvoiceForm } from "@/components/hosting/InvoiceForm";
 import { FinanceOverview } from "@/components/hosting/Overview";
 import { PageTitle,Notice,Pagination,HostingForm,Hidden,Field,Select,Check,Area,cardClass,choices } from "@/components/hosting/ui";
-export default async function HostingSectionPage({params,searchParams}:{params:{section:string};searchParams:{edit?:string;page?:string;error?:string;saved?:string;from?:string;to?:string}}) {
+export default async function HostingSectionPage({params,searchParams}:{params:{section:string};searchParams:{edit?:string;new?:string;page?:string;error?:string;saved?:string;from?:string;to?:string}}) {
  const section=HOSTING_SECTIONS.find(s=>s.key===params.section);if(!section)notFound();
  const [lookups,settings]=await Promise.all([adminLookups(),adminSettings()]);
  if(section.key==='settings')return <div className="space-y-6"><PageTitle title="Hosting settings"/><Notice {...searchParams}/><PanelGuide section="settings"/><HostingSettingsForm settings={settings}/><IntegrationOverview/><section className={cardClass}><h2 className="font-medium">Account security</h2><p className="mt-2 text-sm text-neutral-400">Manage the authenticator for your own account. Hosting access requires an enabled authenticator.</p><Link href="/login/security?manage=1" className="mt-4 inline-block text-sm text-blue-400">Manage authenticator →</Link></section></div>;
@@ -27,7 +27,7 @@ export default async function HostingSectionPage({params,searchParams}:{params:{
  ]);
  const path='/hosting/'+key;
  return <div className="space-y-6"><PageTitle title={section.label} description={section.description}/><Notice {...searchParams}/><PanelGuide section={key}/>{key==='operations'&&<FeatureReleaseStatus/>}
- {['servers','packages','clients','services','domains','expenses'].includes(key)&&<HostingEntityForm entity={key} defaultCurrency={settings.default_currency} record={record as unknown as Record<string,unknown>|undefined} lookups={lookups} packageServers={packageServers} agencyClients={agency}/>}
+ {['servers','packages','clients','services','domains','expenses'].includes(key)&&<HostingEntityForm entity={key} initiallyOpen={searchParams.new==='1'} defaultCurrency={settings.default_currency} record={record as unknown as Record<string,unknown>|undefined} lookups={lookups} packageServers={packageServers} agencyClients={agency}/>}
  {key==='servers'&&<p className="text-sm text-neutral-500">Capacity and availability are admin declarations. Registering a server does not install an agent or connect it. No root passwords or SSH keys are stored in this portal.</p>}
  {key==='invoices'&&<InvoiceForm lookups={lookups} settings={settings}/>}
  {key==='services'&&process.env.HOSTING_PROVISIONING_ENABLED==='approved'&&<ProvisioningPanel services={lookups.services.map(({id,name,status,primary_domain})=>({id,name,status,primary_domain}))}/>}

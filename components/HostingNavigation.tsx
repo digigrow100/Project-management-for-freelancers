@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard, Archive, Mail, Database, Send, FolderGit2 } from "lucide-react";
+import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard, Archive, Mail, Database, Send, FolderGit2, ChevronDown } from "lucide-react";
 import { HOSTING_SECTIONS } from "@/lib/hostingWorkspace";
 import { cn } from "@/lib/utils";
 
@@ -32,21 +32,18 @@ export function hostingLinkActive(pathname: string, href: string) {
 
 export function HostingNavigation() {
   const pathname = usePathname();
+  const groups=[
+    {label:'Hosting',icon:Server,keys:['servers','packages','services','clients']},
+    {label:'Websites',icon:Globe,keys:['domains','sources','email','databases','forms','backups']},
+    {label:'Billing',icon:Receipt,keys:['billing','invoices','payments','expenses','submissions']},
+  ];
+  const renderLink=({href,label,icon:Icon}:typeof HOSTING_NAV[number],nested=false)=><Link key={href} href={href} prefetch={false} aria-current={hostingLinkActive(pathname,href)?'page':undefined} className={cn('hms-nav-link',nested&&'hms-nav-child',hostingLinkActive(pathname,href)&&'hms-nav-active')}><Icon size={18} className="shrink-0" aria-hidden="true"/><span>{label}</span></Link>;
   return (
     <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 sidebar-scroll overflow-x-hidden overflow-y-auto">
-      {HOSTING_NAV.map(({ href, label, icon: Icon }) => (
-        <Link key={href} href={href} prefetch={false}
-          aria-current={hostingLinkActive(pathname, href) ? "page" : undefined}
-          className={cn(
-            "group flex min-h-10 shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            hostingLinkActive(pathname, href)
-              ? "bg-accent-500/10 text-accent-300"
-              : "text-neutral-300 hover:bg-base-800 hover:text-accent-300",
-          )}>
-          <Icon size={17} className="shrink-0" aria-hidden="true" />
-          {label}
-        </Link>
-      ))}
+      {renderLink(HOSTING_NAV[0]!)}
+      {groups.map(({label,icon:Icon,keys})=><details key={label} className="hms-nav-group shrink-0" open={keys.some(key=>hostingLinkActive(pathname,`/hosting/${key}`))}><summary className="hms-nav-link"><Icon size={19} aria-hidden="true"/><span className="flex-1">{label}</span><ChevronDown size={15} className="hms-group-chevron" aria-hidden="true"/></summary><div className="space-y-1 pb-2">{HOSTING_NAV.filter(item=>keys.includes(item.href.slice('/hosting/'.length))).map(item=>renderLink(item,true))}</div></details>)}
+      {HOSTING_NAV.filter(item=>['tickets','operations','activity','settings'].includes(item.href.slice('/hosting/'.length))).map(item=>renderLink(item))}
     </nav>
   );
 }
+

@@ -26,6 +26,7 @@ import {
 } from "@/lib/store";
 import { listAccessibleWhatsAppClients } from "@/lib/whatsappBridge";
 import { WorkspaceProvider, WorkspaceOnly } from "@/components/WorkspaceProvider";
+import {WorkspaceFrame,HostingTopBar} from "@/components/hosting/WorkspaceChrome";
 
 export const dynamic = "force-dynamic";
 
@@ -73,10 +74,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <WorkspaceProvider canAccessHosting={isAdmin}>
-    <div
-      data-theme={profile?.themePreference ?? "dark"}
-      className="app-theme flex min-h-screen md:h-screen md:overflow-hidden"
-    >
+    <WorkspaceFrame theme={profile?.themePreference ?? "dark"}>
       <Sidebar
         profile={profile}
         unseenProjects={unseenProjects}
@@ -85,6 +83,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       />
       <div className="flex-1 md:h-screen md:overflow-y-auto">
         <MobileTopBar />
+        <WorkspaceOnly name="hosting"><HostingTopBar name={profile?.name||profile?.email||'Owner'}/></WorkspaceOnly>
         <main className="theme-main min-h-full pb-24 md:pb-0">
           <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">
             {memberView && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
@@ -121,7 +120,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       )}</WorkspaceOnly>
       {profile && !memberView && <PresenceHeartbeat />}
       <WorkspaceOnly name="team">{profile && <WhatsAppChatWidget initialClients={whatsappClients} isAdmin={isAdmin} />}</WorkspaceOnly>
-    </div>
+    </WorkspaceFrame>
     </WorkspaceProvider>
   );
 }
+

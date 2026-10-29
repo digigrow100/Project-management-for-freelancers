@@ -45,6 +45,7 @@ function load(filename) {
 }
 
 const { WorkspaceProvider, WorkspaceOnly } = load('components/WorkspaceProvider.tsx');
+const { WorkspaceFrame } = load("components/hosting/WorkspaceChrome.tsx");
 const { Sidebar } = load('components/Sidebar.tsx');
 const { MobileNav } = load('components/MobileNav.tsx');
 const { MobileTopBar } = load('components/MobileTopBar.tsx');
@@ -57,16 +58,18 @@ function render(currentPath, currentProfile = profile) {
   return renderToStaticMarkup(React.createElement(WorkspaceProvider, {
     canAccessHosting: canAccessHosting(currentProfile),
   },
-    React.createElement(Sidebar, { profile: currentProfile }),
+    React.createElement(WorkspaceFrame, {theme:"light"}, React.createElement(Sidebar, { profile: currentProfile }),
     React.createElement(MobileTopBar),
     React.createElement(MobileNav, { profile: currentProfile }),
-    React.createElement(WorkspaceOnly, { name: 'team' }, React.createElement('div', null, 'TEAM_FLOATING_TOOLS')),
+    React.createElement(WorkspaceOnly, { name: 'team' }, React.createElement('div', null, 'TEAM_FLOATING_TOOLS'))),
   ));
 }
 
 (async () => {
   for (const route of ['/hosting', '/hosting/servers', '/hosting/billing']) {
     const html = render(route);
+    assert.match(html, /data-workspace="hosting"/);
+    assert.match(html, /House My Site/);
     assert.match(html, /Switch workspace/);
     assert.match(html, /Hosting navigation/);
     assert.match(html, /href="\/hosting\/servers"/);
@@ -83,6 +86,9 @@ function render(currentPath, currentProfile = profile) {
     const html = render(route);
     assert.match(html, /href="\/projects"/);
     assert.match(html, /New Project/);
+    assert.match(html, /data-workspace="team"/);
+    assert.match(html, /data-theme="light"/);
+    assert.match(html, /Freelance HQ/);
     assert.match(html, /TEAM_FLOATING_TOOLS/);
     assert.ok(!html.includes('href="/hosting/servers"'));
   }
@@ -103,3 +109,4 @@ function render(currentPath, currentProfile = profile) {
   assert.ok(HOSTING_SECTIONS.some(s=>s.key==='operations'));
   console.log('PASS: hosting/team menus, desktop/mobile switch, exact route boundaries, hidden team tools, effective-role guard and hosting section navigation.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+

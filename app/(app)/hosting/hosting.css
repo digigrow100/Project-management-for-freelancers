@@ -1,0 +1,88 @@
+/* Owner Hosting workspace only. Team and client shells retain their themes. */
+.hosting-shell { --base-950:9 22 42; --base-900:13 30 56; --base-850:18 39 69; --base-800:25 47 78; --base-700:46 65 94; --base-600:90 109 136; --accent-300: 147 197 253; --accent-400: 96 165 250; --accent-500: 37 99 235; --accent-600: 29 78 216; background:#f6f8fc; color:#142440; }
+.hosting-shell .sidebar-themed { width:248px; background:#0d1e38; border:0; padding:24px 16px 16px; gap:22px; --base-900:13 30 56; --base-850:18 39 69; --base-800:25 47 78; --base-700:46 65 94; --base-600:90 109 136; --neutral-100:255 255 255; --neutral-200:226 234 247; --neutral-300:204 216 235; --neutral-400:167 185 211; --neutral-500:153 172 198; --neutral-600:153 172 198; }
+.hosting-shell .sidebar-themed > div:first-child .text-lg { font-size:16px; }
+.hosting-shell .sidebar-themed::before,.hosting-shell .sidebar-themed::after { display:none; }
+.hosting-shell .hms-nav-link { display:flex; align-items:center; gap:12px; min-height:43px; padding:10px 13px; border-radius:7px; color:#b9c9e0; font-size:13px; font-weight:500; cursor:pointer; transition:background .15s,color .15s; }
+.hosting-shell .hms-nav-link:hover { background:#193254; color:white; }
+.hosting-shell .hms-nav-active { color:white; background:#2563eb; }
+.hosting-shell .hms-nav-active:hover { background:#1d4ed8; }
+.hosting-shell .hms-nav-child { margin-left:18px; min-height:37px; font-size:12px; padding-left:16px; }
+.hosting-shell summary { cursor:pointer; }
+.hosting-shell .hms-nav-group > summary { list-style:none; }
+.hosting-shell .hms-nav-group > summary::-webkit-details-marker { display:none; }
+.hosting-shell .hms-nav-group[open] .hms-group-chevron { transform:rotate(180deg); }
+.hosting-shell .theme-main { --base-950:255 255 255; --base-900:255 255 255; --base-850:255 255 255; --base-800:242 246 251; --base-700:222 229 239; --base-600:207 217 230; --base-500:116 134 158; --neutral-50:12 27 49; --neutral-100:20 36 64; --neutral-200:36 53 78; --neutral-300:61 78 103; --neutral-400:100 116 139; --neutral-500:100 116 139; --neutral-600:100 116 139; --neutral-700:207 217 230; --neutral-800:228 234 243; --neutral-900:242 246 251; --neutral-950:255 255 255; --accent-300:29 78 216; --accent-400:37 99 235; --accent-500:37 99 235; --accent-600:29 78 216; background:#f6f8fc; background-image:none; color:#142440; color-scheme:light; }
+.hosting-shell .theme-main > .mx-auto { max-width:1600px; padding:30px 32px 48px; }
+.hosting-shell > .flex-1 { min-width:0; }
+.hosting-shell .hms-topbar { min-height:75px; padding:16px 32px; align-items:center; justify-content:space-between; gap:16px; background:white; border-bottom:1px solid #e4eaf3; color:#142440; flex-shrink:0; }
+.hosting-shell .hms-search { display:flex; align-items:center; gap:9px; padding:9px 12px; border:1px solid #dfe6f0; border-radius:7px; color:#8090a7; background:white; }
+.hosting-shell .hms-search input { min-width:0; width:100%; border:0; padding:0; outline:none; background:transparent; color:#24354e; font-size:13px; }
+.hosting-shell .hms-search:focus-within { border-color:#2563eb; box-shadow:0 0 0 2px #2563eb18; }
+.hosting-shell .hms-search-results { position:absolute; top:calc(100% + 8px); right:0; width:280px; padding:8px; z-index:40; border:1px solid #e2e8f0; border-radius:10px; background:white; box-shadow:0 12px 32px #14244015; }
+.hosting-shell .hms-page-title h1 { font-size:26px; letter-spacing:-.7px; font-weight:650; }
+.hosting-shell .hms-page-title p { line-height:1.65; font-size:13px; }
+.hosting-shell .theme-main .text-blue-300,.hosting-shell .theme-main .text-blue-400 { color:#1d4ed8; }
+.hosting-shell .theme-main .text-amber-300,.hosting-shell .theme-main .text-amber-400 { color:#92400e; }
+.hosting-shell .theme-main .text-rose-400,.hosting-shell .theme-main .text-red-400 { color:#be123c; }
+.hosting-shell .theme-main .text-emerald-300,.hosting-shell .theme-main .text-emerald-400 { color:#047857; }
+.hosting-shell .theme-main .bg-accent-500 { color:white; }
+.hosting-shell .theme-main .rounded-xl { border-radius:10px; }
+.hosting-shell .theme-main input:not([type=checkbox]):not([type=radio]):not([type=hidden]),.hosting-shell .theme-main select,.hosting-shell .theme-main textarea { color:#24354e; color-scheme:light; }
+.hosting-shell .theme-main input::placeholder,.hosting-shell .theme-main textarea::placeholder { color:#8795a9; }
+.hosting-shell :is(a,button,summary,input,select,textarea):focus-visible { outline:2px solid #60a5fa; outline-offset:3px; }
+.hosting-shell .hms-help { color:#64748b; font-size:12px; }
+.hosting-shell .hms-help > summary { width:fit-content; padding:4px 0; font-weight:500; }
+.hosting-shell .hms-help[open] { padding:14px 18px; border:1px solid #dfe6f0; border-radius:8px; background:white; }
+.hosting-shell .hms-help[open] > summary { color:#1d4ed8; }
+.hosting-shell .hms-editor-launch { display:flex; justify-content:flex-end; }
+.hosting-shell .hms-primary { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid #2563eb; border-radius:7px; background:#2563eb; color:white; padding:10px 16px; font-size:13px; font-weight:600; min-height:41px; }
+.hosting-shell .hms-primary:hover { background:#1d4ed8; }
+.hosting-shell .hms-drawer { position:fixed; inset:0 0 0 auto; margin:0; width:min(560px,100vw); max-width:100vw; height:100dvh; max-height:100dvh; border:0; border-left:1px solid #dce4ef; padding:0; background:white; color:#142440; box-shadow:-16px 0 60px #14244012; color-scheme:light; }
+.hosting-shell .hms-drawer::backdrop { background:#0c1d384d; }
+.hosting-shell .hms-drawer-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; position:sticky; top:0; background:white; padding:24px; border-bottom:1px solid #e4eaf3; z-index:1; }
+.hosting-shell .hms-icon-button { display:grid; place-items:center; width:34px; height:34px; border-radius:6px; color:#64748b; }
+.hosting-shell .hms-icon-button:hover { background:#f1f5f9; }
+.hosting-shell .hms-drawer-body { padding:24px; }
+.hosting-shell .hms-drawer-body input:not([type=checkbox]):not([type=radio]),.hosting-shell .hms-drawer-body select { min-height:42px; }
+.hosting-shell .hms-records { overflow:hidden; border:1px solid #e0e7f1; border-radius:10px; background:white; }
+.hosting-shell .hms-table-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:17px 20px; border-bottom:1px solid #e6ecf4; }
+.hosting-shell .hms-table-toolbar .hms-search { width:min(310px,100%); }
+.hosting-shell .hms-status-filter { display:flex; align-items:center; gap:8px; color:#64748b; padding:7px 10px; border:1px solid #dfe6f0; border-radius:7px; }
+.hosting-shell .hms-status-filter select { max-width:190px; border:0; background:transparent; font-size:12px; padding:2px 5px; }
+.hosting-shell .hms-records th { background:#f9fbfd; color:#728198; font-size:11px; font-weight:600; letter-spacing:.02em; padding:13px 20px; border-bottom:1px solid #e6ecf4; white-space:nowrap; }
+.hosting-shell .hms-records td { border-bottom:1px solid #edf1f7; padding:19px 20px; color:#3b4d67; font-size:12px; max-width:360px; overflow-wrap:anywhere; }
+.hosting-shell .hms-records tbody tr:last-child td { border-bottom:0; }
+.hosting-shell .hms-records tbody tr:hover { background:#fbfcff; }
+.hosting-shell .hms-records td:first-child { color:#182d4b; font-weight:600; }
+.hosting-shell .hms-row-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; min-width:90px; }
+.hosting-shell .hms-row-actions form { margin:0; }
+.hosting-shell .hms-row-actions button { font-size:11px; padding:6px 9px; }
+.hosting-shell .hms-status { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:5px; font-size:10px; font-weight:600; text-transform:capitalize; white-space:nowrap; background:#f0f3f8; color:#66758a; }
+.hosting-shell .hms-status > span { width:5px; height:5px; border-radius:50%; background:currentColor; }
+.hosting-shell .hms-status-success { background:#eaf7f0; color:#168354; }
+.hosting-shell .hms-status-pending { background:#fff5de; color:#96620d; }
+.hosting-shell .hms-status-danger { background:#fff0f1; color:#bb3450; }
+.hosting-shell .hms-empty { padding:48px 20px; text-align:center; color:#334155; }
+.hosting-shell .hms-stat { background:white; border:1px solid #e0e7f1; border-radius:10px; padding:19px 22px; display:flex; align-items:center; gap:17px; }
+.hosting-shell .hms-stat-icon { display:grid; place-items:center; width:44px; height:44px; border-radius:10px; background:#edf3ff; color:#2563eb; }
+.hosting-shell .hms-stat strong { display:block; font-size:25px; font-weight:650; letter-spacing:-.7px; }
+.hosting-shell .hms-stat span { color:#728198; font-size:12px; }
+.hosting-shell .hms-server-card { background:white; border:1px solid #e0e7f1; border-radius:10px; padding:24px; }
+@media(max-width:767px) {
+ .hosting-shell .hms-stats { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+ .hosting-shell .hms-stats .hms-stat { padding:12px 10px; }
+ .hosting-shell .hms-stats .hms-stat-icon { display:none; }
+ .hosting-shell .hms-stats .hms-stat strong { font-size:23px; }
+ .hosting-shell .hms-stats .hms-stat span { font-size:10px; }
+ .hosting-shell .hms-mobile-sheet { max-height:80dvh; overflow-y:auto; padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
+ .hosting-shell .theme-main > .mx-auto { padding:22px 16px 105px; }
+ .hosting-shell .hms-page-title h1 { font-size:23px; }
+ .hosting-shell .hms-table-toolbar { padding:14px; }
+ .hosting-shell .hms-table-toolbar .hms-search { width:100%; }
+ .hosting-shell .hms-records td,.hosting-shell .hms-records th { padding-left:14px; padding-right:14px; }
+ .hosting-shell [aria-label="Hosting navigation"] { max-height:60dvh; overflow-y:auto; }
+ .hosting-shell .hms-drawer-body,.hosting-shell .hms-drawer-heading { padding:20px; }
+}
+@media print { .hosting-shell .sidebar-themed,.hosting-shell .hms-topbar { display:none!important; } .hosting-shell .theme-main { overflow:visible!important; } }
+@media(prefers-reduced-motion:reduce) { .hosting-shell * { transition:none!important; } }

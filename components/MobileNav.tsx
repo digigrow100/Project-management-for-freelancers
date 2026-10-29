@@ -77,8 +77,9 @@ export function MobileNav({
         ...(canAccessRenewals && domainsItem ? [domainsItem] : []),
         ...(canAccessFinance && invoicesItem ? [invoicesItem] : []),
       ];
-  const sheetItems = hosting ? HOSTING_NAV.slice(3) : [...COMMON_MORE_NAV, ...extraItems];
-  const primaryItems = hosting ? HOSTING_NAV.slice(0, 3) : PRIMARY_NAV;
+  const primaryHosting=['/hosting','/hosting/services','/hosting/clients'];
+  const sheetItems = hosting ? HOSTING_NAV.filter(item=>!primaryHosting.includes(item.href)) : [...COMMON_MORE_NAV, ...extraItems];
+  const primaryItems = hosting ? HOSTING_NAV.filter(item=>primaryHosting.includes(item.href)) : PRIMARY_NAV;
   const linkActive = hosting ? hostingLinkActive : isActive;
 
   return (
@@ -86,7 +87,7 @@ export function MobileNav({
       {moreOpen && (
         <div className="md:hidden fixed inset-0 z-30 bg-black/50" onClick={() => setMoreOpen(false)}>
           <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-base-700/60 bg-base-900 p-4 pb-8"
+            className={`absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-base-700/60 bg-base-900 p-4 pb-8 ${hosting?"hms-mobile-sheet":""}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -180,3 +181,4 @@ export function MobileNav({
     </>
   );
 }
+
