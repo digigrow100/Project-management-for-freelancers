@@ -1,5 +1,5 @@
 import type {AppAccountView} from '@/lib/hosting/store';
-import {UsageTable} from './AppAccountPanel';
+import {UsageTable} from './AppUsageTable';
 const stateLabel:Record<string,string>={requested:'Waiting for setup',provisioning:'Being set up',uncertain:'Being reviewed by support',provider_confirmed:'Almost ready: storage controls are being verified',enforced:'Ready: the server confirmed your limits',suspended:'Suspended'};
 // Read-only and honest: no controls, no estimates. A value nothing measured is shown as unknown.
 export function AppAccountSummary({account}:{account?:AppAccountView}){
