@@ -16,6 +16,14 @@ export const managedOperation=z.discriminatedUnion('operation',[
  z.object({operation:z.literal('enable'),resource:id}).strict(),z.object({operation:z.literal('disable'),resource:id}).strict(),
  z.object({operation:z.literal('delete'),resource:id,confirm:id}).strict()
 ]);
+// Owner-signed documents are produced by the owner's local signer and only relayed here; the private service verifies the signature and every bound field.
+export const signature=z.string().regex(/^[A-Za-z0-9+/]{86}==$/);
+export const signedApproval=z.object({job:treeId,digest:z.string().regex(/^[a-f0-9]{64}$/),nonce:z.string().regex(/^[a-f0-9]{32}$/),issued:sourceNumber,expires:sourceNumber,plan:z.string().regex(/^[a-f0-9]{64}$/).nullable(),signature}).strict();
+export const signedPolicy=z.object({schema:z.literal(1),id:z.string().regex(/^[a-f0-9]{32}$/),service:uuid,client:uuid,actor:id,repository_id:sourceNumber,branch:sourceBranch,allow_activation:z.boolean(),runtimes:z.array(z.enum(['static','php','nextjs'])).min(1).max(3),
+ max_per_day:z.number().int().min(1).max(10),issued:sourceNumber,expires:sourceNumber}).strict();
+// Runtime secret names: same rules as the private service (never a build variable, never a reserved process variable).
+const RESERVED_RUNTIME=/^(PORT|HOSTNAME|PATH|HOME|USER|LOGNAME|SHELL|PWD|TMPDIR|TMP|TEMP|NODE_[A-Z0-9_]*|NEXT_TELEMETRY_DISABLED|HMS_[A-Z0-9_]*|LD_[A-Z0-9_]*|DYLD_[A-Z0-9_]*)$/;
+export const secretName=z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/).refine(n=>!RESERVED_RUNTIME.test(n));
 export const serviceCommand=z.discriminatedUnion('action',[
  z.object({action:z.literal('hosting.domain.request'),service:uuid,domain:uuid,operation:z.enum(['attach','ssl']),request_key:uuid}).strict(),
  z.object({action:z.literal('hosting.domain.status'),service:uuid,domain:uuid}).strict(),
@@ -32,6 +40,15 @@ export const serviceCommand=z.discriminatedUnion('action',[
  z.object({action:z.literal('source.github_status'),service:uuid}).strict(),
  z.object({action:z.literal('source.auto_revoke'),service:uuid}).strict(),
  z.object({action:z.literal('source.auto_resume'),service:uuid}).strict(),
+ z.object({action:z.literal('source.approvals_pending'),service:uuid}).strict(),
+ z.object({action:z.literal('source.approval_view'),service:uuid,job:treeId}).strict(),
+ z.object({action:z.literal('source.approve'),service:uuid,job:treeId,approval:signedApproval}).strict(),
+ z.object({action:z.literal('source.approval_withdraw'),service:uuid,job:treeId}).strict(),
+ z.object({action:z.literal('source.auto_install'),service:uuid,policy:signedPolicy,signature:signature}).strict(),
+ z.object({action:z.literal('source.secret_key'),service:uuid}).strict(),
+ z.object({action:z.literal('source.secret_list'),service:uuid}).strict(),
+ z.object({action:z.literal('source.secret_put'),service:uuid,name:secretName,blob:z.string().min(80).max(8192)}).strict(),
+ z.object({action:z.literal('source.secret_delete'),service:uuid,name:secretName}).strict(),
  z.object({action:z.literal('source.discard'),service:uuid,tree:treeId}).strict(),
  z.object({action:z.literal('source.upload_ticket'),service:uuid,size:z.number().int().min(22).max(SOURCE_UPLOAD_MAX_BYTES),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
  z.object({action:z.literal('inventory'),service:uuid,kind:z.enum(['email','database'])}).strict(),
@@ -90,6 +107,17 @@ export const githubStatus=z.object({service:uuid,installations:z.array(githubIns
 // Sent only by the server-side OAuth callback after GitHub itself vouched for the user and installation; never accepted from a browser.
 export const githubLinkCommand=z.object({action:z.literal('source.github_link'),service:uuid,installation_id:sourceNumber,github_user_id:sourceNumber,github_login:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/),
  repositories:z.array(z.object({id:sourceNumber,full_name:z.string().regex(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/).max(140)}).strict()).max(300)}).strict();
+// Approval inbox views. Intent and plan detail are relayed to the owner's signer, which recomputes the job digest itself; the portal never trusts or alters them.
+const jsonRecord=z.record(z.unknown());
+export const approvalView=z.object({job:sourceJob,intent:jsonRecord.nullable(),digest:z.string().regex(/^[a-f0-9]{64}$/),needs_plan:z.boolean(),
+ plan:z.object({digest:z.string().regex(/^[a-f0-9]{64}$/).nullable(),detail:jsonRecord.nullable(),error:z.string().max(200).nullable()}).strict().nullable(),
+ approval_received:z.boolean(),approvable:z.boolean(),summary:jsonRecord}).strict()
+ .refine(v=>v.digest===v.job.digest&&(!v.approvable||(v.job.state==='queued'&&(!v.needs_plan||v.plan?.digest))),'approval view');
+export const approvalsPending=z.object({service:uuid,pending:z.array(approvalView).max(5)}).strict();
+export const secretKey=z.object({service:uuid,public_key:z.string().max(400).regex(/^-----BEGIN PUBLIC KEY-----\n[A-Za-z0-9+/=\n]+-----END PUBLIC KEY-----\n?$/),fingerprint:z.string().regex(/^[a-f0-9]{64}$/),format:z.literal('hms-secret-v1')}).strict();
+export const secretList=z.object({service:uuid,version:z.number().int().nonnegative(),secrets:z.array(z.object({name:secretName,updated:z.number().int().nonnegative()}).strict()).max(64)}).strict();
+export type ApprovalView=z.infer<typeof approvalView>;
+export type SecretList=z.infer<typeof secretList>;
 export type GithubStatus=z.infer<typeof githubStatus>;
 export type SourceStatus=z.infer<typeof sourceStatus>;
 export type SourceRepositories=z.infer<typeof sourceRepositories>;

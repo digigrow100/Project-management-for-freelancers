@@ -287,6 +287,30 @@ auto-deploy policy; the portal cannot create or extend a policy. Test: `tests/ho
 (with HMS_AUTOMATION_SOURCE it drives the real gateway, signed webhooks and an owner-signed policy via
 `tests/fixtures/hosting-github-gateway.py`). Not live: no GitHub App exists yet.
 
+### Owner approvals and runtime secrets (source only; not deployed)
+
+**Approvals.** The owner's Ed25519 key never reaches the portal, its database or the VPS. The owner runs
+`scripts/signer/hms_signer.py serve` (automation repo) on their own computer; `OwnerApprovalsPanel` (owner
+Website source page only) lists queued requests via `source.approvals_pending` / `source.approval_view`, asks the
+signer on `http://127.0.0.1:47419` (`lib/hosting/signerClient.ts`; pairing code typed by the owner, optional
+`HOSTING_SIGNER_FINGERPRINT` pin) and relays the signed result with `source.approve`. Every approval binds job
+digest (hash of the full intent, which the signer recomputes), the reviewed plan digest, expiry and a single-use
+nonce; the VPS verifies and consumes it. Only owner sessions can relay `source.approve`, `source.approval_withdraw`,
+`source.approvals_pending`, `source.approval_view` and `source.auto_install` (the latter also needs
+HOSTING_AUTODEPLOY_ENABLED + HOSTING_GITHUB_ENABLED + HOSTING_PUBLISHING_ENABLED). `signerContext()` /
+`POST /api/hosting-approvals/context` give the signer the service, client and actor derived from the saved
+service. When a browser blocks loopback, the panel offers the offline `sign-file` path. The signer cannot
+recompute the server plan digest; plan counts are shown as portal/server-reported.
+
+**Runtime secrets.** `RuntimeSecretsPanel` (HOSTING_NEXTJS_ENABLED; both scopes, not read-only) seals each value in
+the browser (`lib/hosting/secretSeal.ts`: ECDH P-256 + HKDF-SHA-256 + AES-256-GCM, AAD = format|service|name) to
+the server public key from `source.secret_key`, which must match `HOSTING_SECRETS_KEY_FINGERPRINT` (set by the
+operator from the VPS key; without it sealing refuses). `source.secret_put/list/delete` carry only ciphertext and
+names; no answer may contain a value (strict schemas) and names mirror the service's reserved list. Only the root
+runtime broker opens them at activation; changes need a new activation approval. Tests:
+`tests/hosting-approvals.cjs` (real gateway, real Signer class and a root-side opener with HMS_AUTOMATION_SOURCE).
+Not live: no signer key, secrets key or fingerprint exist on any server.
+
 ### Hosting hostname and search privacy
 
 The owner-selected hosting address is `https://web.housemysite.com`.
@@ -1092,3 +1116,7 @@ Live preview diagnosis showed trustedRuntime=true and policyConfigured=true but 
 ## 2026-10-29 — Verified GitHub connection and automatic deployment (source only)
 
 GitHub App connection through portal OAuth with signed state and a one-time nonce cookie; the user token is used for three reads and dropped, only the verified result reaches the private service (internal-only `source.github_link`, up to 64 KiB so a full 300-repository snapshot fits). Added `source.github_status`, `source.auto_revoke`, `source.auto_resume` and panel controls for an owner-signed, bounded auto-deploy policy. Gated by HOSTING_GITHUB_ENABLED / HOSTING_AUTODEPLOY_ENABLED; nothing is deployed or live. See "GitHub connection and automatic deployment".
+
+## 2026-10-29 — Owner approvals through a local signer and sealed runtime secrets (source only)
+
+Owner approvals and the automatic-deployment policy are signed on the owner's own computer (`scripts/signer/hms_signer.py`) and relayed by owner sessions only; runtime secrets are sealed in the browser to a pinned server key and never returned. The owner Website source page alone may connect to the local signer (`connect-src` exception for `http://127.0.0.1:47419`, tests/hosting-csp.cjs). Gated by HOSTING_NEXTJS_ENABLED, HOSTING_AUTODEPLOY_ENABLED and the key fingerprint settings; nothing is deployed or live. See "Owner approvals and runtime secrets".
