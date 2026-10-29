@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {policiesView,scopePlanView,BackupViewDenied} from '../lib/hosting/backupView.ts';
 import {backupCommand,backupSites,backupPolicies,backupScopePlan,backupApplyResult,BackupDenied} from '../lib/hosting/backupProtocol.ts';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -57,7 +58,9 @@ test('real responses from the automation backup chain satisfy the portal validat
  const ctx={actor:'owner',owner:true,readOnly:false,sites:new Map([['svc-shop',{clientId:'client-a',name:'Shop'}],['svc-blog',{clientId:'client-a',name:'Blog'}],['svc-platform',{clientId:'platform',name:'Portal'}]])};
  const policies=backupPolicies(real.policy,ctx);
  assert.equal(policies.length,2);assert.equal(policies[0].copies,3);assert.match(policies[0].explanation,/every 30 days/);assert.ok(policies[0].points.every(p=>p.components.length===4));
+ assert.equal(policiesView(JSON.parse(JSON.stringify(policies))).length,2);   // the browser validates the portal-shaped output
  const plan=backupScopePlan(real.plan,ctx);
+ assert.equal(scopePlanView(JSON.parse(JSON.stringify(plan))).job,plan.job);
  assert.deepEqual(plan.sites.map(s=>s.site).sort(),['svc-blog','svc-shop']);assert.equal(plan.plan.schema,1);
  const applied=backupApplyResult(real.apply,ctx,plan.job);assert.equal(applied.state,'applied');
  const command=backupCommand({action:'apply',job:plan.job,approval:real.approval},ctx);assert.equal(command.approval.job,plan.job);
@@ -69,4 +72,26 @@ test('real responses from the automation backup chain satisfy the portal validat
  assert.throws(()=>backupScopePlan({...real.plan,extra:1},ctx),BackupDenied);
  assert.throws(()=>backupApplyResult({...real.apply,state:'applied',sites:real.apply.sites.map(s=>({...s,apply:'reverted'}))},ctx,plan.job),BackupDenied);
  assert.throws(()=>backupApplyResult(real.apply,ctx,'f'.repeat(32)),BackupDenied);
+});
+
+test('what the portal route returns (already normalized) is accepted by the browser validators, not re-parsed as wire format',()=>{
+ const ctx={actor:'owner',owner:true,readOnly:false,sites:new Map([['svc-shop',{clientId:'client-a',name:'Shop'}]])};
+ const wirePolicy={id:'svc-shop',copies:3,default_point:'p1',schedule:{enabled:true,interval_days:30,interval_seconds:2592000,next_due:1900000000},baseline:{due:1800000000,taken:true},
+  recommended:{copies:3,rotating_slots:2,interval_days:30,covers_days:60,meets_window:true,raised_by_lock:false},conflicts:[{code:'lock',detail:'x'}],explanation:'every 30 days',object_lock_days:30,
+  points:[{id:'p1',captured:1700000000,default:true,components:['website','database']}]};
+ const normalized=backupPolicies([wirePolicy],ctx);
+ assert.throws(()=>backupPolicies(normalized,ctx),BackupDenied);          // the bug: parsing the portal's own output as wire format always fails
+ const shown=policiesView(JSON.parse(JSON.stringify(normalized)));      // what the browser actually receives after JSON
+ assert.equal(shown[0].defaultPoint,'p1');assert.equal(shown[0].schedule.intervalDays,30);assert.equal(shown[0].name,'Shop');
+ assert.throws(()=>policiesView([{...normalized[0],secret:'x'}]),BackupViewDenied);
+ const wirePlan={job:'a'.repeat(32),digest:'b'.repeat(64),plan:{schema:1,sites:[],expires:1900000000},sites:[{site:'svc-shop',point:'p1',captured:1700000000,components:['database'],missing_components:['email'],
+  skipped_shared:[{component:'database',resource:'res1',affects:[{site:'svc-shop'}],acknowledgement:'kind:res1'}],accepted_shared:[],covered_by_another_site:[]}]};
+ const plan=backupScopePlan(wirePlan,ctx);
+ assert.throws(()=>backupScopePlan(plan,ctx),BackupDenied);
+ const view=scopePlanView(JSON.parse(JSON.stringify(plan)));
+ assert.deepEqual(view.sites[0].missing,['email']);assert.equal(view.sites[0].skipped[0].acknowledgement,'kind:res1');
+ assert.throws(()=>scopePlanView({...plan,sites:[plan.sites[0],plan.sites[0]]}),BackupViewDenied);
+ assert.throws(()=>scopePlanView({...plan,extra:1}),BackupViewDenied);
+ const applied=backupApplyResult({job:plan.job,state:'applied',sites:[{site:'svc-shop',point:'p1',state:'validated',apply:'applied'}]},ctx,plan.job);
+ assert.equal(backupApplyResult(JSON.parse(JSON.stringify(applied)),ctx,plan.job).state,'applied');   // apply keeps the wire shape, so re-checking it is sound
 });
