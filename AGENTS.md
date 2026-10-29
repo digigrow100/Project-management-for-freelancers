@@ -159,6 +159,34 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Team Management / Hosting workspaces
 
+### Provisioning gateway integration (source only; not deployed)
+
+Owner-only primary-domain controls now use `hosting.domain.request` and
+`hosting.domain.status` behind HOSTING_DOMAIN_AUTOMATION_ENABLED=approved. Both
+service and domain UUIDs are resolved to current saved records; client, service
+and exact primary hostname must agree. No browser hostname/provider ID is trusted.
+Extra aliases and subdomains are excluded. The private worker rechecks confirmed
+provisioning ownership, gates Let's Encrypt flags on all advertised addresses
+matching enrolled public VPS addresses, and never equates flags with a valid cert.
+The Domains page shows saved DNS/TLS observations with a 15-minute freshness limit.
+The portal independently rejects inconsistent expiry/freshness/green responses.
+These controls do not change DNS, purchase domains, or make a site Active.
+Runtime observation and its optional timer need deployment enrollment; no timer,
+renewal or live SSL acceptance is implied by source tests. The read-only root
+group broker uses a credential-checked local socket, keeping worker
+NoNewPrivileges=yes without granting sudo. See companion automation docs.
+
+`hosting.provision` and `hosting.status` use the existing authenticated services API.
+They require a real hosting admin, MFA/session/IP guards, same origin, rate limits,
+and HOSTING_PROVISIONING_ENABLED=approved. Browser requests contain only service ID
+and an idempotency key. The server re-reads service ownership and pending status,
+active client/package, available server and package-server permission before signing
+the private VPS request. Private package policy digests are enrolled separately on
+the VPS. The Services page shows owner-only ProvisioningPanel when enabled; it never
+marks a service Active from queue/provider acknowledgement. Existing client APIs
+cannot submit these commands. Runtime must be upgraded/enrolled before enabling.
+Source integration is NOT evidence of a live worker or verified website/SSL.
+
 ### Hosting hostname and search privacy
 
 The owner-selected hosting address is `https://web.housemysite.com`.
@@ -765,6 +793,10 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Added owner-only primary-domain link/SSL request and saved-status controls,
+  authoritative service/domain ownership checks, strict TLS observation validation
+  and isolated regression tests. No production flag, timer or deployment enabled.
+
 - Added the owner-selected web.housemysite.com hosting origin, hosting entry/login branding, scoped noindex headers and robots/probe responses. Kept existing shared-app origin fallback, authenticated route/MFA/ownership checks and machine protocols. Added domain-security regression tests to CI.
 
 - Employee monitoring extension v1.2.5 adds persisted, shared cooldown state after failed requests (1/2/4/8/15-minute backoff, jitter and bounded Retry-After; direct 402 waits at least 15 minutes), a single in-flight authenticated request per context and 20-second network timeouts. Failed upload batches remain queued within the existing 500-event/100-prompt bounds; those existing overflow limits still apply. Screen-share polling cannot overlap and now sends the required installation/device headers. A per-server-instance 60-second outage circuit returns sanitized 503/Retry-After without caching successful authentication or bypassing revocation. Popup reports paused sync. Login now distinguishes an unavailable security backend from a genuine rate-limit denial while still failing closed. This reduces retries; it does not lift Supabase quota restrictions. Extension users must update/reload locally; no production deployment or database change is included.
@@ -836,6 +868,10 @@ Keep this section short and newest-first. Every future app update must add an en
 ---
 
 # Final Rule for Future Agents
+
+- Added owner-only provisioning request/status source wiring and Services controls.
+  Pending owner approval, provider confirmation and live verification stay distinct.
+  No production activation or client feature publication is implied.
 
 If you change how the app works and do not update this file, the task is incomplete.
 
@@ -951,3 +987,4 @@ The allowlist does not modify SSH, ISPConfig, Vercel/Supabase dashboards, public
 ## 2026-10-28 — Fix approved admin IP denial
 
 Live preview diagnosis showed trustedRuntime=true and policyConfigured=true but x-vercel-forwarded-for absent. The guard denied everyone because it read that unavailable header. Use Vercel's documented edge-overwritten x-forwarded-for only when VERCEL=1. Non-Vercel runtimes, missing/ambiguous/malformed IPs still fail closed. Never trust x-real-ip or custom headers. Current-connection /login/network-check is no-store/noindex and reveals no private list/credentials. Regression fixtures now model the actual header; prior tests incorrectly assumed the unavailable header existed. Existing allowlist and all auth/MFA/role checks retained.
+

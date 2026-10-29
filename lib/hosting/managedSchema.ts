@@ -9,6 +9,10 @@ export const managedOperation=z.discriminatedUnion('operation',[
  z.object({operation:z.literal('delete'),resource:id,confirm:id}).strict()
 ]);
 export const serviceCommand=z.discriminatedUnion('action',[
+ z.object({action:z.literal('hosting.domain.request'),service:uuid,domain:uuid,operation:z.enum(['attach','ssl']),request_key:uuid}).strict(),
+ z.object({action:z.literal('hosting.domain.status'),service:uuid,domain:uuid}).strict(),
+ z.object({action:z.literal('hosting.provision'),service:uuid,request_key:uuid}).strict(),
+ z.object({action:z.literal('hosting.status'),service:uuid}).strict(),
  z.object({action:z.literal('inventory'),service:uuid,kind:z.enum(['email','database'])}).strict(),
  z.object({action:z.literal('request'),service:uuid,kind:z.enum(['email','database']),request_key:uuid,operation:managedOperation}).strict(),
  z.object({action:z.literal('forms.list')}).strict(),
@@ -19,3 +23,4 @@ export const serviceCommand=z.discriminatedUnion('action',[
 export const managedInventory=z.object({service:uuid,kind:z.enum(['email','database']),enabled:z.boolean(),resources:z.array(z.object({id,name:z.string().max(254)}).strict()).max(1000),jobs:z.array(z.object({id,state:z.enum(['queued','applying','uncertain','restore_review','provider_confirmed']),created:z.number().int().nonnegative()}).strict()).max(50),host_key:z.string().regex(/^[A-Za-z0-9_-]{43}=$/)}).strict();
 export const formProject=z.object({id:uuid,client:uuid,name:z.string().max(64),active:z.number().int().min(0).max(1),paid_until:z.number().int().nonnegative(),monthly_limit:z.number().int().positive().max(100000),used:z.number().int().nonnegative()}).strict();
 export type ManagedInventory=z.infer<typeof managedInventory>;
+
