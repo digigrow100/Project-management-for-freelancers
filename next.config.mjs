@@ -21,12 +21,13 @@ const nextConfig = {
       {source:"/hosting/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},
       {source:"/login/:path*",headers:[{key:"Cache-Control",value:"private, no-store, max-age=0"}]},
       {
-        // Every page except the owner's Website source page gets the strict policy.
-        source: "/:path((?!hosting/sources$).*)",
+        // Every page except the owner's Website source and Backups pages gets the strict policy.
+        source: "/:path((?!hosting/(?:sources|backups)$).*)",
         headers: [...securityHeaders, { key: "Content-Security-Policy", value: csp() }],
       },
       {
-        source: "/hosting/sources",
+        // The owner pages where something is signed on the owner's own computer.
+        source: "/hosting/:page(sources|backups)",
         headers: [...securityHeaders, { key: "Content-Security-Policy", value: csp(" " + SIGNER_ORIGIN) }],
       },
     ];
