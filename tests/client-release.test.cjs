@@ -16,7 +16,7 @@ async function load(file,ui=false){
  const result=await build({entryPoints:[path.join(__dirname,'..',file)],tsconfig:path.join(__dirname,'../tsconfig.focused.json'),bundle:true,platform:'node',format:'cjs',write:false,packages:'external',plugins:[{name:'release-fixture',setup(b){
   b.onResolve({filter:/^(server-only|@\/lib\/(hosting\/managed|site|security\/rateLimit))$/},()=>({path:'mock',namespace:'mock'}));
   b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:mock,loader:'ts'}));
-  if(ui){b.onResolve({filter:/^lucide-react$/},()=>({path:'icons',namespace:'icons'}));b.onLoad({filter:/.*/,namespace:'icons'},()=>({contents:'export const Home=()=>null,Server=Home,Globe=Home,CreditCard=Home,CircleHelp=Home,UserRound=Home,Archive=Home,Mail=Home,Database=Home,Send=Home;',loader:'js'}));b.onResolve({filter:/^next\/(link|navigation)$/},args=>({path:args.path,namespace:'next'}));
+  if(ui){b.onResolve({filter:/^lucide-react$/},()=>({path:'icons',namespace:'icons'}));b.onLoad({filter:/.*/,namespace:'icons'},()=>({contents:'export const Home=()=>null,Server=Home,Globe=Home,CreditCard=Home,CircleHelp=Home,UserRound=Home,Archive=Home,Mail=Home,Database=Home,Send=Home,FolderGit2=Home;',loader:'js'}));b.onResolve({filter:/^next\/(link|navigation)$/},args=>({path:args.path,namespace:'next'}));
    b.onLoad({filter:/.*/,namespace:'next'},args=>({contents:args.path.endsWith('navigation')?`export const usePathname=()=>'/client';`:`import React from 'react';export default ({children,...props})=>React.createElement('a',props,children);`,loader:'jsx',resolveDir:path.resolve(__dirname,'..')}));}
  }}]});
  const output={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,output,output.exports);return output.exports;
@@ -31,7 +31,7 @@ test('release policy requires explicit publication and the matching backend swit
 });
 test('unreleased client APIs never reach service transport; owner preview stays accessible',async()=>{
  const {POST}=await load('app/api/hosting-services/route.ts');
- const commands=[{action:'inventory',service:'11111111-1111-4111-8111-111111111111',kind:'email'},{action:'inventory',service:'11111111-1111-4111-8111-111111111111',kind:'database'},{action:'forms.list'}];
+ const commands=[{action:'inventory',service:'11111111-1111-4111-8111-111111111111',kind:'email'},{action:'inventory',service:'11111111-1111-4111-8111-111111111111',kind:'database'},{action:'forms.list'},{action:'source.status',service:'11111111-1111-4111-8111-111111111111'}];
  process.env.HOSTING_SERVICES_ENABLED='approved';delete process.env.HOSTING_CLIENT_FEATURES;
  for(const command of commands)assert.equal((await POST(req(command))).status,404);
  assert.equal(state.fetches,0);
@@ -41,15 +41,21 @@ test('unreleased client APIs never reach service transport; owner preview stays 
  assert.equal((await POST(req(commands[0]))).status,200);
  assert.equal((await POST(req(commands[1]))).status,404);
  assert.equal((await POST(req(commands[2]))).status,404);
+ assert.equal((await POST(req(commands[3]))).status,404);
+ process.env.HOSTING_CLIENT_FEATURES='sources';
+ assert.equal((await POST(req(commands[3]))).status,200);
+ assert.equal((await POST(req(commands[0]))).status,404);
+ process.env.HOSTING_CLIENT_FEATURES='email';
  delete process.env.HOSTING_SERVICES_ENABLED;
  assert.equal((await POST(req(commands[0]))).status,404);
 });
 test('client menu shows only published features and no testing labels',async()=>{
  const {ClientNavigation}=await load('components/hosting/ClientNavigation.tsx',true);
  const hidden=renderToStaticMarkup(React.createElement(ClientNavigation));
- assert.doesNotMatch(hidden,/\/client\/(email|databases|forms|backups)/);
+ assert.doesNotMatch(hidden,/\/client\/(email|databases|forms|backups|sources)/);
  assert.match(hidden,/\/client\/services/);
  const published=renderToStaticMarkup(React.createElement(ClientNavigation,{features:['email']}));
  assert.match(published,/\/client\/email/);
- assert.doesNotMatch(published,/\/client\/(databases|forms|backups)|Testing|Coming soon/);
+ assert.doesNotMatch(published,/\/client\/(databases|forms|backups|sources)|Testing|Coming soon/);
+ assert.match(renderToStaticMarkup(React.createElement(ClientNavigation,{features:['sources']})),/\/client\/sources/);
 });

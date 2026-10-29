@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard, Archive, Mail, Database, Send } from "lucide-react";
+import { LayoutDashboard, Server, Package, Globe, Building2, Receipt, Settings, Layers, Wallet, MessageCircle, Activity, ListChecks, CreditCard, Archive, Mail, Database, Send, FolderGit2 } from "lucide-react";
 import { HOSTING_SECTIONS } from "@/lib/hostingWorkspace";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ const icons = {
   services: Layers,
   clients: Building2,
   billing: Receipt,
+  sources: FolderGit2,
   domains: Globe,
   settings: Settings,
   invoices: Receipt, payments: CreditCard, expenses: Wallet, submissions: ListChecks, tickets: MessageCircle, operations: Server, activity: Activity,

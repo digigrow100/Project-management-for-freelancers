@@ -1,7 +1,7 @@
 import 'server-only';
 import { CLIENT_RELEASE_FEATURES, clientFeatureEnabled } from '@/lib/hosting/clientRelease';
 
-const names = { email: 'Email accounts', databases: 'Databases', forms: 'Form email API', backups: 'Backups and restores' };
+const names = { email: 'Email accounts', databases: 'Databases', forms: 'Form email API', backups: 'Backups and restores', sources: 'Website source (GitHub and ZIP)' };
 
 // Render only inside the authenticated admin workspace.
 export function FeatureReleaseStatus() {
