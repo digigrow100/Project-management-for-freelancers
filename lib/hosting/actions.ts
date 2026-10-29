@@ -71,7 +71,7 @@ async function saveEntity(form:FormData,actor:string) {
       const serverId=optionalId(form,'server_id');
       if(serverId) { const server=checked<{status:string}>(await getSupabase().from(hostingTable('servers')).select('status').eq('id',serverId).single()); if(server.status!=='available')throw new Error('Choose a server accepting new services.'); }
       values={client_id:clientId,package_id:packageId,server_id:serverId,name:text(120).parse(str(form,'name')),primary_domain:str(form,'primary_domain')?domainName(str(form,'primary_domain')):'',price_minor:pkg.price_minor,currency:pkg.currency,billing_cycle:pkg.billing_cycle,next_due_date:date.parse(str(form,'next_due_date')),auto_invoice:flag(form,'auto_invoice'),notes:optionalText().parse(str(form,'notes'))};
-      return rpc<string>('assign_service',{p_actor:actor,p_key:uuid.parse(str(form,'request_key')),p_data:values});
+      return rpc<string>('assign_service',{p_actor:actor,p_key:uuid.parse(str(form,'request_key')),p_data:Object.fromEntries(Object.entries(values).filter(([key])=>!['price_minor','currency','billing_cycle'].includes(key)))});
     }
   } else if(entity==='domains') {
     values={client_id:uuid.parse(str(form,'client_id')),service_id:optionalId(form,'service_id'),hostname:domainName(str(form,'hostname')),expires_on:str(form,'expires_on')?date.parse(str(form,'expires_on')):null,auto_renew:flag(form,'auto_renew'),notes:optionalText().parse(str(form,'notes'))};

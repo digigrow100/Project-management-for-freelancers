@@ -128,3 +128,10 @@ export async function clientPackages(){
  await requireHostingClient();
  return checked<HostingPackage[]>(await getSupabase().from(hostingTable('packages')).select('id,name,description,price_minor,currency,billing_cycle,resource_limits,limits_version,pricing_ready,product_kind,is_active').eq('product_kind','app_hosting').eq('is_active',true).order('disk_mb'));
 }
+
+export async function clientPlanAssignments(page=1){
+ const s=await requireHostingClient();
+ const index=Math.max(1,Math.min(100000,Math.floor(page)||1));
+ const result=await getSupabase().from(hostingTable('services')).select(clientColumns.services,{count:'exact'}).eq('client_id',s.clientId).not('package_snapshot','is',null).order('created_at',{ascending:false}).range((index-1)*25,index*25-1);
+ return {records:checked<HostingService[]>(result),total:result.count??0,page:index};
+}

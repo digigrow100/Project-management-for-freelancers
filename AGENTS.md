@@ -169,7 +169,8 @@ migration creates the three unpriced plans and maps only the existing matching
 server; it does not mark the server available or enable any runtime.
 
 All new assignments use the admin-only transactional assign_service RPC, with
-idempotency and authoritative plan pricing. App assignments atomically snapshot
+idempotency and authoritative plan pricing. Retry hashes exclude server-derived
+price/currency/cycle so catalogue changes do not break a retry. App assignments atomically snapshot
 name/version/limits/digest/pricing readiness. Editing a catalogue never changes
 existing contracts. Unpriced assignments cannot bill, and App assignments cannot be
 manually marked active. The legacy one-site provisioning worker cannot enforce all
@@ -180,7 +181,8 @@ not proof of VPS enforcement. Existing standard packages retain their behavior.
 
 Owner Packages shows editable plans and links into service assignment. The new
 /client/plans catalogue authenticates the current customer, exposes only safe
-product columns and joins no other client's data. Assigned limits on customer
+product columns and joins no other client's data. App assignments are filtered
+before pagination, so old plans remain reachable beyond the first 25 services. Assigned limits on customer
 services come only from their saved snapshot. No price is invented: seeded zero
 values are marked unpriced and must be explicitly confirmed before billing.
 Tests: hosting-package-contracts.cjs, hosting-package-views.cjs, provisioning,
