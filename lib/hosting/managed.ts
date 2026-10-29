@@ -3,7 +3,7 @@ import {createHmac,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {requireHostingAdmin,requireHostingClient} from './auth';
 import {getSupabase} from '@/lib/supabaseClient';
-import {serviceCommand,githubLinkCommand,managedInventory,formProject,sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,githubStatus,sourceUploadTicket,approvalView,approvalsPending,secretKey,secretList,SOURCE_UPLOAD_MAX_BYTES} from './managedSchema';
+import {serviceCommand,githubLinkCommand,managedInventory,formProject,sourceStatus,sourceRepositories,sourceJob,sourceTreeSummary,githubStatus,sourceUploadTicket,approvalView,approvalsPending,secretKey,secretList,managedRequestResult,managedApprovalView,managedApprovalsPending,SOURCE_UPLOAD_MAX_BYTES} from './managedSchema';
 import {clientFeatureEnabled} from './clientRelease';
 export class ServiceDenied extends Error{}
 export type ServiceScope={actor:string;readOnly:boolean;owner?:boolean;sites:Map<string,{client:string;name:string}>};
@@ -52,6 +52,16 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
    ]);
    if(client.error||client.data?.status!=='active'||pkg.error||pkg.data?.is_active!==true||server.error||server.data?.status!=='available'||allowed.error||!allowed.data)throw new ServiceDenied();
    wireCommand={action:command.action,service:row.id,client:row.client_id,server:row.server_id,package:row.package_id,domain:row.primary_domain,request_key:command.request_key};
+  }
+ }
+ if(command.action==='request'||command.action==='inventory'||command.action.startsWith('managed.')){
+  // Mailboxes, mail domains and databases: the saved service->client relation decides, never a browser field, and a change needs a live client.
+  const found=await getSupabase().from('freelance_hq_hosting_services').select('id,client_id,status').eq('id',service as string).single();
+  if(!service||found.error||!found.data||found.data.client_id!==scope.sites.get(service)?.client||!['pending','active'].includes(found.data.status))throw new ServiceDenied();
+  if(command.action.startsWith('managed.')&&scope.owner!==true)throw new ServiceDenied();   // approvals are the owner's decision, signed on the owner's computer
+  if(command.action!=='inventory'&&!command.action.startsWith('managed.approvals_')&&command.action!=='managed.approval_view'){
+   const client=await getSupabase().from('freelance_hq_hosting_clients').select('status').eq('id',found.data.client_id).single();
+   if(client.error||client.data?.status!=='active')throw new ServiceDenied();
   }
  }
  if(isSourceCommand(command)){
@@ -155,7 +165,16 @@ export async function serviceRequest(scope:ServiceScope,raw:unknown,options:{int
   if(command.action==='source.disconnect'&&(status.repository!==null||status.version!==command.expected_version+1))throw new ServiceDenied();
   return status;
  }
- if(command.action==='inventory'){const inventory=managedInventory.parse(value);if(inventory.service!==command.service)throw new ServiceDenied();return inventory;}
+ if(command.action==='inventory'){const inventory=managedInventory.parse(value);if(inventory.service!==command.service||inventory.kind!==command.kind)throw new ServiceDenied();return inventory;}
+ if(command.action==='request'){const job=managedRequestResult.parse(value);if(job.state!=='queued'&&job.state!=='provider_confirmed'&&job.state!=='failed'&&job.state!=='uncertain'&&job.state!=='applying')throw new ServiceDenied();return job;}
+ if(command.action==='managed.approvals_pending'){const list=managedApprovalsPending.parse(value);if(list.service!==command.service||list.kind!==command.kind)throw new ServiceDenied();return list;}
+ if(command.action==='managed.approval_view'||command.action==='managed.approve'||command.action==='managed.approval_withdraw'){
+  const view=managedApprovalView.parse(value);
+  if(view.job.id!==command.job)throw new ServiceDenied();
+  if(command.action==='managed.approve'&&(!view.approval_received||view.job.digest!==command.approval.digest))throw new ServiceDenied();
+  if(command.action==='managed.approval_withdraw'&&view.approval_received)throw new ServiceDenied();
+  return view;
+ }
  if(command.action==='forms.list'){
   const result=z.object({projects:z.array(formProject).max(1000)}).strict().parse(value);
   // The private service can contain other purchased accounts not visible to this portal.

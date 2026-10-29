@@ -1,12 +1,13 @@
 "use client";
 import {useRef,useState} from 'react';
-import {approvalsPending,approvalView,githubStatus,sourceStatus,signedApproval,signedPolicy,signature,type ApprovalView} from '@/lib/hosting/managedSchema';
-import {signerHello,signApproval,signPolicy,SignerError} from '@/lib/hosting/signerClient';
+import {approvalsPending,approvalView,githubStatus,sourceStatus,signedApproval,signedPolicy,signature,managedApprovalsPending,managedApprovalView,type ApprovalView,type ManagedApprovalView} from '@/lib/hosting/managedSchema';
+import {signerHello,signApproval,signManaged,signPolicy,SignerError} from '@/lib/hosting/signerClient';
 import {z} from 'zod';
 const button='rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
 const quiet='rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50';
 const input='mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900';
 const operations:Record<string,string>={deploy:'Stage the repository',export:'Export to GitHub',publish:'Publish to the live website',rollback:'Roll back the live website',recover:'Recover an uncertain publication'};
+const managedOperations:Record<string,string>={create:'Create',password:'Change the password of',quota:'Change the quota of',enable:'Enable',disable:'Disable',delete:'Delete',domain_create:'Create the mail domain'};
 const pastedApproval=z.object({approval:signedApproval}).strict(),pastedPolicy=z.object({policy:signedPolicy,signature}).strict();
 // Owner decisions are signed on the owner's own computer. This page only carries the request there and the signed answer back; it holds no key.
 export function OwnerApprovalsPanel({services,signerFingerprint,autodeployEnabled}:{services:{id:string;name:string}[];signerFingerprint:string|null;autodeployEnabled:boolean}){
@@ -14,6 +15,7 @@ export function OwnerApprovalsPanel({services,signerFingerprint,autodeployEnable
  const [origin,setOrigin]=useState(''),[paste,setPaste]=useState(''),[offline,setOffline]=useState<{kind:string;payload:unknown}|null>(null);
  const [policy,setPolicy]=useState({branch:'main',allow_activation:false,runtimes:['static'] as string[],max_per_day:2,days:7}),[repo,setRepo]=useState<number|null>(null),[active,setActive]=useState<boolean|null>(null);
  const lock=useRef(false);
+ const [managed,setManaged]=useState<{kind:'email'|'database';item:ManagedApprovalView}[]|null>(null);
  async function call(command:unknown){
   const response=await fetch('/api/hosting-services?scope=owner',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(command),redirect:'error',signal:AbortSignal.timeout(20000)});
   if(!response.ok)throw Error();return response.json();
@@ -27,6 +29,11 @@ export function OwnerApprovalsPanel({services,signerFingerprint,autodeployEnable
   const list=approvalsPending.parse(await call({action:'source.approvals_pending',service}));if(list.service!==service)throw Error();setItems(list.pending);
   const status=sourceStatus.parse(await call({action:'source.status',service}));setRepo(status.repository?.repository_id??null);if(status.repository)setPolicy(p=>({...p,branch:status.repository!.branch}));
   try{const g=githubStatus.parse(await call({action:'source.github_status',service}));setActive(g.auto.policy?['active','paused'].includes(g.auto.policy.state):false);}catch{setActive(null);}
+  const found:{kind:'email'|'database';item:ManagedApprovalView}[]=[];
+  for(const kind of ['email','database'] as const){
+   try{const m=managedApprovalsPending.parse(await call({action:'managed.approvals_pending',service,kind}));if(m.service!==service||m.kind!==kind)throw Error();for(const item of m.pending)found.push({kind,item});}catch{/* this service has no such management enrolled */}
+  }
+  setManaged(found);
   const context=await fetch('/api/hosting-approvals/context',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({service}),redirect:'error'});
   if(context.ok){const value=await context.json();if(typeof value.origin==='string')setOrigin(value.origin);}
  }
@@ -37,6 +44,15 @@ export function OwnerApprovalsPanel({services,signerFingerprint,autodeployEnable
   const approval=await signApproval(body,token,undefined);
   const view=approvalView.parse(await call({action:'source.approve',service,job:item.job.id,approval}));
   setItems(list=>(list??[]).map(i=>i.job.id===view.job.id?view:i));setMessage('Your signed approval was received. The server will check it again and run the request.');
+ }
+ async function approveManaged(kind:'email'|'database',item:ManagedApprovalView){
+  try{await signerHello(signerFingerprint);}catch(error){throw error;}
+  const approval=await signManaged({job:item.job.id,digest:item.digest,intent:item.intent,target:item.job.target,seconds:300},token);
+  const view=managedApprovalView.parse(await call({action:'managed.approve',service,kind,job:item.job.id,approval}));
+  setManaged(list=>(list??[]).map(m=>m.item.job.id===view.job.id?{kind:m.kind,item:view}:m));setMessage('Your signed approval was received. The server will check it again and apply it.');
+ }
+ async function withdrawManaged(kind:'email'|'database',item:ManagedApprovalView){
+  const view=managedApprovalView.parse(await call({action:'managed.approval_withdraw',service,kind,job:item.job.id}));setManaged(list=>(list??[]).map(m=>m.item.job.id===view.job.id?{kind:m.kind,item:view}:m));
  }
  async function withdraw(item:ApprovalView){
   const view=approvalView.parse(await call({action:'source.approval_withdraw',service,job:item.job.id}));setItems(list=>(list??[]).map(i=>i.job.id===view.job.id?view:i));
@@ -78,6 +94,11 @@ export function OwnerApprovalsPanel({services,signerFingerprint,autodeployEnable
     <textarea readOnly className={input+' font-mono text-xs'} rows={4} value={JSON.stringify(offline)}/><textarea className={input+' font-mono text-xs'} rows={4} value={paste} onChange={e=>setPaste(e.target.value)} aria-label="Signer output"/>
     <button type="button" className={quiet} disabled={busy||!paste} onClick={()=>void run(()=>submitPasted(item))}>Submit signed approval</button></div>:null}
   </div>):null}
+  {managed&&managed.length?<div className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm"><h3 className="font-medium">Email and database requests</h3>
+   {managed.map(({kind,item})=><div key={item.job.id} className="flex flex-wrap items-center justify-between gap-2"><span>{managedOperations[item.job.operation]??item.job.operation} <span className="font-mono">{item.job.target??'(unknown)'}</span> · {kind}</span>
+    <span className="flex gap-2"><button type="button" className={button} disabled={busy||!item.approvable||item.approval_received||!token} onClick={()=>void run(()=>approveManaged(kind,item))}>Sign on my computer</button>
+    {item.approval_received?<button type="button" className={quiet} disabled={busy} onClick={()=>void run(()=>withdrawManaged(kind,item))}>Withdraw</button>:null}</span></div>)}
+   <p className="text-slate-600">The signer shows the full request and recomputes its digest; a new password stays sealed and is never shown to anyone.</p></div>:null}
   {autodeployEnabled?<div className="rounded-lg border border-slate-200 p-3 text-sm">
    <h3 className="font-medium">Automatic deployment policy</h3>
    <p className="text-slate-600">Allows pushes to one branch to be staged automatically within the limits you sign. It never rolls back, exports or recovers by itself and stops after failures, uncertainty or revoked access.</p>

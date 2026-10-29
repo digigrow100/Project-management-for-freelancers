@@ -18,6 +18,8 @@ from modules.hosting.github_links import GitHubLinks
 from modules.hosting.github_webhooks import GitHubWebhooks
 from modules.hosting.provisioning_jobs import ProvisioningJobs, canonical
 from modules.hosting.service_gateway import ServiceGateway
+from modules.hosting.managed import Managed, ISPConfigWriter, Denied as ManagedDenied
+from controlplane.sealed import generate
 from modules.hosting.source_operations import SourceOperations
 
 packet = json.load(sys.stdin)
@@ -70,7 +72,63 @@ if not secrets_path.exists():
     secrets_path.chmod(0o600)
 secrets_private = serialization.load_pem_private_key(secrets_path.read_bytes(), password=None)
 ops.secrets.public_key_file = lambda: runtime_secrets.public_pem(secrets_private)
-gateway = ServiceGateway(None, Forms(), key=packet['key'], sources=ops)
+# Mailbox / mail domain / database management with a synthetic hosting panel kept in a file, so state survives between invocations.
+host_path = root / 'host.key'
+if not host_path.exists():
+    host_path.write_bytes(base64.urlsafe_b64encode(generate()[0]))
+managed = Managed(db, access=access, owner_key=owner.public_key(), host_private=base64.urlsafe_b64decode(host_path.read_bytes()), reserve=lambda *a: True)
+for managed_kind in ('email', 'database'):
+    if not db.execute('SELECT 1 FROM managed_bindings WHERE service=? AND kind=?', (packet['service'], managed_kind)).fetchone():
+        base = dict(provider_client=3, group=7, server=1, prefix='c3_', domain='fixture.test', template={'maildir': '/var/vmail/{domain}/{localpart}', 'uid': 5000, 'gid': 5000},
+                    user_template={}, max_resources=3, max_quota_mb=100)
+        managed.enroll(packet['service'], packet['client'], managed_kind, {**base, 'domain_template': {'policy': 'reviewed'}} if managed_kind == 'email' else base, enabled=True)
+panel_path = root / 'panel.json'
+
+
+class Panel:
+    KEYS = {'mail_user': 'mailuser_id', 'mail_domain': 'domain_id', 'sites_database': 'database_id', 'sites_database_user': 'database_user_id'}
+
+    def __init__(self):
+        self.state = json.loads(panel_path.read_text()) if panel_path.exists() else {'rows': {}, 'next': 1, 'fail_after': [], 'fail_before': [], 'calls': []}
+
+    def save(self):
+        panel_path.write_text(json.dumps(self.state))
+
+    def __call__(self, method, session, *args):
+        base, op = method.rsplit('_', 1)
+        self.state['calls'].append(method)
+        if method in self.state['fail_before']:
+            self.state['fail_before'].remove(method)
+            self.save()
+            raise OSError('synthetic provider text that must never reach a client')
+        rows = self.state['rows']
+        if op == 'add':
+            primary, self.state['next'] = self.state['next'], self.state['next'] + 1
+            rows['%s:%d' % (base, primary)] = {**args[1], self.KEYS[base]: primary, 'sys_groupid': 7}
+            result = primary
+        elif op == 'get':
+            if isinstance(args[0], dict):
+                field, value = next(iter(args[0].items()))
+                result = [r for k, r in rows.items() if k.startswith(base + ':') and r.get(field) == value]
+            else:
+                result = rows.get('%s:%d' % (base, args[0]), False)
+        elif op == 'update':
+            rows['%s:%d' % (base, args[1])].update(args[2])
+            result = True
+        elif op == 'delete':
+            rows.pop('%s:%d' % (base, args[0]), None)
+            result = True
+        else:
+            raise AssertionError(method)
+        if method in self.state['fail_after']:
+            self.state['fail_after'].remove(method)
+            self.save()
+            raise OSError('synthetic lost answer')
+        self.save()
+        return result
+
+
+gateway = ServiceGateway(managed, Forms(), key=packet['key'], sources=ops)
 kind = packet.get('kind', 'gateway')
 if kind == 'gateway':
     print(json.dumps(gateway.handle(packet['body'].encode(), packet['signature'])))
@@ -82,6 +140,20 @@ elif kind == 'policy':
     signature = base64.b64encode(owner.sign(PREFIX + canonical(document))).decode()
     ops.auto.install(document, signature, packet['actor'])
     print(json.dumps({'installed': document['id']}))
+elif kind in ('process', 'reconcile', 'abandon', 'panel', 'faults'):
+    panel = Panel()
+    if kind == 'faults':
+        panel.state['fail_after'] += packet.get('fail_after', [])
+        panel.state['fail_before'] += packet.get('fail_before', [])
+        panel.save()
+        print(json.dumps({'ok': True}))
+    elif kind == 'panel':
+        print(json.dumps({'rows': panel.state['rows'], 'calls': panel.state['calls']}))
+    elif kind == 'abandon':
+        print(json.dumps(managed.abandon(packet['job'], packet['reason'])))
+    else:
+        writer = ISPConfigWriter(panel, 'session')
+        print(json.dumps({'processed': managed.process(writer)} if kind == 'process' else managed.reconcile(packet['job'], writer)))
 elif kind == 'sign':
     # Stands in for the owner's local signer program: the REAL Signer class, with the terminal confirmation answered "yes".
     sys.path.insert(0, packet['signer_dir'])
