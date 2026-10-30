@@ -39,3 +39,14 @@ Rollback UI: restore previous Vercel deployment. The schema is additive and old
 portal code can continue; do not drop snapshots or erase assignments. Disable
 new plan assignments via is_active=false if necessary. Existing catalogue
 changes cannot mutate a saved contract.
+
+## The pending migration `20261030090000_app_hosting_accounts.sql`
+
+- **Adds** two tables (`freelance_hq_hosting_accounts`, `…_account_sites`, row-level security on, `service_role` only), six functions and two triggers. **Changes** one existing function: `freelance_hq_hosting_snapshot_plan`
+  (the contract trigger on services). Before: an App Hosting contract can never be set Active ("server enforcement is not enrolled"). After: it can be set Active only if an `enforced` account with a verified receipt,
+  the same limits digest and the same assignment key exists. Creating (assigning) an App contract is unchanged; legacy services are untouched.
+- **Existing data:** none is rewritten. On the live portal database today there are 0 services (so none with an App snapshot), and the new tables do not exist yet. `tests/hosting-app-accounts-rollback.cjs` checks on a real Postgres engine
+  that applying and rolling back leave every existing row byte-identical.
+- **Order:** apply the migration first, then deploy the portal code that reads the tables (the code reads them as soon as it runs), then set `HOSTING_APP_ACCOUNTS_ENABLED=approved`. Never the other way round.
+- **Rollback:** unset the switch (or promote the previous Vercel deployment) first, then run `supabase/rollbacks/20261030090000_app_hosting_accounts_down.sql`. It drops the new tables, functions and triggers and restores the previous
+  trigger text exactly, but **refuses while any account exists** (accounts carry receipts and history and are never dropped by a rollback).

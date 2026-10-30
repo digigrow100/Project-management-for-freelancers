@@ -1,0 +1,41 @@
+// The pending migration and its rollback, on a real Postgres engine (PGlite): existing rows are untouched, the rollback restores the exact previous trigger text, and it refuses once accounts exist.
+const {PGlite}=require('@electric-sql/pglite'),fs=require('fs'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
+(async()=>{
+const db=new PGlite(),q=async(sql,args)=>(await db.query(sql,args)).rows;
+const header=fs.readFileSync('tests/hosting-app-accounts.cjs','utf8').split('\n')[3];
+const setup=header.match(/await db\.exec\("(.*)"\);?$/);
+assert.ok(setup,'shared PGlite role setup line not found');
+await db.exec(JSON.parse('"'+setup[1]+'"'));
+for(const f of ['20261020202238_hosting_management','20261029175553_app_hosting_packages','20261029180515_app_assignment_retry_digest'])await db.exec(fs.readFileSync('supabase/migrations/'+f+'.sql','utf8'));
+const def=async()=>(await q("select pg_get_functiondef(p.oid) d from pg_proc p where proname='freelance_hq_hosting_snapshot_plan'"))[0].d.replace(/\s+/g,' ').replace(/ security invoker/i,'').trim();
+const before=await def();
+const admin=randomUUID(),client=randomUUID(),server=randomUUID();
+await q("insert into auth.users(id)values($1)",[admin]);await q("insert into freelance_hq_profiles values($1,'admin')",[admin]);
+await q("insert into freelance_hq_hosting_clients(id,name,email)values($1,'A','a@example.test')",[client]);
+await q("insert into freelance_hq_hosting_servers(id,name,hostname,status)values($1,'S','s.example.test','available')",[server]);
+await q("insert into freelance_hq_hosting_packages(name,price_minor,currency,billing_cycle,disk_mb,inode_limit,memory_mb,cpu_percent,domain_limit,email_limit)values('Legacy',0,'PKR','monthly',10,10,10,10,1,1)");
+const legacy=(await q("select id from freelance_hq_hosting_packages where name='Legacy'"))[0];
+await q('insert into freelance_hq_hosting_package_servers(package_id,server_id)values($1,$2)',[legacy.id,server]);
+const service=(await q("insert into freelance_hq_hosting_services(client_id,package_id,server_id,name,primary_domain,status,price_minor,currency,billing_cycle,next_due_date)values($1,$2,$3,'Legacy site','legacy.example.test','active',0,'PKR','monthly','2026-12-01') returning id",[client,legacy.id,server]))[0].id;
+const rows=async()=>JSON.stringify(await q('select * from freelance_hq_hosting_services order by id'));
+const snapshot=await rows();
+const up=fs.readFileSync('supabase/migrations/20261030090000_app_hosting_accounts.sql','utf8'),down=fs.readFileSync('supabase/rollbacks/20261030090000_app_hosting_accounts_down.sql','utf8');
+await db.exec(up);
+assert.equal(await rows(),snapshot,'applying the migration changes no existing row');
+assert.equal((await q("select count(*)::int n from freelance_hq_hosting_accounts"))[0].n,0);
+assert.notEqual(await def(),before,'the contract trigger is replaced');
+await db.exec(down);
+assert.equal(await rows(),snapshot,'the rollback changes no existing row');
+assert.equal((await q("select count(*)::int n from information_schema.tables where table_name in ('freelance_hq_hosting_accounts','freelance_hq_hosting_account_sites')"))[0].n,0);
+assert.equal((await q("select count(*)::int n from pg_proc where proname in ('freelance_hq_hosting_open_account','freelance_hq_hosting_add_site','freelance_hq_hosting_record_app_status','freelance_hq_hosting_record_app_usage','freelance_hq_hosting_site_slot','freelance_hq_hosting_account_guard')"))[0].n,0);
+assert.equal(await def(),before,'the previous trigger text is restored exactly');
+// up again, then an account exists: the rollback must refuse and leave everything as it was
+await db.exec(up);
+const plans=await q("select * from freelance_hq_hosting_packages where product_kind='app_hosting' order by disk_mb");
+await q('insert into freelance_hq_hosting_package_servers(package_id,server_id)values($1,$2) on conflict do nothing',[plans[0].id,server]);
+const app=(await q('select freelance_hq_hosting_assign_service($1,$2,$3) id',[admin,randomUUID(),{client_id:client,package_id:plans[0].id,server_id:server,name:'App',primary_domain:'app.example.test',next_due_date:'2026-12-01'}]))[0].id;
+await q('select freelance_hq_hosting_open_account($1,$2)',[admin,app]);
+await assert.rejects(db.exec(down),/Accounts exist/);
+assert.equal((await q("select count(*)::int n from freelance_hq_hosting_accounts"))[0].n,1,'nothing was dropped');
+console.log('hosting-app-accounts-rollback: ok');
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -30,6 +30,7 @@ jobs:
       - run: node tests/hosting-package-views.cjs
       - run: node tests/hosting-limits-fixture.cjs
       - run: node tests/hosting-app-accounts.cjs
+      - run: node tests/hosting-app-accounts-rollback.cjs
       - run: node tests/hosting-app-provisioning.cjs
       - run: node tests/hosting-security.cjs
       - run: node tests/hosting-client-scope.cjs
