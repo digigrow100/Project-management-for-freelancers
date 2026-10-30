@@ -1,4 +1,5 @@
 "use server";
+import { serviceStatusError } from "./serviceStatus";
 import { rateLimit } from "@/lib/security/rateLimit";
 import { isIP } from "node:net";
 import { randomUUID } from "node:crypto";
@@ -23,13 +24,14 @@ async function rpc<T>(name:string,args:Record<string,unknown>):Promise<T> {
   if(result.error) {
     const message=String(result.error.message);
     const allowed=['App Hosting server enforcement is not verified','Website allowance of this account is used','Additional websites need an enforced account','Only an assigned App Hosting contract has an account','The contract must be pending and have a server','Contract limits do not match their digest','App Hosting server enforcement is not enrolled','App Hosting is not ready for billing','Assigned package contract is immutable','Payment exceeds outstanding balance','Refund exceeds refundable amount','Only issued invoices accept payments','An invoice with payment history cannot be cancelled','Submission already reviewed','Invalid original payment','Service invoice ownership, currency or period mismatch','Idempotency key reused with different data'];
-    throw new Error(allowed.find(s=>message.includes(s)) || 'The operation could not be completed. Check the record, currency and amount.');
+    throw new Error(serviceStatusError(message) || allowed.find(s=>message.includes(s)) || 'The operation could not be completed. Check the record, currency and amount.');
   }
   return result.data as T;
 }
 async function save(table:string,values:Record<string,unknown>,id:string|null) {
   const db=getSupabase().from(hostingTable(table));
   const result=id ? await db.update(values).eq('id',id).select('id').single() : await db.insert(values).select('id').single();
+  if(table==='services'&&result.error){const message=serviceStatusError(String(result.error.message));if(message)throw new Error(message);}
   return checked<{id:string}>(result).id;
 }
 async function requireClientActive(clientId:string) {
@@ -62,7 +64,6 @@ async function saveEntity(form:FormData,actor:string) {
     if(id) {
       // Invoice snapshots and client ownership cannot be reassigned by an edit.
       values={status:z.enum(['pending','active','suspended','cancelled']).parse(str(form,'status')),next_due_date:date.parse(str(form,'next_due_date')),auto_invoice:flag(form,'auto_invoice'),notes:optionalText().parse(str(form,'notes'))};
-      if(values.status==='active' && !flag(form,'manual_confirmation')) throw new Error('Confirm the service was activated outside this portal.');
     } else {
       const clientId=uuid.parse(str(form,'client_id'));await requireClientActive(clientId);
       const packageId=uuid.parse(str(form,'package_id'));
@@ -70,7 +71,7 @@ async function saveEntity(form:FormData,actor:string) {
       if(!pkg.is_active) throw new Error('Choose an active package.');
       const serverId=optionalId(form,'server_id');
       if(serverId) { const server=checked<{status:string}>(await getSupabase().from(hostingTable('servers')).select('status').eq('id',serverId).single()); if(server.status!=='available')throw new Error('Choose a server accepting new services.'); }
-      values={client_id:clientId,package_id:packageId,server_id:serverId,name:text(120).parse(str(form,'name')),primary_domain:str(form,'primary_domain')?domainName(str(form,'primary_domain')):'',price_minor:pkg.price_minor,currency:pkg.currency,billing_cycle:pkg.billing_cycle,next_due_date:date.parse(str(form,'next_due_date')),auto_invoice:flag(form,'auto_invoice'),notes:optionalText().parse(str(form,'notes'))};
+      values={status:z.enum(['active','pending']).parse(str(form,'status')||'pending'),client_id:clientId,package_id:packageId,server_id:serverId,name:text(120).parse(str(form,'name')),primary_domain:str(form,'primary_domain')?domainName(str(form,'primary_domain')):'',price_minor:pkg.price_minor,currency:pkg.currency,billing_cycle:pkg.billing_cycle,next_due_date:date.parse(str(form,'next_due_date')),auto_invoice:flag(form,'auto_invoice'),notes:optionalText().parse(str(form,'notes'))};
       return rpc<string>('assign_service',{p_actor:actor,p_key:uuid.parse(str(form,'request_key')),p_data:Object.fromEntries(Object.entries(values).filter(([key])=>!['price_minor','currency','billing_cycle'].includes(key)))});
     }
   } else if(entity==='domains') {
@@ -129,6 +130,18 @@ async function verifyDomain(form:FormData,actor:string) {
     checked(await getSupabase().from(hostingTable('domains')).update({ssl_status:expires?'valid':'error',ssl_checked_at:now,ssl_expires_at:expires}).eq('id',id));
   }
   await audit(actor,str(form,'action'),'domains',id);
+}
+export async function changeHostingServiceStatus(id:string,status:string,expectedStatus:string):Promise<{ok:true;status:string}|{ok:false;error:string}> {
+  const actor=await requireHostingAdmin();
+  try {
+    await rateLimit("hosting-write",actor.id,60,60);
+    const statuses=z.enum(['active','pending','suspended','cancelled']);
+    const saved=await rpc<string>('set_service_status',{p_actor:actor.id,p_service:uuid.parse(id),p_status:statuses.parse(status),p_expected_status:statuses.parse(expectedStatus)});
+    revalidatePath('/hosting','layout');revalidatePath('/client','layout');
+    return {ok:true,status:saved};
+  } catch(error) {
+    return {ok:false,error:error instanceof z.ZodError?'Choose a valid service status.':error instanceof Error?error.message:'Could not save the service status.'};
+  }
 }
 export async function hostingAdminAction(form:FormData) {
   const actor=await requireHostingAdmin();

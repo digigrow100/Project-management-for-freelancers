@@ -1,4 +1,5 @@
 import { startHostingClientView } from "@/lib/hosting/clientViewActions";
+import {ServiceStatusControl} from "./ServiceStatusControl";
 import Link from "next/link";
 import type { HostingLookups } from "@/lib/hosting/types";
 import type { HostingRecord } from "@/lib/hosting/store";
@@ -20,6 +21,7 @@ export function RecordsTable({section,records,lookups,client=false}:{section:str
    if(key==='price_minor'&&(row.pricing_ready===false||(row.package_snapshot as {pricing_ready?:boolean}|undefined)?.pricing_ready===false))return 'Price not set';
    if(key.endsWith('_minor'))return row.currency?money(Number(raw),String(row.currency)):(Number(raw)/100).toFixed(2);
    if(typeof raw==='boolean')return <StatusBadge value={raw?'available':'unavailable'}/>;
+   if(section==='services'&&key==='status'&&!client)return <ServiceStatusControl id={String(row.id)} name={String(row.name)} status={String(raw)}/>;
    if(['status','dns_status','ssl_status','transport_status'].includes(key))return <StatusBadge value={String(raw)}/>;
    if(key==='number')return <Link className="text-accent-300 hover:underline" href={`${base}/invoices/${row.id}`}>{String(raw)}</Link>;
    if(key==='subject')return <Link className="text-accent-300 hover:underline" href={`${base}/tickets/${row.id}`}>{String(raw)}</Link>;
@@ -27,6 +29,6 @@ export function RecordsTable({section,records,lookups,client=false}:{section:str
    return String(raw).replaceAll('_',' ');
  };
  const rows:TableRowView[]=records.map(item=>{const row=item as unknown as Record<string,unknown>;const id=String(row.id);return {id,status:String(row.status??''),search:cols.map(([key])=>{const raw=row[key];if(key==='client_id')return lookups?.clients.find(c=>c.id===raw)?.name??'';if(key==='service_id')return lookups?.services.find(c=>c.id===raw)?.name??'';if(key==='server_id')return lookups?.servers.find(c=>c.id===raw)?.name??'';if(key==='package_id')return lookups?.packages.find(c=>c.id===raw)?.name??'';return String(raw??'');}).join(' '),cells:cols.map(([key])=>value(row,key)),actions:<>{section==='servers'&&!client&&row.hostname==='server1.housemysite.com'&&row.ipv4==='62.171.130.156'&&<Link href={`/hosting/servers/${id}/connection`} className="mb-2 block whitespace-nowrap text-xs text-blue-400">Connection</Link>}{editable&&<Link href={`/hosting/${section}?edit=${id}`} className="text-xs text-accent-300">Edit</Link>}{section==='clients'&&!client&&row.status!=='closed'&&<form action={startHostingClientView} className="mt-2"><Hidden name="client_id" value={id}/><button className="whitespace-nowrap text-xs text-accent-300 hover:underline">Open client portal</button></form>}{section==='domains'&&!client&&<div className="flex gap-2"><HostingForm action="check_dns" returnPath="/hosting/domains" label="Check DNS"><Hidden name="id" value={id}/></HostingForm><HostingForm action="check_ssl" returnPath="/hosting/domains" label="Check SSL"><Hidden name="id" value={id}/></HostingForm></div>}{section==='operations'&&row.status==='awaiting_connection'&&['not dispatched','pending'].includes(String(row.transport_status))&&<HostingForm action="cancel_job" returnPath="/hosting/operations" label="Cancel request" danger><Hidden name="id" value={id}/></HostingForm>}{section==='submissions'&&row.status==='pending'&&<div className="flex gap-2">{['approve','reject'].map(decision=><HostingForm key={decision} action="review_submission" returnPath="/hosting/submissions" label={decision==='approve'?'Approve payment':'Reject'} danger={decision==='reject'}><Hidden name="id" value={id}/><Hidden name="decision" value={decision}/></HostingForm>)}</div>}</>};});
- return <RecordTableView columns={cols.map(([,label])=>label)} rows={rows} emptyLabel={`No ${section==='operations'?'operation requests':section==='services'?'hosting services':section} yet.`}/>;
+ return <>{section==='services'&&!client&&<p className="mb-3 text-sm text-neutral-500">Change recorded status using each service’s dropdown. This does not start, stop or delete its website on the server.</p>}<RecordTableView columns={cols.map(([,label])=>label)} rows={rows} emptyLabel={`No ${section==='operations'?'operation requests':section==='services'?'hosting services':section} yet.`}/></>;
 }
 

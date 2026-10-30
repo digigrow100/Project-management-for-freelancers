@@ -26,6 +26,8 @@ jobs:
       - run: node tests/hosting-workspaces.cjs
       - run: node tests/hosting-panel-catalog.cjs
       - run: node tests/hosting-ui.cjs
+      - run: node tests/hosting-service-status.cjs
+      - run: node tests/hosting-service-status-ui.cjs
       - run: node tests/hosting-package-contracts.cjs
       - run: node tests/hosting-package-views.cjs
       - run: node tests/hosting-limits-fixture.cjs

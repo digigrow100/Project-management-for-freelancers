@@ -161,6 +161,9 @@ Never edit an old migration that may already have run in production. Add a new m
 
 ### App Hosting plan contracts
 
+### Recorded service status controls
+`ServiceCreateOptions` defaults standard packages to Active and allows Pending. App Hosting always starts Pending until a matching server receipt exists. The server assignment RPC accepts explicit Active/Pending; omitted status stays Pending for old clients and retries. `ServiceStatusControl` changes only recorded status through the admin/MFA-protected `changeHostingServiceStatus` action and transactional `set_service_status` RPC, with an expected-status conflict check and audit. Failed requests leave the saved selection unchanged and show an actionable error. Edit no longer requires the redundant manual activation checkbox; the App receipt trigger still enforces activation. Recorded suspension/cancellation does not send VPS stop/delete commands. Migration `20261030221021_hosting_service_status_controls.sql`; regression tests `hosting-service-status.cjs` and `hosting-service-status-ui.cjs`.
+
 ### App Hosting accounts (identity, receipts, activation)
 One assigned App Hosting contract (immutable `package_snapshot`: package, version, 23 limits, digest) is one **account** (`freelance_hq_hosting_accounts`, migration `20261030090000_app_hosting_accounts.sql`). All websites of the account are rows of `freelance_hq_hosting_account_sites` and draw on ONE `website_limit` (row-locked trigger); the primary website has the SAME id as the contract service, so existing per-website screens/commands keep working. Additional websites are added with `freelance_hq_hosting_add_site` (account must be `enforced`) and are valid targets of the existing `source.*` commands only when their site row is `verified` and the account is `enforced` (`serviceScope` merges them).
 The only way to `enforced` is a VPS status that repeats the account, client, assignment UUID, limits digest, package and version and carries a receipt digest (`freelance_hq_hosting_record_app_status`, also re-checked in `lib/hosting/appAccounts.ts`). A service can become Active only for an enforced account whose digest still equals the frozen contract (trigger text: "App Hosting server enforcement is not verified"). The legacy one-site worker never receives an App contract (`hosting.provision` stays denied). New owner-only commands `hosting.app.provision|status|usage` need `HOSTING_APP_ACCOUNTS_ENABLED=approved` (default off) and rebuild the wire request from stored rows (the browser sends ids only). Usage is stored exactly as the VPS reports it (`unknown` stays `unknown`); customers get a read-only account summary on `/client/plans`. Enforcement mechanisms per limit, blocked features and decisions: `docs/app-hosting-enforcement.md` in the automation repository. Tests: `tests/hosting-app-accounts.cjs` (Postgres engine), `tests/hosting-app-provisioning.cjs` (also against the real Python gateway when `HMS_AUTOMATION_SOURCE` is set), `tests/hosting-limits-fixture.cjs`.
@@ -176,8 +179,8 @@ All new assignments use the admin-only transactional assign_service RPC, with
 idempotency and authoritative plan pricing. Retry hashes exclude server-derived
 price/currency/cycle so catalogue changes do not break a retry. App assignments atomically snapshot
 name/version/limits/digest/pricing readiness. Editing a catalogue never changes
-existing contracts. Unpriced assignments cannot bill, and App assignments cannot be
-manually marked active. The legacy one-site provisioning worker cannot enforce all
+existing contracts. Unpriced assignments cannot bill, and App assignments can be
+manually marked Active only after server enforcement is verified. The legacy one-site provisioning worker cannot enforce all
 account-wide app/mail/database/traffic budgets, so managed.ts rejects dispatch of
 App contracts until a matching worker/enrollment integration is implemented. Do
 not bypass this to make the UI look live. These are real saved plan assignments,
@@ -981,6 +984,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Added initial Active/Pending selection (standard default Active; App pending until verified), inline recorded-status dropdowns, clear activation errors and audited status-only updates. Preserved receipt, billing, admin and MFA guards; removed the redundant manual activation checkbox.
 
 - Added App Hosting package limits, unpriced Starter/Business/Pro catalogue records, customer plans and assigned limit snapshots, owner assignment links, transactional/idempotent service assignment and billing/activation guards. VPS enforcement remains pending and App contracts are blocked from the legacy worker.
 
