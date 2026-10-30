@@ -3,7 +3,7 @@
 // (modules/hosting/runtime_secrets.py defines the same format; tests/hosting-secrets.cjs checks both directions).
 import {secretName} from './managedSchema';
 export const FORMAT='hms-secret-v1';
-export const MAX_VALUE=4096;
+export const MAX_VALUE=8192;      // the packages promise values up to 8192 bytes; modules/hosting/runtime_secrets.py MAX_VALUE is the same number
 const encoder=new TextEncoder();
 const b64=(bytes:Uint8Array)=>{let text='';for(const b of bytes)text+=String.fromCharCode(b);return btoa(text);};
 const fromB64=(text:string)=>Uint8Array.from(atob(text),c=>c.charCodeAt(0));
@@ -11,7 +11,7 @@ const hex=(bytes:ArrayBuffer)=>[...new Uint8Array(bytes)].map(b=>b.toString(16).
 export class SecretRefused extends Error{}
 // The same value rules as the private service, so a value is refused here instead of being rejected after it was sent.
 export function checkValue(value:string){
- if(typeof value!=='string'||value.length===0||encoder.encode(value).length>MAX_VALUE||/[\u0000-\u001f\u007f"'\\$`]/.test(value))throw new SecretRefused('Values cannot be empty, contain control characters or any of " \' \\ $ `, and are limited to 4096 bytes.');
+ if(typeof value!=='string'||value.length===0||encoder.encode(value).length>MAX_VALUE||/[\u0000-\u001f\u007f"'\\$`]/.test(value))throw new SecretRefused('Values cannot be empty, contain control characters or any of " \' \\ $ `, and are limited to 8192 bytes.');
 }
 export function spkiPoint(pem:string){
  const body=pem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g,'').replace(/\s+/g,'');

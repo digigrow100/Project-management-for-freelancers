@@ -64,7 +64,7 @@ export const serviceCommand=z.discriminatedUnion('action',[
  z.object({action:z.literal('source.auto_install'),service:uuid,policy:signedPolicy,signature:signature}).strict(),
  z.object({action:z.literal('source.secret_key'),service:uuid}).strict(),
  z.object({action:z.literal('source.secret_list'),service:uuid}).strict(),
- z.object({action:z.literal('source.secret_put'),service:uuid,name:secretName,blob:z.string().min(80).max(8192)}).strict(),
+ z.object({action:z.literal('source.secret_put'),service:uuid,name:secretName,blob:z.string().min(80).max(12288)}).strict(),
  z.object({action:z.literal('source.secret_delete'),service:uuid,name:secretName}).strict(),
  z.object({action:z.literal('source.discard'),service:uuid,tree:treeId}).strict(),
  z.object({action:z.literal('source.upload_ticket'),service:uuid,size:z.number().int().min(22).max(SOURCE_UPLOAD_MAX_BYTES),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),

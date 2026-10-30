@@ -12,7 +12,7 @@ export function AppAccountPanel({accounts,needAccount}:{accounts:AppAccountView[
   {accounts.map(a=><article key={a.id} className="space-y-3 border-t border-base-700/60 pt-4">
    <h3 className="font-medium">{a.service_name}</h3>
    <p className="text-sm">{stateLabel[a.status]??a.status}{a.receipt_digest&&<span className="ml-2 break-all text-xs text-neutral-500">receipt {a.receipt_digest.slice(0,16)}…</span>}</p>
-   {a.blocked_features.length>0&&<p className="text-sm text-amber-400">Not available for this account yet: {a.blocked_features.join(', ')}. These stay blocked until their enforcement control exists.</p>}
+   {a.blocked_features.length>0&&<p className="text-sm text-amber-400">Not available for this account yet: {a.blocked_features.join(', ')}. These are switched off on this server: either their limit control does not exist yet or the feature has not been activated.</p>}
    <AppAccountActions service={a.service_id} status={a.status} sites={a.sites}/>
    {a.status==='enforced'&&<HostingForm action="app_add_site" returnPath="/hosting/services" label="Reserve website"><Hidden name="account_id" value={a.id}/><Field label="Hostname of an additional website" name="hostname" required placeholder="shop.example.com"/></HostingForm>}
    {a.usage&&<UsageTable usage={a.usage} at={a.usage_at}/>}

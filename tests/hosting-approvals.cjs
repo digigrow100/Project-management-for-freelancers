@@ -65,7 +65,7 @@ const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
  for(const name of ['DATABASE_URL','STRIPE_SECRET_KEY','A'])assert.ok(parse({action:'source.secret_delete',service,name}),name);
  for(const name of ['','lower','1ABC','PATH','PORT','NODE_OPTIONS','HMS_X','LD_PRELOAD','HOSTNAME','A'.repeat(65),'A-B'])assert.ok(!parse({action:'source.secret_delete',service,name}),name);
  assert.ok(!parse({action:'source.secret_put',service,name:'API_KEY',blob:'x'.repeat(79)}));
- assert.ok(!parse({action:'source.secret_put',service,name:'API_KEY',blob:'x'.repeat(8193)}));
+ assert.ok(!parse({action:'source.secret_put',service,name:'API_KEY',blob:'x'.repeat(12289)}));
  assert.ok(!parse({action:'source.secret_put',service,name:'API_KEY',blob:'x'.repeat(100),value:'plain'}));
 
  // --- gates --------------------------------------------------------------------------------------------------------------------------------------
@@ -151,10 +151,10 @@ const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
  assert.ok(!blob.includes('s3cret-value-123'));assert.ok(schema.serviceCommand.safeParse({action:'source.secret_put',service,name:'API_KEY',blob}).success);
  assert.notEqual(await sealIt(),blob);   // fresh ephemeral key and nonce every time
  for(const [what,over,pattern] of [['no pin',{pinnedFingerprint:null},/fingerprint is configured/],['wrong pin',{pinnedFingerprint:'1'.repeat(64)},/does not match/],['reserved name',{name:'PATH'},/name/],['lowercase name',{name:'api'},/name/],
-   ['empty value',{value:''},/Values/],['quote',{value:'a"b'},/Values/],['dollar',{value:'a$b'},/Values/],['newline',{value:'a\nb'},/Values/],['backslash',{value:'a\\b'},/Values/],['too long',{value:'x'.repeat(4097)},/Values/]])
+   ['empty value',{value:''},/Values/],['quote',{value:'a"b'},/Values/],['dollar',{value:'a$b'},/Values/],['newline',{value:'a\nb'},/Values/],['backslash',{value:'a\\b'},/Values/],['too long',{value:'x'.repeat(8193)},/Values/]])
   await assert.rejects(()=>sealIt(over),pattern,what);
  assert.ok(JSON.parse(await sealIt({value:'é'.repeat(100)})).ct);   // multi-byte values are measured in bytes
- await assert.rejects(()=>sealIt({value:'é'.repeat(2049)}),/Values/);
+ await assert.rejects(()=>sealIt({value:'é'.repeat(4097)}),/Values/);
 
  // --- real private service -----------------------------------------------------------------------------------------------------------------------
  if(automation){
@@ -184,6 +184,12 @@ const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
    await assert.rejects(()=>serviceRequest(foreign,{action:'source.secret_put',service,name:'API_KEY',blob:blob1}));
    list=await serviceRequest(member,{action:'source.secret_delete',service,name:'API_KEY'});assert.equal(list.version,3);assert.deepEqual(JSON.parse(JSON.stringify(list.secrets.map(s=>s.name))),['DATABASE_URL']);
    assert.deepEqual(Object.keys(python({kind:'open',service}).values),['DATABASE_URL']);
+   // the largest value the packages promise (8192 bytes) travels sealed through the portal libraries and opens on the private side; one byte more is refused in the browser
+   const big='v'.repeat(8192);
+   list=await serviceRequest(member,{action:'source.secret_put',service,name:'BIG_VALUE',blob:await real('BIG_VALUE',big)});
+   assert.equal(python({kind:'open',service}).values.BIG_VALUE,big);
+   await assert.rejects(()=>real('BIG_VALUE','v'.repeat(8193)),'a value above 8192 bytes is refused before anything is sent');
+   list=await serviceRequest(member,{action:'source.secret_delete',service,name:'BIG_VALUE'});assert.ok(!JSON.stringify(list).includes('BIG_VALUE'));
 
    // GitHub link + repository, then a queued request awaiting the owner
    const link={action:'source.github_link',service,installation_id:7,github_user_id:99,github_login:'octo',repositories:[{id:10,full_name:'acme/site'}]};
