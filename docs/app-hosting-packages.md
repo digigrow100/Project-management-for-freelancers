@@ -30,8 +30,9 @@ steps are in `docs/app-hosting-deployment.md`. Nothing here has run on the produ
 What a limit means on this server (all in the automation repository, `docs/app-hosting-enforcement.md`):
 - **Memory, CPU and process limits** are account totals for Next.js runtimes (one kernel control group per account, shared by its websites). The control is built and kernel-tested but switched off together with
   Next.js hosting; static websites run no customer process. PHP is not part of App Hosting. **Build limits** (seconds for the whole build, memory per build) are built and tested and switched off with the build sandbox.
-- **Database storage** has no safe hard control on the shared MariaDB (tested on a real server: a size-limited volume makes the whole database server abort when BLOB rows fill it), so databases stay off for App
-  packages until the owner decides how to provide them. The three packages still list their database allowance; the portal shows it as **not available yet**.
+- **Database storage** has no safe hard control on the shared MariaDB (tested on a real server: a size-limited volume makes the whole database server abort when BLOB rows fill it). The server instead gives each account its
+  **own private MariaDB instance** on the same VPS (own storage ceiling from a user quota, own memory/CPU/process limits, own credentials and socket; one account filling or crashing its instance does not stop another account or the panel
+  database). It is built and tested in the automation repository but **not installed or accepted live**, so databases stay **not available yet** in the portal until the owner records the live acceptance. Prices stay unset.
 - **Mailboxes** live on the account's primary domain (extra websites keep their own web domains). Sending stays off until the owner approves the Postfix recipient-policy hook.
 - **Runtime variables** hold values up to 8192 bytes (the sealed format was raised from 4096 to match the packages).
 

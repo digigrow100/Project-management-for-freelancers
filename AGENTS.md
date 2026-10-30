@@ -1203,3 +1203,5 @@ Audit of portal -> API -> worker -> ISPConfig found and fixed: no mail-domain li
 ## 2026-10-30 — App Hosting account identity and receipt-gated activation (source only)
 
 - Added account and website-slot tables, row-locked shared website allowance, receipt-gated `enforced` status and Active, owner-only `hosting.app.*` commands behind `HOSTING_APP_ACCOUNTS_ENABLED`, owner panel (`AppAccountPanel`) and read-only customer summary (`AppAccountSummary`), shared 23-limit fixture test. Legacy provisioning, billing guards and all other switches are unchanged. Not deployed; migration not applied to production by this change.
+
+- Final batch (source only): databases for App accounts are now planned as one private MariaDB instance per account on the same VPS (automation repository, `docs/app-hosting-enforcement.md` section 6); they stay "not available yet" in the portal until the owner records the live acceptance. The migration `20261030090000_app_hosting_accounts.sql`, its rollback script and test are unchanged and still not applied; prices stay unset; nothing was merged, migrated or deployed.
