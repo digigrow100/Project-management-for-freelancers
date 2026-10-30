@@ -22,7 +22,7 @@ async function rpc<T>(name:string,args:Record<string,unknown>):Promise<T> {
   const result=await getSupabase().rpc('freelance_hq_hosting_'+name,args);
   if(result.error) {
     const message=String(result.error.message);
-    const allowed=['App Hosting server enforcement is not enrolled','App Hosting is not ready for billing','Assigned package contract is immutable','Payment exceeds outstanding balance','Refund exceeds refundable amount','Only issued invoices accept payments','An invoice with payment history cannot be cancelled','Submission already reviewed','Invalid original payment','Service invoice ownership, currency or period mismatch','Idempotency key reused with different data'];
+    const allowed=['App Hosting server enforcement is not verified','Website allowance of this account is used','Additional websites need an enforced account','Only an assigned App Hosting contract has an account','The contract must be pending and have a server','Contract limits do not match their digest','App Hosting server enforcement is not enrolled','App Hosting is not ready for billing','Assigned package contract is immutable','Payment exceeds outstanding balance','Refund exceeds refundable amount','Only issued invoices accept payments','An invoice with payment history cannot be cancelled','Submission already reviewed','Invalid original payment','Service invoice ownership, currency or period mismatch','Idempotency key reused with different data'];
     throw new Error(allowed.find(s=>message.includes(s)) || 'The operation could not be completed. Check the record, currency and amount.');
   }
   return result.data as T;
@@ -135,7 +135,7 @@ export async function hostingAdminAction(form:FormData) {
   const returnPath=safeReturnPath(str(form,'return_path'));let target=returnPath;
   try {
     await rateLimit("hosting-write",actor.id,60,60);
-    const action=z.enum(['save','invoice','payment','review_submission','cancel_invoice','renewals','invite','link_account','access','job','cancel_job','check_dns','check_ssl','ticket_reply','ticket_status']).parse(str(form,'action'));
+    const action=z.enum(['save','invoice','payment','review_submission','cancel_invoice','renewals','invite','link_account','access','job','cancel_job','check_dns','check_ssl','ticket_reply','ticket_status','app_open_account','app_add_site']).parse(str(form,'action'));
     if(action==='save') await saveEntity(form,actor.id);
     else if(action==='invoice') {
       const raw=form.getAll('line_description').map((description,i)=>({description,i})).filter(({description,i})=>String(description).trim()||String(form.getAll('line_price')[i]??'').trim()).map(({description,i})=>({description:text(1000).parse(description),quantity:z.coerce.number().int().min(1).max(100000).parse(form.getAll('line_quantity')[i]),unit_minor:moneyMinor(String(form.getAll('line_price')[i]??''))}));
@@ -150,6 +150,8 @@ export async function hostingAdminAction(form:FormData) {
     else if(action==='access') {const id=uuid.parse(str(form,'id'));checked(await getSupabase().from(hostingTable('client_access')).update({enabled:flag(form,'enabled')}).eq('id',id));await audit(actor.id,'client_access_changed','client_access',id);}
     else if(action==='check_dns'||action==='check_ssl') await verifyDomain(form,actor.id);
     else if(action==='job') {const id=await save('jobs',{service_id:uuid.parse(str(form,'service_id')),kind:z.enum(['provision','suspend','resume','cancel','deploy','rollback','configure']).parse(str(form,'kind')),note:optionalText().parse(str(form,'note')),requested_by:actor.id,idempotency_key:uuid.parse(str(form,'request_key'))},null);await audit(actor.id,'operation_requested','jobs',id);}
+    else if(action==='app_open_account') await rpc('open_account',{p_actor:actor.id,p_service:uuid.parse(str(form,'service_id'))});
+    else if(action==='app_add_site') await rpc('add_site',{p_actor:actor.id,p_account:uuid.parse(str(form,'account_id')),p_hostname:domainName(str(form,'hostname'))});
     else if(action==='cancel_job') {const id=uuid.parse(str(form,'id'));checked(await getSupabase().from(hostingTable('jobs')).update({status:'cancelled'}).eq('id',id).eq('status','awaiting_connection'));await audit(actor.id,'operation_cancelled','jobs',id);}
     else if(action==='ticket_reply') {
       const id=uuid.parse(str(form,'ticket_id'));checked(await getSupabase().from(hostingTable('tickets')).select('id').eq('id',id).single());
