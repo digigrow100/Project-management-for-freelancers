@@ -27,6 +27,14 @@ and unmeasured values read **Unknown**. Legacy provisioning still never receives
 until its hook is approved) and the decisions that unblock them are in the automation repository, `docs/app-hosting-enforcement.md`; the version-pinned deployment, acceptance and rollback
 steps are in `docs/app-hosting-deployment.md`. Nothing here has run on the production VPS. No prices were invented; client visibility, Next.js and automatic deployment stay off.
 
+What a limit means on this server (all in the automation repository, `docs/app-hosting-enforcement.md`):
+- **Memory, CPU and process limits** are account totals for Next.js runtimes (one kernel control group per account, shared by its websites). The control is built and kernel-tested but switched off together with
+  Next.js hosting; static websites run no customer process. PHP is not part of App Hosting. **Build limits** (seconds for the whole build, memory per build) are built and tested and switched off with the build sandbox.
+- **Database storage** has no safe hard control on the shared MariaDB (tested on a real server: a size-limited volume makes the whole database server abort when BLOB rows fill it), so databases stay off for App
+  packages until the owner decides how to provide them. The three packages still list their database allowance; the portal shows it as **not available yet**.
+- **Mailboxes** live on the account's primary domain (extra websites keep their own web domains). Sending stays off until the owner approves the Postfix recipient-policy hook.
+- **Runtime variables** hold values up to 8192 bytes (the sealed format was raised from 4096 to match the packages).
+
 Rollback UI: restore previous Vercel deployment. The schema is additive and old
 portal code can continue; do not drop snapshots or erase assignments. Disable
 new plan assignments via is_active=false if necessary. Existing catalogue
