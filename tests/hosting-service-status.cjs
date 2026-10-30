@@ -2,7 +2,7 @@ const {PGlite}=require('@electric-sql/pglite'),fs=require('fs'),assert=require('
 (async()=>{
  const db=new PGlite();
  await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table public.freelance_hq_profiles(id uuid primary key,role text);create table public.freelance_hq_clients(id uuid primary key);");
- for(const f of ['20261020202238_hosting_management','20261029175553_app_hosting_packages','20261029180515_app_assignment_retry_digest','20261030090000_app_hosting_accounts','20261030221021_hosting_service_status_controls'])await db.exec(fs.readFileSync('supabase/migrations/'+f+'.sql','utf8'));
+ for(const f of ['20261020202238_hosting_management','20261029175553_app_hosting_packages','20261029180515_app_assignment_retry_digest','20261030090000_app_hosting_accounts','20261030221427_hosting_service_status_controls'])await db.exec(fs.readFileSync('supabase/migrations/'+f+'.sql','utf8'));
  const q=async(sql,args)=>(await db.query(sql,args)).rows;
  const admin=randomUUID(),member=randomUUID(),client=randomUUID(),server=randomUUID();
  await q('insert into auth.users(id)values($1),($2)',[admin,member]);
