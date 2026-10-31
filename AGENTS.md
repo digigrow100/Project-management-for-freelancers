@@ -255,6 +255,8 @@ bills were created. This source is not proof of VPS installation or real deliver
 flag OFF until the owner returns a successful installation JSON. Verify migration
 history before activation; do not reapply the migration. See `docs/email-control-center.md` for acceptance
 and guarded rollback; do not restore a stale whole database over live requests.
+CI installs the pinned browser tooling under RUNNER_TEMP, outside the portal
+package tree, so browser installation cannot re-resolve the locked app dependencies.
 Tests: `email-services-db.cjs`, `test_mail*.py`, browser
 `local-checks/email-services-browser.cjs`, existing email/security tests and CI.
 

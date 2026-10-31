@@ -51,9 +51,11 @@ jobs:
       - run: python3 -m pip install cryptography==46.0.3
       - run: python3 -m unittest discover -s tests -p 'test_mail*.py' -v
       - run: python3 -m py_compile scripts/email/inspect_mail_readiness.py
-      - name: Install pinned browser test tooling
-        run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
-      - run: npx playwright install --with-deps chromium
+      - name: Install isolated pinned browser test tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/hms-browser-tools" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+          printf 'NODE_PATH=%s/hms-browser-tools/node_modules\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - run: node "$RUNNER_TEMP/hms-browser-tools/node_modules/playwright/cli.js" install --with-deps chromium
       - run: node local-checks/domain-workspace-browser.cjs
       - run: node local-checks/email-workspace-browser.cjs
       - run: node local-checks/email-services-browser.cjs
