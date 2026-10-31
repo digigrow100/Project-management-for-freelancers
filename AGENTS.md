@@ -1305,10 +1305,12 @@ and each TLS endpoint. It returns fixed stage/code findings and safe file mode,
 UID/GID/size metadata; no exception text, credentials or customer addresses.
 Missing, denied or unknown sections stay null/unavailable, never zero/ready.
 A failed section preserves independent results. Private files still require the
-original permission boundary and no symlink; non-public hostname resolution still
-blocks endpoint connections. Never chmod files or relax networking based on this
+original permission boundary and no symlink; non-public hostname resolution never
+allows a connection to those addresses. TLS checks use only the existing pinned
+public VPS62.171.130.156 with server1.housemysite.com certificate/SNI validation,
+independently of local hostname aliases. Local resolution is reported separately. Never chmod files or relax networking based on this
 opaque ValueError. A valid report with findings exits0; unexpected report failure
 exits2, so the existing launcher can print the findings without a false transport
-error. Seven fixture-based tests cover partial failures, no plaintext leakage,
+error. Nine fixture-based tests cover partial failures, no plaintext leakage,
 read-only SQLite, no mail AUTH/send and independent TLS results. Real VPS result
 remains pending; external mail-only allocation and sending enrollment remain open.

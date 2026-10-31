@@ -13,6 +13,7 @@ from unittest.mock import patch, MagicMock
 spec = importlib.util.spec_from_file_location('readiness', Path(__file__).resolve().parents[1] / 'scripts/email/inspect_mail_readiness.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+RealPinnedSMTP = module.PinnedSMTP
 
 
 class MailReadinessReport(unittest.TestCase):
@@ -38,7 +39,7 @@ class MailReadinessReport(unittest.TestCase):
                         patch.object(module.socket, 'getaddrinfo', return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('62.171.130.156', 587))]),
                         patch.object(module.socket, 'create_connection', return_value=MagicMock()),
                         patch.object(module.ssl, 'create_default_context', self.tls),
-                        patch.object(module.smtplib, 'SMTP', self.smtp)]
+                        patch.object(module, 'PinnedSMTP', self.smtp)]
         for item in self.patches:
             item.start()
 
@@ -95,8 +96,9 @@ class MailReadinessReport(unittest.TestCase):
         self.assertEqual(report['hostname_resolution']['addresses'], ['127.0.1.1'])
         self.assertEqual(report['host_fingerprint'], 'f' * 64)
         self.assertEqual(report['mail_bindings']['total'], 1)
-        self.assertIsNone(report['smtp_starttls'])
-        self.smtp.assert_not_called()
+        self.assertTrue(report['smtp_starttls'], 'pinned public endpoint is independent of local hostname aliases')
+        self.assertTrue(report['imap_tls'])
+        self.assertEqual(report['endpoint_ipv4'], '62.171.130.156')
 
     def test_malformed_database_policy_and_dns_failure_are_independent(self):
         db = sqlite3.connect(self.db_path)
@@ -115,6 +117,26 @@ class MailReadinessReport(unittest.TestCase):
         self.assertFalse(report['smtp_starttls'])
         self.assertTrue(report['imap_tls'])
         self.assertEqual(report['issues'][0]['stage'], 'smtp_starttls')
+
+    def test_pinned_smtp_destination_keeps_certificate_hostname(self):
+        client = object.__new__(RealPinnedSMTP)
+        with patch.object(module.socket, 'create_connection') as connection:
+            client._get_socket(module.HOST, 587, 8)
+            connection.assert_called_once_with(('62.171.130.156', 587), timeout=8)
+        with self.assertRaises(module.CheckError):
+            client._get_socket('other.example.test', 587, 8)
+        with self.assertRaises(module.CheckError):
+            client._get_socket(module.HOST, 25, 8)
+
+    def test_starttls_verifies_host_name_not_ip(self):
+        with patch.object(RealPinnedSMTP, 'connect', return_value=(220, b'ready')):
+            client = RealPinnedSMTP(module.HOST, 587, timeout=8)
+        client.sock = MagicMock()
+        original = client.sock
+        context = MagicMock()
+        with patch.object(client, 'ehlo_or_helo_if_needed'), patch.object(client, 'has_extn', return_value=True), patch.object(client, 'docmd', return_value=(220, b'ready')):
+            client.starttls(context=context)
+        context.wrap_socket.assert_called_once_with(original, server_hostname='server1.housemysite.com')
 
     def test_symlink_is_not_followed(self):
         link = self.root / 'link.json'

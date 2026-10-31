@@ -18,6 +18,7 @@ import smtplib
 
 SETTINGS = Path('/etc/housemysite-services/settings.json')
 HOST = 'server1.housemysite.com'
+PUBLIC_IPV4 = '62.171.130.156'  # Existing enrolled VPS; never a caller-supplied destination.
 
 
 class CheckError(ValueError):
@@ -48,6 +49,16 @@ def private_file(path, metadata=None):
         os.close(fd)
 
 
+class PinnedSMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):
+        if host != HOST or port != 587 or not ipaddress.ip_address(PUBLIC_IPV4).is_global:
+            raise CheckError('unexpected_mail_endpoint')
+        # SMTP retains HOST for STARTTLS certificate/SNI verification. Only the
+        # connection destination is pinned, so local /etc/hosts aliases cannot
+        # send a diagnostic to a private address or hide this independent result.
+        return socket.create_connection((PUBLIC_IPV4, 587), timeout=timeout)
+
+
 def public_fingerprint(secret):
     from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -57,7 +68,7 @@ def public_fingerprint(secret):
 
 def inspect():
     report = {'read_only': True, 'provider_changes': 0, 'mail_sent': False,
-              'server_hostname': HOST, 'complete': False, 'issues': [], 'checks': {},
+              'server_hostname': HOST, 'endpoint_ipv4': PUBLIC_IPV4, 'complete': False, 'issues': [], 'checks': {},
               'file_metadata': {}, 'provider_configured': None, 'management_configured': None,
               'host_fingerprint': None, 'state_present': None, 'mail_bindings': None,
               'unresolved_mail_jobs': None, 'services': {}, 'hostname_resolution': None,
@@ -153,16 +164,16 @@ def inspect():
         if not public:
             raise CheckError('mail_hostname_has_non_public_addresses')
         return True
-    public = check('hostname_resolution', resolution)
-    if public:
+    check('hostname_resolution', resolution)
+    if ipaddress.ip_address(PUBLIC_IPV4).is_global:
         def smtp_check():
-            with smtplib.SMTP(HOST, 587, timeout=8) as smtp:
+            with PinnedSMTP(HOST, 587, timeout=8) as smtp:
                 smtp.ehlo()
                 smtp.starttls(context=ssl.create_default_context())
                 smtp.ehlo()
                 report['smtp_starttls'] = True
         def imap_check():
-            with socket.create_connection((HOST, 993), timeout=8) as raw:
+            with socket.create_connection((PUBLIC_IPV4, 993), timeout=8) as raw:
                 with ssl.create_default_context().wrap_socket(raw, server_hostname=HOST) as conn:
                     if not conn.recv(512).upper().startswith(b'* OK'):
                         raise CheckError('imap_greeting_invalid')
@@ -174,8 +185,8 @@ def inspect():
         if report['checks']['imap_tls'] is False:
             report['imap_tls'] = False
     else:
-        report['checks']['smtp_starttls'] = 'not_checked_hostname_unverified'
-        report['checks']['imap_tls'] = 'not_checked_hostname_unverified'
+        report['checks']['smtp_starttls'] = 'not_checked_pinned_address_invalid'
+        report['checks']['imap_tls'] = 'not_checked_pinned_address_invalid'
     report['complete'] = not report['issues']
     report['next'] = 'Review issues and enrollment before activation. This report never proves authenticated mail delivery.'
     return report
