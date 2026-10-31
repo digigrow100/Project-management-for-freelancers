@@ -28,10 +28,12 @@ if not apache:
 with tempfile.TemporaryDirectory(prefix='hms-relay-apache-') as temp:
     base=Path(temp);cert=base/'cert.pem';key=base/'key.pem'
     subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=server1.housemysite.com','-addext','subjectAltName=DNS:server1.housemysite.com,IP:127.0.0.1','-keyout',str(key),'-out',str(cert)],check=True,capture_output=True)
+    backend_cert=base/'backend.pem';backend_key=base/'backend.key'
+    subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1','-keyout',str(backend_key),'-out',str(backend_cert)],check=True,capture_output=True)
     relay=r.Server(('127.0.0.1',18444),r.Handler,bind_and_activate=False)
     relay.connections=threading.BoundedSemaphore(8);relay.slots=threading.BoundedSemaphore(4);relay.key=b'synthetic-test-key'*3;relay.ledger=r.Ledger(base/'ledger.sqlite')
     relay.server_bind();relay.server_activate()
-    tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(cert,key)
+    tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(backend_cert,backend_key)
     original=relay.finish_request
     def finish(request,address):
         request.settimeout(5)
@@ -46,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='hms-relay-apache-') as temp:
     user=pwd.getpwuid(os.getuid()).pw_name
     # Apache cannot start workers as root. Fixtures remain disposable/readable only.
     if os.getuid()==0:
-        user='www-data';base.chmod(0o755);cert.chmod(0o644);key.chmod(0o644)
+        user='www-data';base.chmod(0o755);cert.chmod(0o644);key.chmod(0o644);backend_cert.chmod(0o644)
     www=base/'www';www.mkdir(mode=0o755);(www/'index.html').write_text('existing-root-fixture')
     mods=['mpm_event','authz_core','authz_host','authz_user','authn_core','ssl','proxy','proxy_http','headers','dir','mime']
     config=f'ServerRoot "{base}"\nPidFile "{base}/apache.pid"\nListen 127.0.0.1:{port}\nServerName server1.housemysite.com\nUser {user}\nGroup {user}\nErrorLog "{base}/errors.log"\nLogLevel warn ssl:debug\n'
@@ -74,10 +76,10 @@ ProxyPassMatch "^/v1/services$" "https://127.0.0.1:18443"
 # END HOUSEMYSITE PRIVATE SERVICES
 </VirtualHost>
 '''
-    config+=installer.render(source.encode()).decode().replace('*:443',f'*:{port}').replace(installer.CA,str(cert))
+    config+=installer.render(source.encode()).decode().replace('*:443',f'*:{port}').replace(installer.CA,str(backend_cert))
     conf=base/'httpd.conf';conf.write_text(config)
     subprocess.run([apache,'-f',str(conf),'-t'],check=True,capture_output=True)
-    direct=http.client.HTTPSConnection('127.0.0.1',18444,context=ssl.create_default_context(cafile=str(cert)),timeout=10)
+    direct=http.client.HTTPSConnection('127.0.0.1',18444,context=ssl.create_default_context(cafile=str(backend_cert)),timeout=10)
     direct.request('GET','/v1/dynadot-relay')
     direct_answer=direct.getresponse()
     assert direct_answer.status==405
@@ -116,7 +118,7 @@ ProxyPassMatch "^/v1/services$" "https://127.0.0.1:18443"
         other=base/'other.pem';otherkey=base/'other.key'
         subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=wrong','-keyout',str(otherkey),'-out',str(other)],check=True,capture_output=True)
         other.chmod(0o644)
-        conf.write_text(config.replace(f'SSLProxyCACertificateFile "{cert}"',f'SSLProxyCACertificateFile "{other}"'))
+        conf.write_text(config.replace(f'SSLProxyCACertificateFile "{backend_cert}"',f'SSLProxyCACertificateFile "{other}"'))
         subprocess.run([apache,'-f',str(conf),'-k','graceful'],check=True,capture_output=True);time.sleep(.5)
         p['nonce']=str(uuid.uuid4());b,h=signed(p)
         with patch.object(r,'forward') as upstream:
