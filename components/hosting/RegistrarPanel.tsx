@@ -30,7 +30,7 @@ export function RegistrarPanel({connected,initialMode,lastSync}:{connected:boole
  },[connected]);
  async function prepare(change:Intent){if(!domain)return;await run(async()=>{setReview(null);const r=await request('prepare',{domain:domain.name,intent:JSON.stringify(change)});if(result(r)&&r.ok&&'review'in r){setReview(r.review as DomainReviewData);setSubmitted(false);}});}
  function recordConfirmation(r:Awaited<ReturnType<typeof registrarAction>>,active:DomainReviewData|null){
-  if(r.ok&&'domain'in r&&r.domain)setDomain(r.domain);
+  if(r.ok&&'domain'in r&&r.domain&&domain?.name===r.domain.name)setDomain(r.domain);
   if(active){setConfirmed({id:active.id,domain:active.domain,intent:active.intent});setReview(null);setSubmitted(false);}
  }
  async function check(id:string){await run(async()=>{const r=await request('reconcile',{id});if(result(r)&&r.ok&&'message'in r){recordConfirmation(r,review?.id===id?review:null);setMessage(r.message??'Checked');}await history(true);await load();});}

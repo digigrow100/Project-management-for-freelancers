@@ -2,7 +2,7 @@
 const fs=require('fs'),http=require('http'),assert=require('node:assert/strict'),os=require('os'),path=require('path'),esbuild=require('esbuild');
 const {chromium}=require('playwright');
 (async()=>{
-const root=process.cwd(),out=path.join(root,'.domain-browser-output');fs.mkdirSync(out,{recursive:true});
+const root=process.cwd(),out=path.join(root,'domain-browser-output');fs.mkdirSync(out,{recursive:true});
 const action=`
 const now=1793448000000;let current,serial=0;
 let domain={name:'housemysite.com',expires:now+18*86400000,locked:true,renewOption:'auto',status:'active',glue:{glue_type:'DNS',ttl:3600,dns_main_list:[{record_type:'a',record_value1:'192.0.2.1',record_value2:''},{record_type:'txt',record_value1:'keep-this-record',record_value2:''}]}};
