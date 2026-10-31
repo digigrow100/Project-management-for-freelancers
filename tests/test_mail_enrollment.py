@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import hashlib
+import os
 import pathlib
 import tempfile
 import unittest
@@ -81,6 +82,17 @@ class MailEnrollmentGuards(unittest.TestCase):
             self.assertEqual(selected,{'version':1})
             with self.assertRaises(module.Refused):module.find_policy(directory,'0'*64,lambda p:p.read_bytes(),digest)
 
+    def test_runtime_directories_and_files_must_be_protected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp)/'release';folder=root/'scripts';folder.mkdir(parents=True)
+            file=folder/'worker.py';file.write_text('pass');file.chmod(0o644)
+            module.protected_source(file,root,os.getuid())
+            folder.chmod(0o777)
+            with self.assertRaises(module.Refused):module.protected_source(file,root,os.getuid())
+            folder.chmod(0o755)
+            link=folder/'link.py';link.symlink_to(file)
+            with self.assertRaises(module.Refused):module.protected_source(link,root,os.getuid())
+
     def test_stage_errors_do_not_leak_provider_text(self):
         def failed():raise RuntimeError('PRIVATE_SENTINEL')
         with self.assertRaises(module.Refused) as caught:module.step('provider_login',failed)
@@ -93,7 +105,7 @@ class MailEnrollmentGuards(unittest.TestCase):
         self.assertNotIn('SELECT *',module.PHP)
         self.assertNotIn('UPDATE mail_user',module.PHP)
         self.assertNotIn('INSERT INTO mail_user',module.PHP)
-        self.assertIn('UPDATE remote_user SET remote_functions=? WHERE remote_userid=? AND remote_functions=?',module.PHP)
+        self.assertIn('UPDATE remote_user SET remote_functions=? WHERE remote_userid=? AND BINARY remote_functions=?',module.PHP)
         self.assertNotIn('remote_password',module.PHP)
 
 

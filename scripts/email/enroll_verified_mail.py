@@ -46,7 +46,7 @@ try {
   echo json_encode(['role_id'=>(int)$u['remote_userid'],'functions'=>$u['remote_functions'],'samples'=>$rows],JSON_THROW_ON_ERROR);exit;
  }
  if(!in_array($input['mode'],['grant','restore'],true)||(int)$u['remote_userid']!==$input['role_id']||$u['remote_functions']!==$input['before'])throw new Exception('changed');
- $q=$pdo->prepare('UPDATE remote_user SET remote_functions=? WHERE remote_userid=? AND remote_functions=?');$q->execute([$input['after'],$input['role_id'],$input['before']]);
+ $q=$pdo->prepare('UPDATE remote_user SET remote_functions=? WHERE remote_userid=? AND BINARY remote_functions=?');$q->execute([$input['after'],$input['role_id'],$input['before']]);
  if($q->rowCount()!==1)throw new Exception('changed');$pdo->commit();echo '{"updated":true}';
 }catch(Throwable $e){if(isset($pdo)&&$pdo->inTransaction())$pdo->rollBack();exit(2);}
 '''
@@ -80,6 +80,19 @@ def read_private(path, uid):
         return os.read(fd, 65537)
     finally:
         os.close(fd)
+
+
+def protected_source(path, release, uid=0):
+    path, release = Path(path), Path(release)
+    require(path.is_relative_to(release), 'runtime_source_outside_release')
+    current = path
+    while True:
+        info = current.lstat()
+        require(not stat.S_ISLNK(info.st_mode) and info.st_uid == uid and not info.st_mode & 0o022, 'runtime_source_not_protected')
+        require(stat.S_ISREG(info.st_mode) if current == path else stat.S_ISDIR(info.st_mode), 'runtime_source_type_changed')
+        if current == release:
+            break
+        current = current.parent
 
 
 def mail_template(samples, uid, gid, home):
@@ -140,7 +153,7 @@ def service_action(action, template, uid, gid):
     if pid == 0:
         os.close(read_fd)
         try:
-            os.setgroups([]);os.setgid(gid);os.setuid(uid)
+            os.setgroups([]);os.setgid(gid);os.setuid(uid);os.chdir('/')
             signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(Refused('service_step_timed_out')))
             signal.alarm(100)
             result = enroll_as_service(action, template)
@@ -280,9 +293,11 @@ def main():
     require(actor.pw_uid >= 500 and actor.pw_gid >= 500 and grp.getgrgid(actor.pw_gid).gr_name == 'hms-services', 'service_identity_invalid')
     release = CURRENT.resolve()
     require(release.parent == Path('/opt/housemysite-services/releases') and release.stat().st_uid == 0 and not release.stat().st_mode & 0o022, 'reviewed_release_required')
+    for ancestor in (CURRENT.parent, release.parent):
+        info = ancestor.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022, 'runtime_ancestry_not_protected')
     for file in ('scripts/services/service_runtime.py', 'modules/hosting/managed.py'):
-        info = (release / file).stat()
-        require(info.st_uid == 0 and not info.st_mode & 0o022, 'runtime_source_not_protected')
+        protected_source(release / file, release)
     config = json.loads(read_private(SETTINGS, actor.pw_uid))
     username_file = Path(config['provider']['username_file'])
     require(username_file.is_relative_to(SETTINGS.parent), 'provider_username_path_needs_review')
