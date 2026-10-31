@@ -34,6 +34,8 @@ jobs:
           if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/email/Check-HouseMySiteMail.ps1'), [ref]$tokens, [ref]$parseErrors)
           if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/email/Install-EmailControlCenter.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
       - run: node tests/hosting-registrar-relay.cjs
       - run: python3 -m unittest discover -s tests -p test_dynadot_relay.py -v
       - name: Install disposable Apache test dependency
@@ -43,12 +45,22 @@ jobs:
       - run: node tests/hosting-registrar-ui.cjs
       - run: node tests/hosting-email.cjs
       - run: node tests/hosting-email-db.cjs
+      - run: node tests/email-services-db.cjs
+      - run: python3 -m pip install cryptography==46.0.3
+      - run: python3 -m unittest discover -s tests -p 'test_mail*.py' -v
       - run: python3 -m py_compile scripts/email/inspect_mail_readiness.py
       - name: Install pinned browser test tooling
         run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
       - run: npx playwright install --with-deps chromium
       - run: node local-checks/domain-workspace-browser.cjs
       - run: node local-checks/email-workspace-browser.cjs
+      - run: node local-checks/email-services-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: email-services-browser
+          path: email-services-browser-output/
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:

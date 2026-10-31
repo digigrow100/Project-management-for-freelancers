@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: python3 -m pip install cryptography==46.0.3
       - name: Independent read-only report sections and safe errors
         run: |
           python3 -m unittest discover -s tests -p test_mail_readiness.py -v
-          python3 -m unittest discover -s tests -p test_mail_enrollment.py -v
+          python3 -m unittest discover -s tests -p 'test_mail*.py' -v
