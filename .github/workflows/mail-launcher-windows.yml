@@ -6,6 +6,7 @@ on:
       - scripts/email/**
       - tests/windows-mail-launcher.ps1
       - tests/test_mail_readiness.py
+      - tests/test_mail_enrollment.py
       - .github/workflows/mail-launcher-windows.yml
   workflow_dispatch:
 jobs:
@@ -25,4 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Independent read-only report sections and safe errors
-        run: python3 -m unittest discover -s tests -p test_mail_readiness.py -v
+        run: |
+          python3 -m unittest discover -s tests -p test_mail_readiness.py -v
+          python3 -m unittest discover -s tests -p test_mail_enrollment.py -v
