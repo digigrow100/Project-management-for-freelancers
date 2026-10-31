@@ -21,6 +21,7 @@ const icons = {
 
 export const HOSTING_NAV = [
   { href: "/hosting", label: "Overview", icon: LayoutDashboard },
+  { href: "/hosting/registrar", label: "Domains", icon: Globe },
   ...HOSTING_SECTIONS.map(({ key, label }) => ({
     href: `/hosting/${key}`, label, icon: icons[key],
   })),
@@ -34,7 +35,7 @@ export function HostingNavigation() {
   const pathname = usePathname();
   const groups=[
     {label:'Hosting',icon:Server,keys:['servers','packages','services','clients']},
-    {label:'Websites',icon:Globe,keys:['domains','sources','email','databases','forms','backups']},
+    {label:'Websites',icon:Globe,keys:['registrar','domains','sources','email','databases','forms','backups']},
     {label:'Billing',icon:Receipt,keys:['billing','invoices','payments','expenses','submissions']},
   ];
   const renderLink=({href,label,icon:Icon}:typeof HOSTING_NAV[number],nested=false)=><Link key={href} href={href} prefetch={false} aria-current={hostingLinkActive(pathname,href)?'page':undefined} className={cn('hms-nav-link',nested&&'hms-nav-child',hostingLinkActive(pathname,href)&&'hms-nav-active')}><Icon size={18} className="shrink-0" aria-hidden="true"/><span>{label}</span></Link>;

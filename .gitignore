@@ -45,3 +45,5 @@ ios/.xcode.env.local
 
 # Supabase CLI local state
 supabase/.temp/
+
+domain-browser-output/

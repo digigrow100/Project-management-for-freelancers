@@ -1,0 +1,22 @@
+'use client';
+import {useEffect,useRef,type ReactNode} from 'react';
+import {X,Lock,Unlock,RefreshCw,Globe,Server,Calendar,History,ChevronRight,ArrowLeft} from 'lucide-react';
+import type {DomainInfo,Intent} from '@/lib/hosting/registrar/schema';
+import {expiryLabel} from '@/lib/hosting/registrar/presentation';
+import {DomainHistory,type DomainOperation} from './DomainHistory';
+export type DetailTab='overview'|'nameservers'|'renewal'|'history';
+type Props={domain:DomainInfo;busy:boolean;reviewing:boolean;tab:DetailTab;operations:DomainOperation[];onClose:()=>void;onTab:(tab:DetailTab)=>void;onDns:()=>void;onPrepare:(intent:Intent)=>void;onCheck:(id:string)=>void;children?:ReactNode};
+export function DomainDetailsPanel(p:Props){
+ const d=p.domain,disabled=p.busy||p.reviewing;
+ const panel=useRef<HTMLElement>(null);
+ useEffect(()=>{panel.current?.focus({preventScroll:true});panel.current?.scrollIntoView({block:'nearest',behavior:'smooth'});},[d.name]);
+ return <aside ref={panel} tabIndex={-1} className="hms-domain-detail" aria-label="Domain details"><header><div><h2>{d.name}</h2><span className="hms-domain-pill muted">{d.status}</span></div><button className="hms-icon-button" disabled={p.busy} aria-label="Close domain details" onClick={p.onClose}><X size={20}/></button></header>
+ {p.tab!=='overview'&&<button className="hms-domain-back" disabled={p.busy} onClick={()=>p.onTab('overview')}><ArrowLeft size={15}/>Domain overview</button>}
+ {p.tab==='overview'&&<><dl className="hms-domain-facts"><div><dt>Registrar</dt><dd>Dynadot</dd></div><div><dt>Expiry date</dt><dd>{expiryLabel(d.expires)}</dd></div></dl><div className="hms-domain-security"><div>{d.locked?<Lock size={22}/>:<Unlock size={22}/>}<span>Transfer lock</span><strong>{d.locked?'Locked':'Unlocked'}</strong><button disabled={disabled} onClick={()=>p.onPrepare({kind:'lock',locked:!d.locked})}>{d.locked?'Review unlock':'Review lock'}</button></div><div><RefreshCw size={22}/><span>Auto-renew</span><strong>{d.renewOption==='auto'?'On':'Off'}</strong><button disabled={disabled} onClick={()=>p.onPrepare({kind:'renew_option',enabled:d.renewOption!=='auto'})}>{d.renewOption==='auto'?'Review turning off':'Review turning on'}</button></div></div>
+ <div className="hms-domain-actions">{[{label:'DNS records',icon:Globe,click:p.onDns},{label:'Manage nameservers',icon:Server,click:()=>p.onTab('nameservers')},{label:'Review renewal',icon:Calendar,click:()=>p.onTab('renewal')},{label:'Domain history',icon:History,click:()=>p.onTab('history')}].map(({label,icon:Icon,click})=><button key={label} disabled={disabled} onClick={click}><Icon size={18}/><span>{label}</span><ChevronRight size={16}/></button>)}</div><p className="hms-domain-footnote">Changes are reviewed before applying.</p></>}
+ {p.tab==='nameservers'&&<form className="hms-domain-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);p.onPrepare({kind:'nameservers',nameservers:String(f.get('nameservers')).split(/\s+/).filter(Boolean)});}}><h3>Nameservers</h3><label>One nameserver per line<textarea key={d.name+JSON.stringify(d.glue.nameserver_list)} name="nameservers" required defaultValue={d.glue.nameserver_list?.map(n=>n.server_name).join('\n')??''} disabled={disabled}/></label><p>Changing nameservers moves DNS management. Check website and email records at the new provider first.</p><button className="hms-primary" disabled={disabled}>Review nameserver change</button></form>}
+ {p.tab==='renewal'&&<form className="hms-domain-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);p.onPrepare({kind:'renew',years:Number(f.get('years')),currency:String(f.get('currency')) as 'usd'|'gbp'|'eur'});}}><h3>Renew domain</h3><p>Current expiry: {expiryLabel(d.expires)}. Your registrar’s exact price is checked before confirmation.</p><label>Currency<select name="currency" disabled={disabled}><option value="usd">USD</option><option value="gbp">GBP</option><option value="eur">EUR</option></select></label><label>Years<select name="years" defaultValue="1" disabled={disabled}>{Array.from({length:10},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}</select></label><button className="hms-primary" disabled={disabled}>Review renewal price</button></form>}
+ {p.tab==='history'&&<><h3 className="hms-domain-section-title">Domain history</h3><DomainHistory operations={p.operations.filter(op=>op.domain===d.name)} busy={p.busy} onCheck={p.onCheck}/></>}
+ {p.children}
+ </aside>;
+}

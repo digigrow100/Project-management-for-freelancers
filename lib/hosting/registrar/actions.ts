@@ -22,13 +22,14 @@ export async function registrarAction(form:FormData){
    const first=await api(c).list(1);const version=await saveConnection(actor.id,c);await remember(version,first.domain_info_list);
    refresh();return {ok:true as const,mode:c.mode,count:first.pagination_result.total,message:'Connection tested and saved. Sync all domains to finish importing the account.'};
   }
-  const c=await connection(),provider=api(c.credentials);
   if(action==='list'){
-   const page=z.coerce.number().int().min(1).max(100000).parse(form.get('page')||1);const search=z.string().trim().toLowerCase().max(253).regex(/^[a-z0-9.*-]*$/).parse(form.get('search')||'');
-   let query=getSupabase().from(table('domains')).select('name,details,synced_at',{count:'exact'}).eq('connection_version',c.version).order('name').range((page-1)*50,page*50-1);
-   if(search)query=query.ilike('name','%'+search.replaceAll('*','')+'%');
-   const r=await query;checked(r);return {ok:true as const,rows:r.data??[],total:r.count??0,mode:c.mode};
+   const page=z.coerce.number().int().min(1).max(100000).parse(form.get('page')||1);
+   const search=z.string().trim().toLowerCase().max(253).regex(/^[a-z0-9.*-]*$/).parse(form.get('search')||'');
+   const filter=z.enum(['all','expiring','expired','locked','auto_renew']).parse(form.get('filter')||'all');
+   const data=checked(await getSupabase().rpc('freelance_hq_hosting_registrar_inventory',{p_actor:actor.id,p_search:search,p_filter:filter,p_page:page}));
+   return {ok:true as const,...data as {rows:unknown[];total:number;pageSize:number;mode:string;asOf:number;syncAt:string|null;needsReconcile:boolean;summary:{total:number;expiring:number;expired:number;autoRenew:number;locked:number}}};
   }
+  const c=await connection(),provider=api(c.credentials);
   if(action==='sync_start'){const run=checked(await getSupabase().rpc('freelance_hq_hosting_registrar_sync_start',{p_actor:actor.id,p_version:c.version}));return {ok:true as const,run:String(run)};}
   if(action==='sync'){
    const page=z.coerce.number().int().min(1).max(100000).parse(form.get('page')||1);const run=z.string().uuid().parse(form.get('run'));const remote=await provider.list(page);
@@ -45,8 +46,8 @@ export async function registrarAction(form:FormData){
     if(!['executing','uncertain','confirmed'].includes(op.state))throw new RegistrarError('review_expired');
     if(op.state==='executing'&&Date.now()-Date.parse(op.updated_at)<60000)throw new RegistrarError('reconcile_required');
     const after=await provider.info(op.domain);await remember(c.version,[after]);
-    if(op.state==='confirmed')return {ok:true as const,message:'This operation was already confirmed.'};
-    if(observed(op.before_state,after,intent.parse(op.intent))){await finish(op,'confirmed');refresh();return {ok:true as const,message:'The requested result is now visible in Dynadot.'};}
+    if(op.state==='confirmed')return {ok:true as const,message:'This operation was already confirmed.',domain:after};
+    if(observed(op.before_state,after,intent.parse(op.intent))){await finish(op,'confirmed');refresh();return {ok:true as const,message:'The requested result is now visible in Dynadot.',domain:after};}
     if(op.state==='executing')await finish(op,'uncertain');
     return {ok:false as const,error:'The result is still unclear. Further changes remain blocked. Check this operation in Dynadot before an operator resolves it.'};
    }
@@ -61,7 +62,7 @@ export async function registrarAction(form:FormData){
     sent=true;await provider.change(op.domain,change,id);
     const after=await provider.info(op.domain);await remember(c.version,[after]);
     const verified=observed(current,after,change);await finish(op,verified?'confirmed':'uncertain');refresh();
-    return verified?{ok:true as const,message:'Change confirmed by Dynadot.'}:{ok:false as const,error:'Dynadot accepted the request, but its final state is not visible yet. Use Check operation status.'};
+    return verified?{ok:true as const,message:'Change confirmed by Dynadot.',domain:after}:{ok:false as const,error:'Dynadot accepted the request, but its final state is not visible yet. Use Check operation status.'};
    }catch(e){await finish(op,sent?'uncertain':'failed');throw e;}
   }
   const name=hostname.parse(form.get('domain'));const before=await provider.info(name);await remember(c.version,[before]);

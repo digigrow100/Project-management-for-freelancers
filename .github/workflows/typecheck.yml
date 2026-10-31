@@ -39,6 +39,16 @@ jobs:
       - run: HMS_REQUIRE_APACHE=1 python3 tests/hosting-relay-apache.py
       - run: node tests/hosting-registrar.cjs
       - run: node tests/hosting-registrar-ui.cjs
+      - name: Install pinned browser test tooling
+        run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+      - run: npx playwright install --with-deps chromium
+      - run: node local-checks/domain-workspace-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: domain-workspace-browser
+          path: domain-browser-output/
+          retention-days: 3
       - run: node tests/hosting-registrar-db.cjs
       - run: node tests/hosting-ui.cjs
       - run: node tests/hosting-service-status.cjs

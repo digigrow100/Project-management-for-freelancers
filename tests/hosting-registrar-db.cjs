@@ -18,6 +18,18 @@ const sync=(page,total,next,domains)=>q('select freelance_hq_hosting_registrar_s
 await assert.rejects(sync(2,2,false,[{name:'two.example',status:'active'}]),/Sync changed/);
 await sync(1,2,true,[{name:'one.example',status:'active'}]);await assert.rejects(sync(1,2,true,[]),/Sync changed/);await assert.rejects(sync(2,3,false,[{name:'two.example',status:'active'}]),/list changed/);await sync(2,2,false,[{name:'two.example',status:'active'}]);
 assert.equal((await q('select sync_next from freelance_hq_hosting_registrar_connection'))[0].sync_next,0);assert.equal((await q('select count(*)::int n from freelance_hq_hosting_registrar_domains'))[0].n,2);
-for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(connect(),/permission denied/);for(const table of ['connection','domains','operations'])await assert.rejects(db.exec('select * from freelance_hq_hosting_registrar_'+table),/permission denied/);await db.exec('reset role');}
-await db.close();console.log('PASS: admin roles, durable one-shot claim, uncertain lock, atomic audit, expired/rotated reviews, ordered complete sync and private tables.');
+const inventoryMigration=fs.readdirSync('supabase/migrations').find(f=>f.endsWith('_hosting_registrar_inventory.sql'));await db.exec(fs.readFileSync('supabase/migrations/'+inventoryMigration,'utf8'));
+await db.exec('begin');const now=Number((await q('select floor(extract(epoch from now())*1000) t'))[0].t);
+for(let i=0;i<60;i++)await q('insert into freelance_hq_hosting_registrar_domains(connection_version,name,details)values($1,$2,$3)',[newVersion,`domain${String(i).padStart(2,'0')}.test`,{name:`domain${i}.test`,expires:i<26?now+(i+1)*86400000:i<36?now-86400000:now+100*86400000,locked:i%2===0,renewOption:i%3===0?'auto':'donot',status:'active',glue:{glue_type:'DNS'}}]);
+await q("insert into freelance_hq_hosting_registrar_domains(connection_version,name,details)values($1,'other-account.test',$2)",[version,{expires:now+86400000,locked:true,renewOption:'auto'}]);
+const inventory=async(filter='all',page=1,search='',actor=admin)=>(await q('select freelance_hq_hosting_registrar_inventory($1,$2,$3,$4) value',[actor,search,filter,page]))[0].value;
+let view=await inventory();assert.equal(view.total,62);assert.equal(view.summary.total,62);assert.equal(view.summary.expiring,26);assert.equal(view.summary.expired,10);assert.equal(view.summary.autoRenew,20);assert.equal(view.summary.locked,30);assert.equal(view.rows.length,25);assert.ok(view.rows.every(r=>r.category==='expiring'));assert.ok(!view.rows.some(r=>r.name==='other-account.test'));
+view=await inventory('expiring',2);assert.equal(view.total,26);assert.equal(view.rows.length,1);assert.equal(view.summary.total,62,'summary is account-wide, not current-page total');
+view=await inventory('expired');assert.equal(view.total,10);assert.ok(view.rows.every(r=>r.category==='expired'));
+view=await inventory('locked',1,'domain');assert.equal(view.total,30);assert.ok(view.rows.every(r=>r.details.locked));
+view=await inventory('all',1,'*domain59*');assert.equal(view.total,1);assert.equal(view.rows[0].name,'domain59.test');
+await db.exec('rollback');
+await assert.rejects(inventory('bad'),/Invalid inventory/);await assert.rejects(inventory('all',0),/Invalid inventory/);await assert.rejects(inventory('all',1,"%'"),/Invalid inventory/);await assert.rejects(inventory('all',1,'',member),/admin access/);
+for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(connect(),/permission denied/);await assert.rejects(inventory(),/permission denied/);for(const table of ['connection','domains','operations'])await assert.rejects(db.exec('select * from freelance_hq_hosting_registrar_'+table),/permission denied/);await db.exec('reset role');}
+await db.close();console.log('PASS: admin roles, durable one-shot claim, uncertain lock, atomic audit, expired/rotated reviews, ordered complete sync, global inventory counts/filtering/grouping before pagination, generation isolation and private tables.');
 })().catch(e=>{console.error(e);process.exit(1)});

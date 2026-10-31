@@ -66,12 +66,14 @@ function render(currentPath, currentProfile = profile) {
 }
 
 (async () => {
-  for (const route of ['/hosting', '/hosting/servers', '/hosting/billing']) {
+  for (const route of ['/hosting', '/hosting/servers', '/hosting/billing', '/hosting/registrar']) {
     const html = render(route);
     assert.match(html, /data-workspace="hosting"/);
     assert.match(html, /House My Site/);
     assert.match(html, /Switch workspace/);
     assert.match(html, /Hosting navigation/);
+    assert.match(html, /href="\/hosting\/registrar"/);
+    if(route==='/hosting/registrar')assert.match(html,/href="\/hosting\/registrar"[^>]*aria-current="page"/);
     assert.match(html, /href="\/hosting\/servers"/);
     for (const teamHref of ['/projects', '/today', '/admin/my-tasks', '/team', '/finance']) {
       assert.ok(!html.includes(`href="${teamHref}"`), `${route} leaked ${teamHref}`);
