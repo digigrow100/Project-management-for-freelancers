@@ -25,6 +25,9 @@ jobs:
       - run: npm run lint
       - run: node tests/hosting-workspaces.cjs
       - run: node tests/hosting-panel-catalog.cjs
+      - run: node tests/hosting-registrar.cjs
+      - run: node tests/hosting-registrar-ui.cjs
+      - run: node tests/hosting-registrar-db.cjs
       - run: node tests/hosting-ui.cjs
       - run: node tests/hosting-service-status.cjs
       - run: node tests/hosting-service-status-ui.cjs

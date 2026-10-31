@@ -1,0 +1,61 @@
+import 'server-only';
+import {createHmac,randomUUID} from 'node:crypto';
+import {z} from 'zod';
+import {type Credentials,domainInfo,hostname,recordBody,type Intent} from './schema';
+export class RegistrarError extends Error { constructor(public code:string){super(code);} }
+export function signature(c:Credentials,path:string,id:string,body:string){return createHmac('sha256',c.secret).update([c.key,path,id,body].join('\n')).digest('base64');}
+export class Dynadot {
+ private lastRequest=0;
+ constructor(private c:Credentials,private transport:typeof fetch=fetch,private budget?:()=>Promise<void>){}
+ async request(method:'GET'|'PUT'|'POST'|'DELETE',path:string,body?:unknown,id:string=randomUUID()):Promise<unknown>{
+  const data=body===undefined?'':JSON.stringify(body);
+  const origin=this.c.mode==='sandbox'?'https://api-sandbox.dynadot.com':'https://api.dynadot.com';
+  if(!/^\/restful\/v2\//.test(path)||path.includes('..')||path.includes('#'))throw new RegistrarError('invalid_request');
+  const delay=1100-(Date.now()-this.lastRequest);if(delay>0)await new Promise(r=>setTimeout(r,delay));
+  await this.budget?.();this.lastRequest=Date.now();
+  let response:Response;
+  try{response=await this.transport(origin+path,{method,headers:{Authorization:'Bearer '+this.c.key,Accept:'application/json','Content-Type':'application/json','X-Request-ID':id,'X-Signature':signature(this.c,path,id,data)},body:data||undefined,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});}catch{throw new RegistrarError('answer_unknown');}
+  if(Number(response.headers.get('content-length')??0)>2000000)throw new RegistrarError('invalid_response');
+  let text:string;try{text=await response.text();}catch{throw new RegistrarError('answer_unknown');}
+  if(text.length>2000000)throw new RegistrarError('invalid_response');
+  let result:unknown;try{result=JSON.parse(text);}catch{throw new RegistrarError('answer_unknown');}
+  const envelope=z.object({code:z.number(),data:z.unknown().optional()}).safeParse(result);
+  if(!envelope.success)throw new RegistrarError('invalid_response');
+  if(!response.ok||envelope.data.code!==200){
+   const code=envelope.data.code;
+   throw new RegistrarError(code===401?'credentials_rejected':code===429?'rate_limited':code>=500?'answer_unknown':'provider_rejected');
+  }
+  return envelope.data.data;
+ }
+ async list(page:number){
+  const data=await this.request('GET','/restful/v2/domains?page='+page+'&page_size=100');
+  const parsed=z.object({domain_info_list:z.array(domainInfo).max(100),pagination_result:z.object({page:z.number().int(),page_size:z.number().int(),total:z.number().int().min(0),has_next_page:z.union([z.boolean(),z.enum(['Yes','No','yes','no'])]).transform(v=>v===true||v==='Yes'||v==='yes')})}).safeParse(data);
+  if(!parsed.success||parsed.data.pagination_result.page!==page)throw new RegistrarError('invalid_response');
+  return parsed.data;
+ }
+ async info(name:string){
+  const data=await this.request('GET','/restful/v2/domains/'+hostname.parse(name));
+  const parsed=z.object({domain_info:domainInfo}).safeParse(data);
+  if(!parsed.success||parsed.data.domain_info.name!==name)throw new RegistrarError('invalid_response');
+  return parsed.data.domain_info;
+ }
+ async quote(name:string,currency:string){
+  const data=await this.request('GET','/restful/v2/domains/'+hostname.parse(name)+'/search?show_price=true&currency='+currency);
+  const parsed=z.object({domain_name:hostname,price_list:z.array(z.object({currency:z.string(),unit:z.string(),renewal_price:z.string().regex(/^\d+(?:\.\d{1,2})?$/)}))}).safeParse(data);
+  if(!parsed.success||parsed.data.domain_name!==name)throw new RegistrarError('price_unavailable');
+  const price=parsed.data.price_list.find(p=>p.currency.toLowerCase()===currency&&/^\(?price\/1 year\)?$|^1 year$/i.test(p.unit));
+  if(!price||Number(price.renewal_price)<=0)throw new RegistrarError('price_unavailable');
+  return {amount:price.renewal_price,currency,years:1};
+ }
+ async change(name:string,change:Intent,id:string){
+  const base='/restful/v2/domains/'+hostname.parse(name);
+  switch(change.kind){
+   case 'lock':return this.request('PUT',base+'/domain_lock',{lock:change.locked},id);
+   case 'renew_option':return this.request('PUT',base+'/renew_option',{renew_option:change.enabled?'auto':'donot'},id);
+   case 'nameservers':return this.request('PUT',base+'/nameservers',{nameserver_list:change.nameservers},id);
+   case 'dns_add':return this.request('POST',base+'/records',recordBody(change.record),id);
+   case 'dns_remove':return this.request('DELETE',base+'/records',recordBody(change.record),id);
+   case 'renew':return this.request('POST',base+'/renew',{duration:change.years,currency:change.currency,no_renew_if_late_renew_fee_needed:true},id);
+  }
+ }
+}
