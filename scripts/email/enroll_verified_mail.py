@@ -122,7 +122,9 @@ def permission_delta(value):
     # Preserve its exact stored bytes; append only missing method names.
     require(isinstance(value, str) and len(value) <= 32768, 'api_permission_format_needs_review')
     tokens = re.split(r'[;,]', value)
-    require(all(not token or re.fullmatch(r'[a-z][a-z0-9_]{0,127}', token) for token in tokens),
+    # Stored space-bearing entries are literal ISPConfig tokens, not names to
+    # repair. Never strip/split spaces: that could activate other permissions.
+    require(all(len(token) <= 128 and re.fullmatch(r'[ a-z0-9_]*', token) for token in tokens),
             'api_permission_format_needs_review')
     existing = set(tokens) - {''}
     missing = [name for name in METHODS if name not in existing]
