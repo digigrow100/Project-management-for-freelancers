@@ -118,10 +118,19 @@ def mail_template(samples, uid, gid, home):
 
 
 def permission_delta(value):
-    require(isinstance(value, str) and len(value) <= 32768 and re.fullmatch(r'(?:[a-z][a-z0-9_]*;?)*', value), 'api_permission_format_needs_review')
-    existing = {x for x in value.split(';') if x}
-    missing = [x for x in METHODS if x not in existing]
-    updated = value + (';' if value and not value.endswith(';') else '') + ';'.join(missing) + (';' if missing else '') if missing else value
+    # ISPConfig checkPerm replaces semicolons with commas before splitting.
+    # Preserve its exact stored bytes; append only missing method names.
+    require(isinstance(value, str) and len(value) <= 32768, 'api_permission_format_needs_review')
+    tokens = re.split(r'[;,]', value)
+    require(all(not token or re.fullmatch(r'[a-z][a-z0-9_]{0,127}', token) for token in tokens),
+            'api_permission_format_needs_review')
+    existing = set(tokens) - {''}
+    missing = [name for name in METHODS if name not in existing]
+    if not missing:
+        return value, []
+    boundary = ';' if value and value[-1] not in ';,' else ''
+    updated = value + boundary + ';'.join(missing) + ';'
+    require(len(updated) <= 32768, 'api_permission_list_budget')
     return updated, missing
 
 
