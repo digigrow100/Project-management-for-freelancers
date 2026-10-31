@@ -45,8 +45,36 @@ class MailEnrollmentGuards(unittest.TestCase):
         self.assertEqual(set(missing),set(module.METHODS)-{'mail_user_get'})
         self.assertEqual(set(updated.split(';'))-{''}, {'client_get','client_add'}|set(module.METHODS))
         self.assertEqual(module.permission_delta(updated),(updated,[]))
-        for bad in ['serialized:array','client_get; ANY;','client_get|mail_user_add',';client_get;']:
+        for bad in ['serialized:array','client_get; ANY;','client_get|mail_user_add','client_get;*;']:
             with self.assertRaises(module.Refused):module.permission_delta(bad)
+
+    def test_native_grouped_permissions_preserve_bytes_and_exact_membership(self):
+        for original in ['client_get,client_add;mail_user_get,mail_user_add;',
+                         ';client_get,client_add;;mail_user_get,,',
+                         'mail_user_get', '', ';,;']:
+            with self.subTest(original=original):
+                updated, missing = module.permission_delta(original)
+                before = set(original.replace(';', ',').split(',')) - {''}
+                after = set(updated.replace(';', ',').split(',')) - {''}
+                self.assertTrue(updated.startswith(original))
+                self.assertEqual(after, before | set(module.METHODS))
+                self.assertEqual(missing, [name for name in module.METHODS if name not in before])
+                self.assertEqual(module.permission_delta(updated), (updated, []))
+        original = ','.join(module.METHODS) + ';client_get,'
+        self.assertEqual(module.permission_delta(original), (original, []))
+        # Similar names do not count as an exact permission.
+        self.assertIn('mail_user_get', module.permission_delta('mail_user_get_all')[1])
+
+    def test_permission_parser_refuses_unknown_encodings_and_enforces_budget(self):
+        for original in [None, [], {}, 'client_get\n', 'client_get, mail_user_add',
+                         'client_get;ALL', 'a:1:{serialized}', 'client_get|client_add',
+                         'client_get\x00', 'x' * 128 + 'x', 'a;' * 16385]:
+            with self.subTest(original_type=type(original).__name__):
+                with self.assertRaises(module.Refused):
+                    module.permission_delta(original)
+        # A valid input must not grow beyond the same storage budget.
+        with self.assertRaises(module.Refused):
+            module.permission_delta('a;' * 16384)
 
     def test_private_metadata_reader_keeps_file_boundaries(self):
         with tempfile.TemporaryDirectory() as tmp:
