@@ -4,17 +4,33 @@ import {z} from 'zod';
 import {type Credentials,domainInfo,hostname,recordBody,type Intent} from './schema';
 export class RegistrarError extends Error { constructor(public code:string){super(code);} }
 export function signature(c:Credentials,path:string,id:string,body:string){return createHmac('sha256',c.secret).update([c.key,path,id,body].join('\n')).digest('base64');}
+// The relay receives only the already-signed provider request, never its signing secret.
+export async function providerRequest(c:Credentials,method:string,path:string,data:string,id:string,transport:typeof fetch){
+ const headers={Authorization:'Bearer '+c.key,Accept:'application/json','Content-Type':'application/json','X-Request-ID':id,'X-Signature':signature(c,path,id,data)};
+ if(process.env.DYNADOT_RELAY_ENABLED!==undefined){
+  if(process.env.DYNADOT_RELAY_ENABLED!=='approved')throw new RegistrarError('relay_configuration');
+  const origin=process.env.HOSTING_SERVICES_ORIGIN,key=process.env.HOSTING_SERVICES_PORTAL_KEY;
+  if(!origin||!key||key.length<32)throw new RegistrarError('relay_configuration');
+  let url:URL;try{url=new URL(origin);}catch{throw new RegistrarError('relay_configuration');}
+  if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new RegistrarError('relay_configuration');
+  const packet=JSON.stringify({schema:1,nonce:randomUUID(),expires:Math.floor(Date.now()/1000)+60,mode:c.mode,method,path,key:c.key,signature:headers['X-Signature'],request_id:id,body:data});
+  const response=await transport(new URL('/v1/dynadot-relay',url),{method:'POST',headers:{'Content-Type':'application/json','X-HMS-Dynadot-Signature':createHmac('sha256',key).update('hms:dynadot-relay:v1:'+packet).digest('hex')},body:packet,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(20000)});
+  if(response.headers.get('X-HMS-Dynadot-Forwarded')!=='1')throw new RegistrarError('relay_unavailable');
+  return response;
+ }
+ const origin=c.mode==='sandbox'?'https://api-sandbox.dynadot.com':'https://api.dynadot.com';
+ return transport(origin+path,{method,headers,body:data||undefined,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});
+}
 export class Dynadot {
  private lastRequest=0;
  constructor(private c:Credentials,private transport:typeof fetch=fetch,private budget?:()=>Promise<void>){}
  async request(method:'GET'|'PUT'|'POST'|'DELETE',path:string,body?:unknown,id:string=randomUUID()):Promise<unknown>{
   const data=body===undefined?'':JSON.stringify(body);
-  const origin=this.c.mode==='sandbox'?'https://api-sandbox.dynadot.com':'https://api.dynadot.com';
   if(!/^\/restful\/v2\//.test(path)||path.includes('..')||path.includes('#'))throw new RegistrarError('invalid_request');
   const delay=1100-(Date.now()-this.lastRequest);if(delay>0)await new Promise(r=>setTimeout(r,delay));
   await this.budget?.();this.lastRequest=Date.now();
   let response:Response;
-  try{response=await this.transport(origin+path,{method,headers:{Authorization:'Bearer '+this.c.key,Accept:'application/json','Content-Type':'application/json','X-Request-ID':id,'X-Signature':signature(this.c,path,id,data)},body:data||undefined,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(15000)});}catch{throw new RegistrarError('answer_unknown');}
+  try{response=await providerRequest(this.c,method,path,data,id,this.transport);}catch(e){if(e instanceof RegistrarError)throw e;throw new RegistrarError('answer_unknown');}
   if(Number(response.headers.get('content-length')??0)>2000000)throw new RegistrarError('invalid_response');
   let text:string;try{text=await response.text();}catch{throw new RegistrarError('answer_unknown');}
   if(text.length>2000000)throw new RegistrarError('invalid_response');
