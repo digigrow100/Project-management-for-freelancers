@@ -18,6 +18,7 @@ function loader(){
    if(name==='server-only')return {};
    if(name==='next/link')return ({href,prefetch,children,...props})=>React.createElement('a',{href,...props},children);
    if(name==='@/lib/hosting/auth')return {requireHostingAdmin:async()=>{if(denied)throw blocked;return {id:'owner'};}};
+   if(name==='@/lib/hosting/email/services')return {emailServicesWorkspace:async()=>{scopeReads++;throw Error('must not load unconfigured email center');}};
    if(name==='@/lib/hosting/email/actions')return {emailWorkspace:async()=>({domains:[],hosted:[],settings:{},servicesEnabled:false})};
    if(name==='@/lib/hosting/managed'||name==='@/lib/hosting/backups')return {serviceScope:async()=>{scopeReads++;throw Error('must not load unconfigured service');},backupContext:async()=>{scopeReads++;throw Error('must not load unconfigured backup');}};
    if(name.startsWith('@/components/hosting/')&&!name.endsWith('/PanelGuide'))return new Proxy({},{get:()=>()=>React.createElement('div',null,'MANAGED_CONTROL')});
@@ -55,9 +56,9 @@ function loader(){
   assert.match(renderToStaticMarkup(React.createElement(ui.IntegrationOverview)),/do not confirm a running worker/);
   for(const section of ['sources','email','databases','forms','backups']){
    const Page=loader()(`app/(app)/hosting/${section}/page.tsx`).default;
-   const content=renderToStaticMarkup(await Page());
+   const content=renderToStaticMarkup(await Page({}));
    if(section==='email'){assert.match(content,/Professional email/);}else{assert.match(content,/Connection setup needed/);assert.ok(!content.includes('MANAGED_CONTROL'));}assert.ok(!content.includes('SECRET_SENTINEL'));
-   denied=true;await assert.rejects(Page(),e=>e===blocked);denied=false;
+   denied=true;await assert.rejects(Page({}),e=>e===blocked);denied=false;
   }
   assert.equal(scopeReads,0,'Unconfigured pages must not touch provider scopes or owner-bound backup context');
  }finally{for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved);}

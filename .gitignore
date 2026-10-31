@@ -49,3 +49,8 @@ supabase/.temp/
 domain-browser-output/
 
 /email-browser-output/
+
+# Python mail service checks and local browser artifacts
+__pycache__/
+*.pyc
+email-services-browser-output/

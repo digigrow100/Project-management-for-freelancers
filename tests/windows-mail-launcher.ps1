@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'scripts/email/Invoke-MailReadinessCheck.ps1')
 . (Join-Path $root 'scripts/email/Invoke-MailEnrollment.ps1')
+. (Join-Path $root 'scripts/email/Invoke-EmailControlCenter.ps1')
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('hms-native-ssh-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 $previousPath = $env:PATH
@@ -45,6 +46,15 @@ public class CaptureNativeSsh {
     $stdin = [IO.File]::ReadAllText((Join-Path $stage 'stdin.txt')).TrimEnd([char[]]"`r`n")
     $wanted = "import hashlib,runpy,sys; p='$enrollmentFile'; assert hashlib.sha256(open(p,'rb').read()).hexdigest()=='$digest'; sys.argv=[p,'--execute']; runpy.run_path(p,run_name='__main__')"
     if ($stdin -cne $wanted) { throw 'Enrollment verifier or explicit execution flag changed.' }
+    $centerRoot = '/root/hms-email-center-' + ('a' * 32) + '/source'
+    Invoke-HouseMySiteEmailControlCenter -RemoteRoot $centerRoot -ManifestDigest $digest
+    $arguments = [IO.File]::ReadAllLines((Join-Path $stage 'args.txt'))
+    if (($arguments -join '|') -cne ($expected -join '|')) { throw 'Email center SSH argument boundaries changed.' }
+    $stdin = [IO.File]::ReadAllText((Join-Path $stage 'stdin.txt'))
+    if (!$stdin.Contains("root=Path('$centerRoot')") -or !$stdin.Contains("hexdigest()=='$digest'") -or !$stdin.Contains("sys.argv=[str(p),'--execute']") -or !$stdin.Contains("runpy.run_path(str(p),run_name='__main__')")) { throw 'Email center manifest verifier or execution flag changed.' }
+    $centerRejected = $false
+    try { Invoke-HouseMySiteEmailControlCenter -RemoteRoot '/root/unrelated/source' -ManifestDigest $digest } catch { $centerRejected = $true }
+    if (!$centerRejected) { throw 'Invalid email center path was accepted.' }
     $rejected = $false
     try { Invoke-HouseMySiteMailEnrollment -RemoteFile '/root/unrelated.py' -ExpectedDigest $digest } catch { $rejected = $true }
     if (!$rejected) { throw 'Invalid enrollment path was accepted.' }

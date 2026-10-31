@@ -196,6 +196,70 @@ Tests: hosting-package-contracts.cjs, hosting-package-views.cjs, provisioning,
 client-scope and existing security tests. No VPS, visibility release gates or
 Next.js/automatic deployment flags are changed by this update.
 
+### Independent email control center (gated release)
+
+`HOSTING_EMAIL_SERVICES_ENABLED=approved` selects `EmailServicesPanel` on owner
+`/hosting/email` and scoped mailboxes on `/client/email`. Default remains OFF;
+legacy onboarding is available at `?view=setup`. New source is
+`lib/hosting/email/{services,servicesSchema}.ts`, migration
+`20261031190001_independent_email_services.sql`, and `scripts/email/server/`.
+Email services do not require hosting or a portal client login. Optional service
+and per-mailbox client assignments never change stable private runtime ownership.
+Client inventory is filtered in SQL before JSON aggregation; explicit unassigned
+or reassigned mailbox profiles must never fall back to the service client.
+Admin profile reads paginate to avoid the database response row limit.
+
+Saved quotas/prices are desired policy, not proof of server enforcement. Fresh
+server snapshots, exact ownership checks, bounded root capacity, encrypted sealed
+passwords and independent Ed25519 owner approvals gate provider mutations. Dynadot
+ownership is freshly read; other domains require fresh TXT proof. A separate
+mail-only ISPConfig client is created per service. Never adopt existing provider
+mail domains or legacy managed-domain reservations, modify frozen App allowances,
+remove the original SMTP lock, rerun old enrollment, or retry uncertain jobs.
+Read-only reconciliation can establish supported provider outcomes; passwords or
+partial IMAP imports may still require operator review, never automatic retries.
+
+Billing uses canonical hosting invoices/payments, server-calculated charges,
+version checks, period-overlap protection and request idempotency. Refunds and
+payments recorded elsewhere synchronize paid status through a scoped trigger.
+Invoice creation is explicit; billing does not delete or suspend mailbox data.
+Usage is measured by a fixed readonly root doveadm broker with a bounded snapshot
+time budget; unavailable is null. Backup disk reserves are separate from the
+control-state database size budget.
+80/95 percent usage alerts are displayed from observed usage, not invented values.
+
+The standalone HMAC API `/v1/mail` proxies TLS loopback18445. Its nonroot worker
+accepts fixed operations only, consumes signatures once, and preserves uncertain
+outcomes. Root installation creates isolated Roundcube configuration/PHP pool/DB
+and `/housemysite-webmail/`; existing Roundcube globals are never overwritten.
+A scoped Postfix end-of-data policy checks managed sender ownership and actual
+recipient counts; it does not grant relay access or claim VM egress isolation.
+SMTP starts paused per mailbox. Actual DNS/SPF/DKIM/DMARC/PTR/TLS checks are needed
+before an explicit signed send-enable request. These checks never prove delivery.
+
+Default backups are encrypted LOCAL VPS copies with bounded capacity and encrypted
+credential vault. They are not offsite or whole-VPS disaster protection. Backups
+are explicitly requested; no scheduled retention is claimed. Restore authenticates
+records, captures a safety backup, then imports copies preserving folders/flags/
+internal dates. Repeated imports use a marker; source messages are not deleted.
+External IMAP imports reject private/mixed DNS and pin verified TLS. Optional S3
+requires separate private enrollment and is not configured by this installer.
+The updated `hms_mail_signer.py` uses the owner's existing local encrypted key;
+never send the private key, passphrase or pairing code to the portal/chat/server.
+
+Use ONE reviewed `Install-EmailControlCenter.ps1 -ReviewedCommit <exactSHA>`.
+It verifies uploaded hashes, preserves root-only backups, refuses conflicting
+configuration, and tests HMAC/replay/edge/webmail before enabling new services.
+Canonical migration 20261031190001 is applied; no email products, assignments or
+bills were created. This source is not proof of VPS installation or real delivery. Keep the portal
+flag OFF until the owner returns a successful installation JSON. Verify migration
+history before activation; do not reapply the migration. See `docs/email-control-center.md` for acceptance
+and guarded rollback; do not restore a stale whole database over live requests.
+CI installs the pinned browser tooling under RUNNER_TEMP, outside the portal
+package tree, so browser installation cannot re-resolve the locked app dependencies.
+Tests: `email-services-db.cjs`, `test_mail*.py`, browser
+`local-checks/email-services-browser.cjs`, existing email/security tests and CI.
+
 ### Professional email domain setup (onboarding rollout)
 
 Owner `/hosting/email` uses `EmailWorkspacePanel` and server-only
@@ -222,13 +286,14 @@ now embeds `OwnerApprovalsPanel` in email-only mode; its CSP allows only the sam
 fixed local signer origin as source/backups pages. Client email is unchanged.
 Submitted unknown outcomes disable further writes; no automatic retry/signing.
 
-`EmailDnsAssist` optionally prepares ONLY an additive ownership TXT through the
+Legacy `EmailDnsAssist` prepares an additive ownership TXT; the independent center
+can also review explicit MX/SPF/DKIM/DMARC records through the
 existing Dynadot review/typed-domain/one-shot flow; it never silently changes MX,
 SPF, DKIM or nameservers. Other DNS is preserved by existing server checks.
 SPF/DMARC presence is labelled presence only; per-domain server-generated DKIM,
 actual routing, authenticated delivery and sender policy need separate verification.
 
-**Rollout limit:** external domains can be saved/verified but have no mail-only
+**Legacy rollout limit (independent-email flag OFF):** external domains can be saved/verified but have no mail-only
 service provisioning integration yet. They cannot create mailboxes merely by
 proving DNS ownership. Existing App account mail_send is currently blocked; never
 remove that policy, infer send readiness from mailboxes capability, or label
@@ -1366,3 +1431,16 @@ Owner installation stopped at api_permission_format_needs_review BEFORE the back
 ## 2026-10-31 — Preserve literal spaces in stored remote permissions
 
 Owner's actual read-only format report: string804 bytes,33 commas,4 semicolons, exactly2 U+0020 spaces; two nonmatching tokens of lengths31/36. No raw role string or credentials were exposed. Parser now accepts bounded legacy lowercase/digit/underscore/ASCII-space tokens, preserving every original byte. Spaces are NEVER stripped or treated as separators: ISPConfig checks comma/semicolon-separated tokens literally, so normalizing spaces could activate unrelated permissions. Only exact required method names count as already granted; padded or combined names remain unchanged/inert and a missing mail method is appended separately. Existing API role binary compare-and-set, backups, signatures and SMTP lock are unchanged. Thirteen tests cover whitespace preservation, exact membership, unchanged unrelated permissions, idempotency and control-character denial. This correction still needs the new pinned owner-run installation result. No live enrollment or authenticated delivery is implied.
+
+
+## 2026-10-31 — Unified independent email services release prepared
+
+One gated release adds independent email products, optional client/per-mailbox
+assignment, server-enforced quotas, mailbox controls, aliases/forward/autoreply,
+DNS authentication checks, scoped client inventory, canonical invoices/payments,
+usage warnings, encrypted local backups/imports and isolated webmail. Includes one
+hash-verified VPS installer, updated owner-local signer, scoped SMTP recipient
+limiter and readonly usage broker. Existing App enrollment/limits/SMTP lock remain
+unchanged. Feature flag stays OFF pending successful VPS installation and actual
+acceptance. Source tests and browser fixtures do not prove mail delivery. No
+customer mailbox, DNS change, renewal, invoice or real message is created by Codex.

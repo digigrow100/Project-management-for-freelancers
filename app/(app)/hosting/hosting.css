@@ -250,3 +250,29 @@
 
 .hosting-shell .hms-email-workspace .hms-domain-heading{margin-bottom:0}
 @media(max-width:600px){.hosting-shell .hms-email-checklist li>div{flex-basis:calc(100% - 48px)}.hosting-shell .hms-email-checklist li>span{margin-top:-5px}}
+
+/* Independent email services: preserve the existing owner workspace theme. */
+.hosting-shell .hms-mail-center{display:grid;gap:1.25rem}
+.hosting-shell .hms-mail-search{display:flex;align-items:center;gap:.5rem;margin-bottom:1rem}
+.hosting-shell .hms-mail-search input{min-width:0;width:100%;padding:.65rem;border:1px solid #dbe4f0;border-radius:.6rem}
+.hosting-shell .hms-mail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.hosting-shell .hms-mail-grid h2,.hosting-shell .hms-mail-grid p,.hosting-shell .hms-mail-grid fieldset,.hosting-shell .hms-mail-grid .hms-domain-button-row,.hosting-shell .hms-mail-grid .hms-email-confirm{grid-column:1/-1}
+.hosting-shell .hms-mail-grid label{display:grid;gap:.4rem}
+.hosting-shell .hms-mail-grid input:not([type=checkbox]),.hosting-shell .hms-mail-grid select,.hosting-shell .hms-mail-grid textarea{width:100%;min-width:0;padding:.65rem;border:1px solid #dbe4f0;border-radius:.6rem;background:#fff;color:#122b4c}
+.hosting-shell .hms-mail-notice{padding:1rem;background:#eff6ff;border:1px solid #dbeafe;border-radius:.8rem;margin:1rem 0}
+.hosting-shell .hms-mail-table-wrap{overflow:auto;margin:1rem 0}
+.hosting-shell .hms-mail-table{width:100%;border-collapse:collapse;min-width:650px;text-align:left}
+.hosting-shell .hms-mail-table th,.hosting-shell .hms-mail-table td{padding:.8rem;border-bottom:1px solid #e4ebf5;vertical-align:top}
+.hosting-shell .hms-mail-table small{display:block;color:#637b98}
+.hosting-shell .hms-mail-table td[data-alert=critical]{color:#b91c1c}
+.hosting-shell .hms-mail-table td[data-alert=warning]{color:#9a6700}
+.hosting-shell .hms-email-approvals pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:20rem;overflow:auto}
+@media(max-width:760px){.hosting-shell .hms-mail-grid{grid-template-columns:1fr}.hosting-shell .hms-mail-grid>*{grid-column:1}.hosting-shell .hms-mail-table{min-width:560px}}
+
+.hosting-shell .hms-mail-center .hms-domain-tabs{display:flex;gap:1.3rem;flex-wrap:wrap;border-bottom:1px solid #e3eaf4;margin:1.3rem 0}
+.hosting-shell .hms-mail-center .hms-domain-tabs button{border:0;background:transparent;padding:.8rem .15rem;font-size:14px;color:#7184a3;border-bottom:2px solid transparent}
+.hosting-shell .hms-mail-center .hms-domain-tabs button[aria-pressed=true]{color:#2563eb;border-bottom-color:#2563eb}
+.hosting-shell .hms-mail-center .hms-mail-table select,.hosting-shell .hms-mail-center .hms-email-approvals input{padding:.6rem;border:1px solid #dbe4f0;border-radius:.6rem;max-width:100%;background:white}
+.hosting-shell .hms-mail-center .hms-email-domain-list>button{border:0;background:transparent}
+.hosting-shell .hms-mail-center .hms-email-domain-list>button.is-selected{background:#eef4ff}
+.hosting-shell .hms-mail-center button:focus-visible,.hosting-shell .hms-mail-center a:focus-visible{outline:2px solid #2563eb;outline-offset:3px}

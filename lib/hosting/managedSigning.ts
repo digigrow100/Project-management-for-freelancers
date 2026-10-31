@@ -1,7 +1,7 @@
 import {base64url,keyFingerprint} from './operatorSigning';
-export async function sealManagedPassword(hostKey:string,pin:string,service:string,requestKey:string,password:string){
+export async function sealManagedPassword(hostKey:string,pin:string,service:string,requestKey:string,password:string,importPassword=false){
  if(pin.trim().toLowerCase()!==await keyFingerprint(hostKey))throw Error('Verify the independent host fingerprint');
- if(!/^[!-~]{16,128}$/.test(password))throw Error('Use 16–128 printable characters without spaces');
+ if(!(importPassword?/^[!-~]{1,256}$/:/^[!-~]{16,128}$/).test(password))throw Error('Use 16–128 printable characters without spaces');
  const utf8=new TextEncoder(),plain=utf8.encode(JSON.stringify({password}));
  function concat(...parts:Uint8Array[]){const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const part of parts){out.set(part,at);at+=part.length;}return out;}
  try{
