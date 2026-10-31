@@ -1314,3 +1314,45 @@ exits2, so the existing launcher can print the findings without a false transpor
 error. Nine fixture-based tests cover partial failures, no plaintext leakage,
 read-only SQLite, no mail AUTH/send and independent TLS results. Real VPS result
 remains pending; external mail-only allocation and sending enrollment remain open.
+
+## 2026-10-31 — Guarded mailbox enrollment and signed approvals timer prepared
+
+Owner's consolidated report confirmed SMTP STARTTLS and IMAP TLS on public VPS,
+all four services active, private600 settings/key, stable public host fingerprint,
+zero managed mail bindings and no pending mail jobs. Server-local hostname resolves
+to127.0.1.1; this is not evidence public DNS/TLS is broken. Do not alter hosts/DNS
+from that finding. Canonical Email settings now contain verified server1 hostname
+and owner-returned public host fingerprint, written atomically only while blank
+through existing audited admin RPC; webmail URL remains blank/unverified.
+
+`scripts/email/enroll_verified_mail.py` and Install-HouseMySiteMail.ps1 prepare ONE
+explicit --execute batch for the existing enforced owner acceptance account ONLY
+(accounteb91..., service4029..., client4ac6..., domainhmsaccept1.housemysite.com).
+No new plan, client, invoice, mailbox, mail domain or DNS record is created by the
+installer. It derives a consistent /var/vmail/{domain}/{localpart} template from
+protected local provider metadata, copies no password or resource mapping, checks
+non-system vmail UID/GID, installed root-protected runtime, current owner grant,
+current enforced account, pinned package policy and live provider client/group and
+mail limits. Five mailboxes,409MiB each, within frozen2048MiB allowance; sending
+must remain locked. Conflicting existing bindings are never overwritten.
+
+Root grants ONLY missing eight mail user/domain lifecycle API methods, preserving
+all existing remote-user methods with row-lock/compare-and-set and private backup.
+Application assembly and binding writes run in a fork AFTER dropping to hms-services.
+A private consistent SQLite backup is saved before first local binding. Existing
+service code/signature verification is reused unchanged. Root installs a bounded
+hms-services oneshot/timer for `service_runtime.py approvals-managed` every20s.
+This existing command processes independently signed mailbox/database requests;
+the initial preflight requires no database bindings and no unresolved jobs. It never
+processes unsigned requests, bypasses signatures, enables SMTP or retries uncertain
+provider outcomes. No new listener, sudo, owner private key or arbitrary command.
+
+Installation failure stops only newly introduced timer/units and restores only
+unchanged API permission updates. It never restores a stale whole DB over portal
+requests. An enrolled binding may remain for operator review; preserve backups and
+report error, never blindly repeat. Success still needs user-requested mail-domain
+setup and mailbox creation with existing independent signature flow and provider
+confirmation. External mail-only plans, future account auto-enrollment, sender-policy
+activation and authenticated send/receive acceptance remain incomplete. This batch
+is PREPARED, not executed by Codex. Regression: test_mail_enrollment.py and native
+Windows5.1/7 stdin transport checks.

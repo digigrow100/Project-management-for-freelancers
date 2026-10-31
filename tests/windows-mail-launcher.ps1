@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'scripts/email/Invoke-MailReadinessCheck.ps1')
+. (Join-Path $root 'scripts/email/Invoke-MailEnrollment.ps1')
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('hms-native-ssh-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 $previousPath = $env:PATH
@@ -37,6 +38,16 @@ public class CaptureNativeSsh {
     $stdin = [IO.File]::ReadAllText((Join-Path $stage 'stdin.txt')).TrimEnd([char[]]"`r`n")
     $wanted = "import hashlib,runpy; p='$remote'; assert hashlib.sha256(open(p,'rb').read()).hexdigest()=='$digest'; runpy.run_path(p,run_name='__main__')"
     if ($stdin -cne $wanted) { throw 'Verifier code was corrupted before reaching SSH stdin.' }
+    $enrollmentFile = '/root/hms-mail-enrollment-' + ('a' * 32) + '/setup.py'
+    Invoke-HouseMySiteMailEnrollment -RemoteFile $enrollmentFile -ExpectedDigest $digest
+    $arguments = [IO.File]::ReadAllLines((Join-Path $stage 'args.txt'))
+    if (($arguments -join '|') -cne ($expected -join '|')) { throw 'Enrollment SSH argument boundaries changed.' }
+    $stdin = [IO.File]::ReadAllText((Join-Path $stage 'stdin.txt')).TrimEnd([char[]]"`r`n")
+    $wanted = "import hashlib,runpy,sys; p='$enrollmentFile'; assert hashlib.sha256(open(p,'rb').read()).hexdigest()=='$digest'; sys.argv=[p,'--execute']; runpy.run_path(p,run_name='__main__')"
+    if ($stdin -cne $wanted) { throw 'Enrollment verifier or explicit execution flag changed.' }
+    $rejected = $false
+    try { Invoke-HouseMySiteMailEnrollment -RemoteFile '/root/unrelated.py' -ExpectedDigest $digest } catch { $rejected = $true }
+    if (!$rejected) { throw 'Invalid enrollment path was accepted.' }
     $rejected = $false
     try { Invoke-HouseMySiteMailReadinessCheck -RemoteFile '/root/unrelated.py' -ExpectedDigest $digest } catch { $rejected = $true }
     if (!$rejected) { throw 'Invalid remote path was accepted.' }
