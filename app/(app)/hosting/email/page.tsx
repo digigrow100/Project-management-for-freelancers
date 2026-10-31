@@ -1,8 +1,6 @@
-import {ManagedServicePanel} from "@/components/hosting/ManagedServicePanel";
-import {serviceScope} from "@/lib/hosting/managed";
-import {PanelGuide,SetupRequired} from "@/components/hosting/PanelGuide";
-import {panelFeatureState} from "@/lib/hosting/panelCatalog";
-import {requireHostingAdmin} from "@/lib/hosting/auth";
-export const dynamic="force-dynamic";
-export default async function Page(){await requireHostingAdmin();if(!panelFeatureState('services',process.env).enabled)return <div className="space-y-5"><h1 className="text-2xl font-semibold">Email accounts</h1><PanelGuide section="email"/><SetupRequired section="email"/></div>;const context=await serviceScope(true);return <div className="space-y-5"><h1 className="text-2xl font-semibold">Email accounts</h1><PanelGuide section="email"/><ManagedServicePanel kind="email" scope="owner" services={[...context.sites].map(([id,row])=>({id,name:row.name}))} readOnly={context.readOnly}/></div>;}
-
+import {EmailWorkspacePanel} from '@/components/hosting/EmailWorkspacePanel';
+import {requireHostingAdmin} from '@/lib/hosting/auth';
+import {emailWorkspace} from '@/lib/hosting/email/actions';
+export const dynamic='force-dynamic';
+export const maxDuration=60;
+export default async function Page(){await requireHostingAdmin();const initial=await emailWorkspace();return <div className="space-y-6"><div><h1 className="text-3xl font-semibold">Professional email</h1><p className="mt-2 text-neutral-500">Manage email domains, setup checks and mailbox requests.</p></div><EmailWorkspacePanel initial={initial} signerFingerprint={process.env.HOSTING_SIGNER_FINGERPRINT??null}/></div>;}

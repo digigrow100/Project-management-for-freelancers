@@ -196,6 +196,48 @@ Tests: hosting-package-contracts.cjs, hosting-package-views.cjs, provisioning,
 client-scope and existing security tests. No VPS, visibility release gates or
 Next.js/automatic deployment flags are changed by this update.
 
+### Professional email domain setup (onboarding rollout)
+
+Owner `/hosting/email` uses `EmailWorkspacePanel` and server-only
+`lib/hosting/email/{actions,schema,dns}.ts`. Hosted primary domains are discovered
+from active/pending services of active clients; ownership is trusted ONLY from a
+currently enforced App account with a receipt. Manual Active status is not proof.
+External domains receive a stable random 256-bit TXT challenge. Exact TXT content
+is checked through bounded DNS queries; an outage is distinct from missing proof.
+The settings tab `/hosting/settings/email` stores public mail endpoint metadata
+and the independently verified host-key fingerprint, never mail passwords or API
+credentials. Neither these settings nor MX presence prove delivery.
+
+Private email-domain/settings tables and admin-asserting SECURITY INVOKER RPCs
+have no anon/authenticated grants. Browser never submits DNS observations or a
+hosting service mapping; the server derives both. DNS observations retain their
+MX target; settings changes invalidate the displayed match. Hosted verification
+is derived fresh rather than saved as permanent proof. No GET creates domains.
+
+For a linked, verified hosted domain, `EmailMailboxPanel` checks the exact enrolled
+mail domain before exposing mailbox requests. Passwords use existing X25519 sealed
+transport and the independently pinned fingerprint. Existing provider worker,
+quota policy and independent owner signature remain mandatory. Owner email page
+now embeds `OwnerApprovalsPanel` in email-only mode; its CSP allows only the same
+fixed local signer origin as source/backups pages. Client email is unchanged.
+Submitted unknown outcomes disable further writes; no automatic retry/signing.
+
+`EmailDnsAssist` optionally prepares ONLY an additive ownership TXT through the
+existing Dynadot review/typed-domain/one-shot flow; it never silently changes MX,
+SPF, DKIM or nameservers. Other DNS is preserved by existing server checks.
+SPF/DMARC presence is labelled presence only; per-domain server-generated DKIM,
+actual routing, authenticated delivery and sender policy need separate verification.
+
+**Rollout limit:** external domains can be saved/verified but have no mail-only
+service provisioning integration yet. They cannot create mailboxes merely by
+proving DNS ownership. Existing App account mail_send is currently blocked; never
+remove that policy, infer send readiness from mailboxes capability, or label
+mailboxes ready based on portal setup alone. `scripts/email/inspect_mail_readiness.py`
+and its pinned PowerShell launcher are a single read-only enrollment/TLS check;
+not executed on the VPS by Codex. No provider mutation or message delivery is part
+of that check. Tests: `hosting-email.cjs`, `hosting-email-db.cjs`, actual Chromium
+`local-checks/email-workspace-browser.cjs` with synthetic actions only.
+
 ### Owner hosting visual system
 
 The owner `/hosting` workspace uses the approved navy sidebar / blue controls /
@@ -1233,3 +1275,11 @@ Added General / Domain settings navigation under Hosting Settings and moved the 
 ## 2026-10-31 — Combined Domains portfolio and modal DNS editor
 
 Implemented the selected image concepts together: real global summary cards, grouped/searchable/filterable list, a dedicated Domains navigation item and responsive Manage split view. Native DNS modal supports reviewed exact add/remove and guided two-step edits; nameservers, renewal, lock/auto-renew and history retain existing guards. Added a private read-only inventory RPC with global grouping before pagination, PGlite tests and real-browser synthetic acceptance. No arbitrary provider changes, invoice, VPS install or API credential change is part of the design rollout.
+
+## 2026-10-31 — Professional email setup and hosted mailbox requests
+
+Added a dedicated hosted/external domain onboarding workspace, stable TXT ownership
+proof, bounded DNS checks, reviewed Dynadot TXT helper, Email settings tab and
+sealed, scoped hosted mailbox requests with on-page signed owner approvals.
+External mail-only service allocation and live sender-policy enrollment remain
+pending; no server/DNS change or real email was executed by this UI rollout.

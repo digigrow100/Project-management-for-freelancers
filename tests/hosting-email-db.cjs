@@ -1,0 +1,32 @@
+const {PGlite}=require('@electric-sql/pglite'),fs=require('fs'),assert=require('node:assert/strict'),{randomUUID}=require('crypto');
+(async()=>{
+const db=new PGlite();await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table public.freelance_hq_profiles(id uuid primary key,role text);create table public.freelance_hq_clients(id uuid primary key);");
+await db.exec(fs.readFileSync('supabase/migrations/20261020202238_hosting_management.sql','utf8'));
+await db.exec('create table freelance_hq_hosting_accounts(service_id uuid primary key references freelance_hq_hosting_services(id),status text,receipt_digest text,capabilities jsonb)');
+await db.exec(fs.readFileSync('supabase/migrations/20261031131831_hosting_email_onboarding.sql','utf8'));
+const q=async(sql,args=[])=>(await db.query(sql,args)).rows,admin=randomUUID(),member=randomUUID(),client=randomUUID(),service=randomUUID(),pkg=randomUUID();
+await q('insert into auth.users(id)values($1),($2)',[admin,member]);await q("insert into freelance_hq_profiles values($1,'admin'),($2,'member')",[admin,member]);
+await q("insert into freelance_hq_hosting_clients(id,name,email,status)values($1,'Fixture','fixture@example.test','active')",[client]);await q("insert into freelance_hq_hosting_packages(id,name,price_minor,currency,billing_cycle,disk_mb,memory_mb,cpu_percent)values($1,'Fixture',0,'USD','monthly',1024,512,100)",[pkg]);await q("insert into freelance_hq_hosting_services(id,client_id,package_id,name,primary_domain,status,price_minor,currency,billing_cycle,next_due_date)values($1,$2,$3,'Fixture','hosted.example.test','active',0,'USD','monthly',current_date)",[service,client,pkg]);
+await q("insert into freelance_hq_hosting_accounts values($1,'enforced',repeat('a',64),'{\"mailboxes\":true,\"mail_send\":false}')",[service]);
+const workspace=async(actor=admin)=>(await q('select freelance_hq_hosting_email_workspace($1) data',[actor]))[0].data;
+await assert.rejects(workspace(member),/admin access/);let w=await workspace();assert.equal(w.hosted[0].verified,true);assert.equal(w.hosted[0].sending,false);assert.equal(w.domains.length,0);
+const add=async(name,token='a'.repeat(64),actor=admin)=>(await q('select freelance_hq_hosting_email_domain_add($1,$2,$3) data',[actor,name,token]))[0].data;
+const external=await add('external.example.test');assert.equal(external.service_id,null);assert.equal(external.verified_at,null);assert.equal(external.source,'external');
+const replay=await add('external.example.test','b'.repeat(64));assert.equal(replay.id,external.id);assert.equal(replay.verification_token,external.verification_token,'retry must not rotate proof');
+const hosted=await add('hosted.example.test');assert.equal(hosted.service_id,service);assert.equal(hosted.source,'hosted');assert.equal(hosted.verified_at,null,'hosting proof is derived from current receipt, never saved as permanent DNS proof');
+for(const name of ['UPPER.test','https://example.test','example.test/path','127.0.0.1','x@domain.test'])await assert.rejects(add(name),/Invalid email domain/);
+await assert.rejects(add('other.example.test','a'.repeat(64),member),/admin access/);
+const settings={mx_host:'mail.example.test',imap_host:'mail.example.test',smtp_host:'mail.example.test',webmail_url:'https://mail.example.test/webmail',host_fingerprint:'c'.repeat(64)};
+const save=async(value,actor=admin)=>q('select freelance_hq_hosting_email_settings_save($1,$2)',[actor,value]);await save(settings);await assert.rejects(save(settings,member),/admin access/);for(const bad of [{...settings,password:'no'}, {...settings,mx_host:'127.0.0.1'},{...settings,webmail_url:'https://name:secret@example.test'},{...settings,host_fingerprint:'not-a-key'}])await assert.rejects(save(bad));
+const check={ownership:'matched',mx:'matched',spf:'present',dmarc:'present'};
+const record=async(value=check,token=external.verification_token,mx=settings.mx_host,actor=admin)=>q('select freelance_hq_hosting_email_domain_check($1,$2,$3,$4,$5)',[actor,external.id,token,value,mx]);
+await assert.rejects(record(check,'b'.repeat(64)),/Invalid email observation/);await assert.rejects(record({...check,ownership:null}));await assert.rejects(record({...check,extra:true}));await assert.rejects(record(check,external.verification_token,'stale.example.test'),/Email settings changed/);await assert.rejects(record(check,external.verification_token,settings.mx_host,member),/admin access/);
+await record();w=await workspace();assert.ok(w.domains.find(d=>d.id===external.id).verified_at);
+await record({...check,ownership:'unavailable'});assert.ok((await workspace()).domains.find(d=>d.id===external.id).verified_at,'DNS outage preserves last observed proof');
+await record({...check,ownership:'missing'});assert.equal((await workspace()).domains.find(d=>d.id===external.id).verified_at,null,'absent TXT revokes DNS proof');
+await q("update freelance_hq_hosting_accounts set status='suspended' where service_id=$1",[service]);assert.equal((await workspace()).hosted[0].verified,false,'old receipt cannot bypass current suspension');
+await q("update freelance_hq_hosting_clients set status='closed' where id=$1",[client]);assert.equal((await workspace()).hosted.length,0,'closed clients not offered');
+for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(q('select * from freelance_hq_hosting_email_domains'),/permission denied/);await assert.rejects(workspace(),/permission denied/);await assert.rejects(save(settings),/permission denied/);await db.exec('reset role');}
+const audit=(await q("select count(*)::int n from freelance_hq_hosting_audit_logs where event='email_domain_added'"))[0].n;assert.equal(audit,2,'duplicate adds create one audit only');
+await db.close();console.log('PASS email DB: scoped hosting receipts, external challenges, immutable retries, safe settings, stale-check denial, proof revocation, audit and browser-role denial.');
+})().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,0 +1,11 @@
+import {z} from 'zod';
+export const mailHostname=z.string().trim().toLowerCase().min(4).max(253).regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
+const optionalHost=z.union([z.literal(''),mailHostname]);
+export const emailSettings=z.object({mx_host:optionalHost,imap_host:optionalHost,smtp_host:optionalHost,webmail_url:z.union([z.literal(''),z.string().url().max(500).refine(v=>{try{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password&&!u.search&&!u.hash&&mailHostname.safeParse(u.hostname).success;}catch{return false;}},'Use a public HTTPS webmail URL.')]),host_fingerprint:z.union([z.literal(''),z.string().trim().toLowerCase().regex(/^[a-f0-9]{64}$/)])}).strict();
+export type EmailSettings=z.infer<typeof emailSettings>;
+export const emptyEmailSettings:EmailSettings={mx_host:'',imap_host:'',smtp_host:'',webmail_url:'',host_fingerprint:''};
+export type EmailDomain={id:string;hostname:string;service_id:string|null;source:'hosted'|'external';verification_token:string;verified_at:string|null;dns_checked_at:string|null;dns_check:Record<string,unknown>;created_at:string};
+export type HostedMailDomain={hostname:string;service_id:string;name:string;verified:boolean;mailboxes:boolean;sending:boolean};
+export type EmailWorkspace={domains:EmailDomain[];hosted:HostedMailDomain[];settings:EmailSettings;servicesEnabled:boolean};
+export const dnsObservation=z.object({ownership:z.enum(['matched','missing','unavailable']),mx:z.enum(['matched','missing','different','unavailable','not_configured']),spf:z.enum(['present','missing','multiple','unavailable']),dmarc:z.enum(['present','missing','unavailable'])}).strict();
+export type DnsObservation=z.infer<typeof dnsObservation>;
