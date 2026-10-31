@@ -57,7 +57,7 @@ export async function registrarAction(form:FormData){
     const current=await provider.info(op.domain);
     if(!same(current,op.before_state))throw new RegistrarError('stale_review');
     validateChange(current,change);
-    if(change.kind==='renew'&&!same(await provider.quote(op.domain,change.currency),op.quote))throw new RegistrarError('stale_review');
+    if(change.kind==='renew'&&!same(await provider.quote(op.domain,change.currency,change.years),op.quote))throw new RegistrarError('stale_review');
     sent=true;await provider.change(op.domain,change,id);
     const after=await provider.info(op.domain);await remember(c.version,[after]);
     const verified=observed(current,after,change);await finish(op,verified?'confirmed':'uncertain');refresh();
@@ -67,7 +67,7 @@ export async function registrarAction(form:FormData){
   const name=hostname.parse(form.get('domain'));const before=await provider.info(name);await remember(c.version,[before]);
   if(action==='details')return {ok:true as const,domain:before};
   const change=intent.parse(JSON.parse(String(form.get('intent'))));validateChange(before,change);
-  const quote=change.kind==='renew'?await provider.quote(name,change.currency):null;
+  const quote=change.kind==='renew'?await provider.quote(name,change.currency,change.years):null;
   const review=await prepare(actor.id,c.version,name,change,before,quote);
   return {ok:true as const,review:{id:review.id,domain:name,intent:change,before,quote,expires:review.expires_at,mode:c.mode}};
  }catch(e){

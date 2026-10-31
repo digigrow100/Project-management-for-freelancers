@@ -39,13 +39,13 @@ export class Dynadot {
   if(!parsed.success||parsed.data.domain_info.name!==name)throw new RegistrarError('invalid_response');
   return parsed.data.domain_info;
  }
- async quote(name:string,currency:string){
+ async quote(name:string,currency:string,years=1){
   const data=await this.request('GET','/restful/v2/domains/'+hostname.parse(name)+'/search?show_price=true&currency='+currency);
   const parsed=z.object({domain_name:hostname,price_list:z.array(z.object({currency:z.string(),unit:z.string(),renewal_price:z.string().regex(/^\d+(?:\.\d{1,2})?$/)}))}).safeParse(data);
   if(!parsed.success||parsed.data.domain_name!==name)throw new RegistrarError('price_unavailable');
-  const price=parsed.data.price_list.find(p=>p.currency.toLowerCase()===currency&&/^\(?price\/1 year\)?$|^1 year$/i.test(p.unit));
+  const price=parsed.data.price_list.find(p=>p.currency.toLowerCase()===currency&&['price/'+years+'year',years+'year',years+'years'].includes(p.unit.toLowerCase().replace(/[()\s]/g,'')));
   if(!price||Number(price.renewal_price)<=0)throw new RegistrarError('price_unavailable');
-  return {amount:price.renewal_price,currency,years:1};
+  return {amount:price.renewal_price,currency,years};
  }
  async change(name:string,change:Intent,id:string){
   const base='/restful/v2/domains/'+hostname.parse(name);

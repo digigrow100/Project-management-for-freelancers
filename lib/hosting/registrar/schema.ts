@@ -12,7 +12,7 @@ export const intent=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('renew_option'),enabled:z.boolean()}),
  z.object({kind:z.literal('nameservers'),nameservers:z.array(hostname).min(2).max(13).refine(v=>new Set(v).size===v.length,'Nameservers must be unique.')}),
  z.object({kind:z.literal('dns_add'),record:dnsRecord}),z.object({kind:z.literal('dns_remove'),record:dnsRecord}),
- z.object({kind:z.literal('renew'),currency:z.enum(['usd','gbp','eur']),years:z.literal(1)})
+ z.object({kind:z.literal('renew'),currency:z.enum(['usd','gbp','eur']),years:z.number().int().min(1).max(10)})
 ]);
 export type Intent=z.infer<typeof intent>;
 export const credentials=z.object({key:z.string().trim().min(8).max(512).regex(/^[^\s]+$/),secret:z.string().trim().min(8).max(512).regex(/^[^\s]+$/),mode:z.enum(['sandbox','production'])});
