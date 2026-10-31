@@ -47,3 +47,5 @@ ios/.xcode.env.local
 supabase/.temp/
 
 domain-browser-output/
+
+/email-browser-output/
