@@ -40,6 +40,14 @@ class RelayTests(unittest.TestCase):
                 except Exception:return False
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:self.assertEqual(sum(pool.map(claim,range(8))),1)
             with self.assertRaises(Exception):r.Ledger(path).claim(p['nonce'],p['expires'],int(time.time()))
+    def test_new_envelope_cannot_repeat_a_mutation(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=r.Ledger(Path(d)/'state.sqlite');p=packet();now=int(time.time())
+            ledger.claim(p['nonce'],p['expires'],now,p['request_id'])
+            with self.assertRaises(Exception):
+                ledger.claim(str(uuid.uuid4()),p['expires'],now,p['request_id'])
+            with self.assertRaises(Exception):
+                r.Ledger(ledger.path).claim(str(uuid.uuid4()),p['expires'],now,p['request_id'])
     def test_forward_preserves_provider_bytes_and_no_redirect(self):
         p=packet();received=[]
         class Response:
@@ -76,6 +84,9 @@ class RelayTests(unittest.TestCase):
                 with patch.object(r,'forward',side_effect=lambda p:(calls.append(p) or (200,b'{"code":200}'))):
                     self.assertEqual(call(raw,'0'*64)[0],403);self.assertEqual(len(calls),0)
                     self.assertEqual(call(raw,sig)[:2],(200,'1'));self.assertEqual(call(raw,sig)[0],409);self.assertEqual(len(calls),1)
+                    renewed={**json.loads(raw),'nonce':str(uuid.uuid4())};renewed_raw=json.dumps(renewed).encode()
+                    renewed_sig=hmac.new(server.key,r.PREFIX+renewed_raw,hashlib.sha256).hexdigest()
+                    self.assertEqual(call(renewed_raw,renewed_sig)[0],409);self.assertEqual(len(calls),1)
                 p=packet();raw=json.dumps(p).encode();sig=hmac.new(server.key,r.PREFIX+raw,hashlib.sha256).hexdigest()
                 with patch.object(r,'forward',side_effect=OSError('lost reply')):
                     self.assertEqual(call(raw,sig)[:2],(502,None))

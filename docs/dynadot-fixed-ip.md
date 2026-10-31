@@ -8,7 +8,7 @@ The registrar runs on Vercel. Its direct outgoing IP changes by default; a Dynad
 
 The separate hms-services unit listens on TLS loopback18444 and uses the existing internal certificate/key. It never changes the current services release. Only fixed Dynadot production/sandbox hosts and supported REST routes are accepted. Provider connections explicitly use IPv4, validate system CAs and hostnames and never follow redirects. The API signing secret stays in Vercel; the relay holds the API key/signature/request body only in memory. It logs no request or provider content. The existing hms-services identity/key is reused; this is not independent OS isolation from that identity.
 
-A bounded SQLite replay ledger commits each signed nonce before dispatch. Replays, stale envelopes, unknown routes and overload fail closed. Crashes and lost replies never automatically resend the upstream request. The portal's persisted review/claim/uncertain-operation controls remain authoritative for business operations. A new nonce must never be used to bypass an uncertain renewal.
+A bounded SQLite replay ledger commits each signed nonce before dispatch. Mutation request IDs are also stored permanently, so replacing an envelope nonce cannot resend a possibly accepted purchase. Replays, stale envelopes, unknown routes and overload fail closed. Crashes and lost replies never automatically resend the upstream request. The portal's persisted review/claim/uncertain-operation controls remain authoritative for business operations. A new nonce must never be used to bypass an uncertain renewal.
 
 ## Installation and acceptance
 

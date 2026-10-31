@@ -60,7 +60,8 @@ class Ledger:
         self.path = path
         with sqlite3.connect(path) as db:
             db.execute('CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, expires INTEGER NOT NULL)')
-    def claim(self, nonce, expires, now):
+            db.execute('CREATE TABLE IF NOT EXISTS mutations (request_id TEXT PRIMARY KEY)')
+    def claim(self, nonce, expires, now, mutation_id=None):
         with sqlite3.connect(self.path, timeout=3) as db:
             db.execute('BEGIN IMMEDIATE')
             db.execute('DELETE FROM nonces WHERE expires < ?', (now - 120,))
@@ -68,6 +69,11 @@ class Ledger:
                 raise ValueError('capacity')
             # Durable BEFORE sending. Crashes/lost replies never replay upstream.
             db.execute('INSERT INTO nonces VALUES (?,?)', (nonce, expires))
+            if mutation_id is not None:
+                if db.execute('SELECT count(*) FROM mutations').fetchone()[0] >= 100000:
+                    raise ValueError('mutation_capacity')
+                # Retain mutation IDs permanently: a fresh envelope must not resend a purchase.
+                db.execute('INSERT INTO mutations VALUES (?)', (mutation_id,))
 
 
 class IPv4TLS(http.client.HTTPSConnection):
@@ -164,7 +170,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             packet = json.loads(raw)
             now = int(time.time())
             validate(packet, now)
-            self.server.ledger.claim(packet['nonce'], packet['expires'], now)
+            mutation = packet.get('request_id') if packet.get('method') in ('PUT', 'POST', 'DELETE') else None
+            self.server.ledger.claim(packet['nonce'], packet['expires'], now, mutation)
             status, data = forward(packet)
             self.reply(status, data, forwarded=True)
         except (ValueError, KeyError, TypeError, sqlite3.IntegrityError):
