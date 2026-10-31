@@ -247,3 +247,6 @@
 .hosting-shell .hms-email-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.hosting-shell .hms-email-card small{font-size:12px;line-height:1.5;color:#7184a3}
 @media(max-width:1000px){.hosting-shell .hms-email-layout{grid-template-columns:1fr}.hosting-shell .hms-email-domain-list{max-height:280px;overflow:auto}.hosting-shell .hms-email-checklist li{flex-wrap:wrap}.hosting-shell .hms-email-checklist li>span{margin-left:44px}}
 @media(max-width:600px){.hosting-shell .hms-email-summary{grid-template-columns:1fr}.hosting-shell .hms-email-card{padding:18px}.hosting-shell .hms-email-settings-grid{grid-template-columns:1fr}.hosting-shell .hms-email-summary>div{padding:16px}.hosting-shell .hms-email-record{flex-direction:column}}
+
+.hosting-shell .hms-email-workspace .hms-domain-heading{margin-bottom:0}
+@media(max-width:600px){.hosting-shell .hms-email-checklist li>div{flex-basis:calc(100% - 48px)}.hosting-shell .hms-email-checklist li>span{margin-top:-5px}}
