@@ -50,3 +50,7 @@ public class CaptureNativeSsh {
     $env:HMS_MAIL_TEST_CAPTURE = $previousCapture
     Remove-Item -LiteralPath $stage -Recurse -Force
 }
+# The last native command deliberately returned 23. Clear that expected fixture
+# status only after all assertions and cleanup succeeded.
+$global:LASTEXITCODE = 0
+exit 0
