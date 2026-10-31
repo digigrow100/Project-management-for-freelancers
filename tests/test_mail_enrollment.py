@@ -65,8 +65,24 @@ class MailEnrollmentGuards(unittest.TestCase):
         # Similar names do not count as an exact permission.
         self.assertIn('mail_user_get', module.permission_delta('mail_user_get_all')[1])
 
+    def test_spaces_are_preserved_as_literal_tokens_never_normalized(self):
+        for original in ['client_get; mail_user_get;mail_user_add ;mail_user_update mail_user_delete',
+                         'client_get client_delete;mail_user_get;', ' ; ,',
+                         ','.join(module.METHODS) + ';client_get client_delete']:
+            with self.subTest(original=original):
+                updated, missing = module.permission_delta(original)
+                before = set(original.replace(';', ',').split(',')) - {''}
+                after = set(updated.replace(';', ',').split(',')) - {''}
+                self.assertTrue(updated.startswith(original))
+                self.assertEqual(after, before | set(module.METHODS))
+                self.assertEqual(missing, [name for name in module.METHODS if name not in before])
+                self.assertEqual(module.permission_delta(updated), (updated, []))
+                self.assertNotIn('client_delete', after)
+        for original in [' mail_user_get', 'mail_user_get ', 'mail_user_get mail_user_add']:
+            self.assertIn('mail_user_get', module.permission_delta(original)[1])
+
     def test_permission_parser_refuses_unknown_encodings_and_enforces_budget(self):
-        for original in [None, [], {}, 'client_get\n', 'client_get, mail_user_add',
+        for original in [None, [], {}, 'client_get\n', 'client_get,\tmail_user_add',
                          'client_get;ALL', 'a:1:{serialized}', 'client_get|client_add',
                          'client_get\x00', 'x' * 128 + 'x', 'a;' * 16385]:
             with self.subTest(original_type=type(original).__name__):
