@@ -241,7 +241,11 @@ Default backups are encrypted LOCAL VPS copies with bounded capacity and encrypt
 credential vault. They are not offsite or whole-VPS disaster protection. Backups
 are explicitly requested; no scheduled retention is claimed. Restore authenticates
 records, captures a safety backup, then imports copies preserving folders/flags/
-internal dates. Repeated imports use a marker; source messages are not deleted.
+internal dates. An owner can select a replacement mailbox in the SAME service
+when the original mailbox was deleted. Decryption retains the backup source
+resource in AAD; destination credentials and safety backup use the new mailbox.
+Cross-service points are refused. Repeated imports use a marker; source messages
+are not deleted.
 External IMAP imports reject private/mixed DNS and pin verified TLS. Optional S3
 requires separate private enrollment and is not configured by this installer.
 The updated `hms_mail_signer.py` uses the owner's existing local encrypted key;
@@ -1444,3 +1448,14 @@ limiter and readonly usage broker. Existing App enrollment/limits/SMTP lock rema
 unchanged. Feature flag stays OFF pending successful VPS installation and actual
 acceptance. Source tests and browser fixtures do not prove mail delivery. No
 customer mailbox, DNS change, renewal, invoice or real message is created by Codex.
+
+
+## 2026-10-31 — Restore email backups into a replacement mailbox
+
+Before activating independent email, the backup UI now lets the owner select a
+destination mailbox within its service. A deleted original mailbox no longer
+makes its encrypted points unusable. Restore still authenticates the immutable
+source resource, captures a destination safety backup and requires a signed
+service/point/destination request. Cross-service restores remain denied. Fixture
+checks cover removal of the old credential, replacement import and scope denial.
+No real mailbox or DNS operation was executed; rollout stays OFF pending VPS batch.

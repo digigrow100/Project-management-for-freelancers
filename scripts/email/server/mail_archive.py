@@ -165,15 +165,15 @@ class ImapArchive:
             destination=PinnedIMAP(self.host);destination.login(box['address'],self.password(resource))
             if op=='restore':
                 self.execute('backup',service,box,{'operation':'backup'},None)
-                row=self.db.execute('SELECT bytes,digest FROM mail_backup_points WHERE id=? AND service=? AND resource=?',(point,service,resource)).fetchone();require(row is not None and self.reserve(row[0]+1048576,1)is True)
+                row=self.db.execute('SELECT bytes,digest,resource FROM mail_backup_points WHERE id=? AND service=?',(point,service)).fetchone();require(row is not None and self.reserve(row[0]+1048576,1)is True)
                 self.store.transfer('GET',service.replace('-','')+'/'+point+'.enc',path,maximum=row[0]);require(path.stat().st_size==row[0] and self.file_digest(path)==row[1])
                 # Authenticate every encrypted record before importing any message.
                 with path.open('rb')as f:
                     require(f.readline()==b'HMSMAIL1\n')
-                    for line in f:self.decode(line,service,resource,point)
+                    for line in f:self.decode(line,service,row[2],point)
                 with path.open('rb')as f:
                     f.readline()
-                    for index,line in enumerate(f):self.append(destination,self.decode(line,service,resource,point),point+':'+str(index),on_mutation)
+                    for index,line in enumerate(f):self.append(destination,self.decode(line,service,row[2],point),point+':'+str(index),on_mutation)
             elif op=='migrate':
                 require(isinstance(password,str));source=PinnedIMAP(command['source_host'],external=True);source.login(command['source_user'],password)
                 for record in messages(source,maximum_bytes=int(box['quota'])):self.append(destination,record,hashlib.sha256(canon(record)).hexdigest(),on_mutation)
