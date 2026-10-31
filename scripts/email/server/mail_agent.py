@@ -96,20 +96,23 @@ def assemble():
         return isinstance(r,dict) and r.get('owner')is True and r.get('enabled')is True and r.get('write')is True
     fd=os.open(STATE,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
     info=os.fstat(fd);require(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o600);os.close(fd)
+    def disk_reserve(amount,files):
+        usage=os.statvfs(STATE.parent)
+        return usage.f_bavail*usage.f_frsize>=config['min_free_bytes']+amount and usage.f_favail>=config['min_free_inodes']+files and STATE.parent.stat().st_dev==config['device_id']
     def reserve(amount,files):
-        usage=os.statvfs(STATE.parent);size=sum(p.stat().st_size for p in (STATE,Path(str(STATE)+'-journal'),Path(str(STATE)+'-wal'),Path(str(STATE)+'-shm')) if p.exists())
-        return usage.f_bavail*usage.f_frsize>=config['min_free_bytes']+amount and usage.f_favail>=config['min_free_inodes']+files and size+amount<=config['max_state_bytes'] and STATE.parent.stat().st_dev==config['device_id']
+        size=sum(p.stat().st_size for p in (STATE,Path(str(STATE)+'-journal'),Path(str(STATE)+'-wal'),Path(str(STATE)+'-shm')) if p.exists())
+        return disk_reserve(amount,files) and size+amount<=config['max_state_bytes']
     db=sqlite3.connect(STATE,isolation_level=None,timeout=10)
     engine=MailAccounts(db,owner=owner,public_key=load_pem_public_key(private(config['management']['owner_public_file'])),host_private=base64.urlsafe_b64decode(private(config['management']['host_private_file']).strip()),provider=provider,policy=policy,reserve=reserve)
     if policy.get('archive') or policy.get('local_backups'):
         from mail_archive import ImapArchive,S3,LocalEncryptedStore
-        store=S3(policy['archive']) if policy.get('archive') else LocalEncryptedStore('/var/lib/housemysite-services/mail-backups',reserve=reserve,maximum_bytes=policy['local_backups']['maximum_bytes'])
-        engine.archive=ImapArchive(db,base64.urlsafe_b64decode(private(config['encryption_key_file']).strip()),store,policy['mx_host'],STATE.parent,reserve)
+        store=S3(policy['archive']) if policy.get('archive') else LocalEncryptedStore('/var/lib/housemysite-services/mail-backups',reserve=disk_reserve,maximum_bytes=policy['local_backups']['maximum_bytes'])
+        engine.archive=ImapArchive(db,base64.urlsafe_b64decode(private(config['encryption_key_file']).strip()),store,policy['mx_host'],STATE.parent,disk_reserve)
     if policy.get('usage_broker'):
-        def usage(address):
+        def usage(address,timeout=2.5):
             try:
                 with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)as connection:
-                    connection.settimeout(12);connection.connect('/run/housemysite-mail-usage/socket');_,uid,_=struct.unpack('3i',connection.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12));require(uid==0);connection.sendall((address+'\n').encode());raw=connection.recv(128);value=json.loads(raw);require(set(value)=={'used_bytes'});return value['used_bytes']
+                    connection.settimeout(min(2.5,timeout));connection.connect('/run/housemysite-mail-usage/socket');_,uid,_=struct.unpack('3i',connection.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12));require(uid==0);connection.sendall((address+'\n').encode());raw=connection.recv(128);value=json.loads(raw);require(set(value)=={'used_bytes'});return value['used_bytes']
             except Exception:return None
         engine.usage=usage
     db.execute('CREATE TABLE IF NOT EXISTS mail_http_nonces(nonce TEXT PRIMARY KEY,expires INTEGER NOT NULL)')

@@ -18,6 +18,7 @@ function loader(){
    if(name==='server-only')return {};
    if(name==='next/link')return ({href,prefetch,children,...props})=>React.createElement('a',{href,...props},children);
    if(name==='@/lib/hosting/auth')return {requireHostingAdmin:async()=>{if(denied)throw blocked;return {id:'owner'};}};
+   if(name==='@/lib/hosting/email/services')return {emailServicesWorkspace:async()=>{scopeReads++;throw Error('must not load unconfigured email center');}};
    if(name==='@/lib/hosting/email/actions')return {emailWorkspace:async()=>({domains:[],hosted:[],settings:{},servicesEnabled:false})};
    if(name==='@/lib/hosting/managed'||name==='@/lib/hosting/backups')return {serviceScope:async()=>{scopeReads++;throw Error('must not load unconfigured service');},backupContext:async()=>{scopeReads++;throw Error('must not load unconfigured backup');}};
    if(name.startsWith('@/components/hosting/')&&!name.endsWith('/PanelGuide'))return new Proxy({},{get:()=>()=>React.createElement('div',null,'MANAGED_CONTROL')});

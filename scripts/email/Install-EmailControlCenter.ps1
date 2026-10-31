@@ -23,20 +23,6 @@ $manifestHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $manifest).Hash.ToLow
 if($LASTEXITCODE -ne 0){throw 'Private upload directory could not be created.'}
 & scp -r -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=yes $stage "root@62.171.130.156`:$remote/source"
 if($LASTEXITCODE -ne 0){throw 'Reviewed upload failed.'}
-$program=@"
-import hashlib,json,runpy,sys
-from pathlib import Path
-root=Path('$remote/source')
-manifest=root/'source-hashes.json'
-assert hashlib.sha256(manifest.read_bytes()).hexdigest()=='$manifestHash'
-for name,digest in json.loads(manifest.read_bytes()).items():
-    p=root/name
-    assert p.resolve().is_relative_to(root.resolve()) and not p.is_symlink()
-    assert hashlib.sha256(p.read_bytes()).hexdigest()==digest
-p=root/'install_control_center.py'
-sys.argv=[str(p),'--execute']
-runpy.run_path(str(p),run_name='__main__')
-"@
-$program|& ssh @sshOptions root@62.171.130.156 'python3 -I -'
-if($LASTEXITCODE -ne 0){throw 'Email installation stopped. Preserve the JSON and backup; do not repeat.'}
+. (Join-Path $stage 'Invoke-EmailControlCenter.ps1')
+Invoke-HouseMySiteEmailControlCenter -RemoteRoot ($remote+'/source') -ManifestDigest $manifestHash
 Write-Host 'Installation finished. Send the final JSON. No mailbox or domain DNS was created.'

@@ -147,6 +147,7 @@ grant execute on function public.freelance_hq_email_client_inventory(uuid,uuid) 
 create function public.freelance_hq_email_sync_payment() returns trigger language plpgsql security invoker set search_path=public,pg_temp as $$
 declare target uuid;net bigint;latest date;begin
  for target in select distinct value from unnest(case when TG_OP='INSERT' then array[NEW.invoice_id] when TG_OP='DELETE' then array[OLD.invoice_id] else array[NEW.invoice_id,OLD.invoice_id]end)value loop
+  continue when not exists(select 1 from freelance_hq_email_billing where invoice_id=target);
   perform 1 from freelance_hq_hosting_invoices where id=target for update;
   select coalesce(sum(case direction when 'incoming' then amount_minor else -amount_minor end),0),max(paid_on)filter(where direction='incoming')into net,latest from freelance_hq_hosting_payments where invoice_id=target;
   update freelance_hq_email_billing set paid_on=case when net>=amount_minor then latest else null end where invoice_id=target;

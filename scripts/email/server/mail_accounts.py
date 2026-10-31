@@ -218,12 +218,13 @@ class MailAccounts:
         result['jobs']=[self.job_view(r) for r in self.db.execute('SELECT * FROM mail_jobs WHERE service=? ORDER BY created DESC,id LIMIT 20',(service,))]
         if not row['provider_domain']:return result
         cfg=json.loads(row['config']);result['limits']=cfg;result['state']='attention' if any(j['state'] in ('uncertain','applying') for j in result['jobs']) else 'active'
+        usage_deadline=time.monotonic()+4
         with self.provider() as remote:
             panel=remote('mail_domain_get',row['provider_domain']);self.check(panel,row,domain=True)
             for box in self.db.execute('SELECT * FROM mail_boxes WHERE service=? ORDER BY address LIMIT 1000',(service,)):
                 r=remote('mail_user_get',box['provider_id']);self.check(r,row,box)
                 aliases=[{'id':a[0],'address':a[1]} for a in self.db.execute('SELECT id,name FROM mail_aliases WHERE resource=?',(box['id'],))]
-                used=self.usage(box['address']) if self.usage else None
+                used=self.usage(box['address'],timeout=max(.01,usage_deadline-time.monotonic())) if self.usage and time.monotonic()<usage_deadline else None
                 require(used is None or type(used)is int and used>=0)
                 result['mailboxes'].append({'id':box['id'],'address':box['address'],'quota_mb':int(r['quota'])//1048576,'used_bytes':used,'sending':r.get('disablesmtp')=='n','receiving':r.get('disabledeliver')=='n','login':r.get('disableimap')=='n' and r.get('disablepop3')=='n','aliases':aliases,'forward':r.get('cc') or None,'autoreply':r.get('autoresponder')=='y'})
             # Exact server-generated key, not an invented DKIM record.
@@ -351,7 +352,8 @@ class MailAccounts:
             if op in ('backup','restore','migrate'):
                 require(self.archive is not None);self.archive.execute(op,service,dict(box,quota=int(r['quota'])),c,password,on_mutation=lambda:setattr(self,'mutation_started',True));return
             if op=='quota':
-                if c['quota_mb']*1048576<int(r['quota']):require(self.usage is not None and (self.usage(box['address']) is not None) and self.usage(box['address'])<=c['quota_mb']*1048576)
+                if c['quota_mb']*1048576<int(r['quota']):
+                    require(self.usage is not None);used=self.usage(box['address']);require(type(used)is int and 0<=used<=c['quota_mb']*1048576)
                 patch={'quota':c['quota_mb']*1048576}
             elif op=='password':patch={'password':password}
             elif op=='controls':

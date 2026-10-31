@@ -223,7 +223,9 @@ Billing uses canonical hosting invoices/payments, server-calculated charges,
 version checks, period-overlap protection and request idempotency. Refunds and
 payments recorded elsewhere synchronize paid status through a scoped trigger.
 Invoice creation is explicit; billing does not delete or suspend mailbox data.
-Usage is measured by a fixed readonly root doveadm broker; unavailable is null.
+Usage is measured by a fixed readonly root doveadm broker with a bounded snapshot
+time budget; unavailable is null. Backup disk reserves are separate from the
+control-state database size budget.
 80/95 percent usage alerts are displayed from observed usage, not invented values.
 
 The standalone HMAC API `/v1/mail` proxies TLS loopback18445. Its nonroot worker
