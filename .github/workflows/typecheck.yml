@@ -34,6 +34,8 @@ jobs:
           if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/email/Check-HouseMySiteMail.ps1'), [ref]$tokens, [ref]$parseErrors)
           if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/email/Start-HouseMySiteMailSigner.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/email/Install-EmailControlCenter.ps1'), [ref]$tokens, [ref]$parseErrors)
           if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
       - run: node tests/hosting-registrar-relay.cjs

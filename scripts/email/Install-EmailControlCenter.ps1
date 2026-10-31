@@ -12,6 +12,8 @@ if($LASTEXITCODE -ne 0){throw 'Reviewed source download failed.'}
 & git -C $work checkout --quiet $ReviewedCommit -- scripts/email scripts/dynadot-relay/install.py
 if($LASTEXITCODE -ne 0){throw 'Reviewed source checkout failed.'}
 $stage=Join-Path $work 'scripts/email'
+$local=Join-Path (Join-Path $env:LOCALAPPDATA 'HouseMySiteEmailCenter') $ReviewedCommit
+if(Test-Path -LiteralPath $local){throw 'This local signer version already exists. No server installation was attempted. Preserve the earlier result; do not repeat.'}
 $hashes=@{}
 Get-ChildItem -LiteralPath $stage -Filter '*.py' -File -Recurse | ForEach-Object {$name=$_.FullName.Substring($stage.Length+1).Replace('\','/');$hashes[$name]=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()}
 Copy-Item -LiteralPath (Join-Path $work 'scripts/dynadot-relay/install.py') -Destination (Join-Path $stage 'relay_install_helpers.py')
@@ -25,4 +27,8 @@ if($LASTEXITCODE -ne 0){throw 'Private upload directory could not be created.'}
 if($LASTEXITCODE -ne 0){throw 'Reviewed upload failed.'}
 . (Join-Path $stage 'Invoke-EmailControlCenter.ps1')
 Invoke-HouseMySiteEmailControlCenter -RemoteRoot ($remote+'/source') -ManifestDigest $manifestHash
+New-Item -ItemType Directory -Path $local -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $stage 'hms_mail_signer.py') -Destination $local
+Copy-Item -LiteralPath (Join-Path $stage 'Start-HouseMySiteMailSigner.ps1') -Destination $local
+Write-Host ('Updated local signer prepared at '+(Join-Path $local 'Start-HouseMySiteMailSigner.ps1'))
 Write-Host 'Installation finished. Send the final JSON. No mailbox or domain DNS was created.'

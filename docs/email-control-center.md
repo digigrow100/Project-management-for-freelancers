@@ -43,7 +43,8 @@ instead of silently deleting recovery points. Optional AWS S3 enrollment is sepa
 5. Preserve the final JSON and backup path. On any refusal, inspect that result;
    do not repeat the installer or replace it with the old enrollment batch.
 6. After successful installation, enable the portal flag and deploy. Start the
-   updated owner-local signer using the EXISTING encrypted key; keep the private
+   updated owner-local signer using the EXISTING encrypted key. The installer puts
+   its starter in `%LOCALAPPDATA%\HouseMySiteEmailCenter\<reviewedSHA>\Start-HouseMySiteMailSigner.ps1`; keep the private
    key/passphrase/pairing code local. The signer prints the domain and exact action.
 7. Use an owner-chosen domain and mailbox in the portal for signed setup. Never
    invent a real mailbox, password, invoice or recipient for acceptance tests.
