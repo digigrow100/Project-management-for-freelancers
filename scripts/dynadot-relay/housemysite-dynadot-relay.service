@@ -1,0 +1,39 @@
+[Unit]
+Description=HouseMySite fixed-destination Dynadot relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=hms-services
+Group=hms-services
+ExecStart=/usr/bin/python3 -I /opt/housemysite-dynadot-relay/relay.py --state /var/lib/housemysite-dynadot-relay
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=housemysite-dynadot-relay
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=128M
+TasksMax=24
+LimitNOFILE=128
+CPUQuota=25%
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

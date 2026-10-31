@@ -25,6 +25,11 @@ jobs:
       - run: npm run lint
       - run: node tests/hosting-workspaces.cjs
       - run: node tests/hosting-panel-catalog.cjs
+      - run: node tests/hosting-registrar-relay.cjs
+      - run: python3 -m unittest discover -s tests -p test_dynadot_relay.py -v
+      - name: Install disposable Apache test dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y apache2
+      - run: HMS_REQUIRE_APACHE=1 python3 tests/hosting-relay-apache.py
       - run: node tests/hosting-registrar.cjs
       - run: node tests/hosting-registrar-ui.cjs
       - run: node tests/hosting-registrar-db.cjs
