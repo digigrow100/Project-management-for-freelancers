@@ -190,6 +190,7 @@ def install(args):
     apache_changed = False
     try:
         TARGET.mkdir(mode=0o755)
+        TARGET.chmod(0o755)  # Main uses umask077; service user must traverse public source.
         atomic(TARGET / 'relay.py', (stage / 'relay.py').read_bytes(), 0o644)
         atomic(UNIT, (stage / UNIT.name).read_bytes(), 0o644)
         command('systemd-analyze', 'verify', str(UNIT))

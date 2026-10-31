@@ -37,6 +37,10 @@ with tempfile.TemporaryDirectory(prefix='hms-relay-apache-') as temp:
         request.settimeout(5)
         with tls.wrap_socket(request,server_side=True) as secure:original(secure,address)
     relay.finish_request=finish
+    def show_error(*_):
+        import traceback
+        traceback.print_exc()
+    relay.handle_error=show_error
     thread=threading.Thread(target=relay.serve_forever,daemon=True);thread.start()
     with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
     user=pwd.getpwuid(os.getuid()).pw_name
@@ -45,7 +49,7 @@ with tempfile.TemporaryDirectory(prefix='hms-relay-apache-') as temp:
         user='www-data';base.chmod(0o755);cert.chmod(0o644);key.chmod(0o644)
     www=base/'www';www.mkdir(mode=0o755);(www/'index.html').write_text('existing-root-fixture')
     mods=['mpm_event','authz_core','authz_host','authz_user','authn_core','ssl','proxy','proxy_http','headers','dir','mime']
-    config=f'ServerRoot "{base}"\nPidFile "{base}/apache.pid"\nListen 127.0.0.1:{port}\nServerName server1.housemysite.com\nUser {user}\nGroup {user}\nErrorLog "{base}/errors.log"\nLogLevel warn\n'
+    config=f'ServerRoot "{base}"\nPidFile "{base}/apache.pid"\nListen 127.0.0.1:{port}\nServerName server1.housemysite.com\nUser {user}\nGroup {user}\nErrorLog "{base}/errors.log"\nLogLevel warn ssl:debug\n'
     for mod in mods:config+=f'LoadModule {mod}_module /usr/lib/apache2/modules/mod_{mod}.so\n'
     config+='TypesConfig /etc/mime.types\n'
     source=f'''<VirtualHost *:443>
@@ -73,6 +77,11 @@ ProxyPassMatch "^/v1/services$" "https://127.0.0.1:18443"
     config+=installer.render(source.encode()).decode().replace('*:443',f'*:{port}').replace(installer.CA,str(cert))
     conf=base/'httpd.conf';conf.write_text(config)
     subprocess.run([apache,'-f',str(conf),'-t'],check=True,capture_output=True)
+    direct=http.client.HTTPSConnection('127.0.0.1',18444,context=ssl.create_default_context(cafile=str(cert)),timeout=10)
+    direct.request('GET','/v1/dynadot-relay')
+    direct_answer=direct.getresponse()
+    assert direct_answer.status==405
+    direct_answer.read();direct.close()
     proc=subprocess.Popen([apache,'-f',str(conf),'-DFOREGROUND'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     context=ssl.create_default_context(cafile=str(cert))
     def request(method,path,body=None,headers=None):
