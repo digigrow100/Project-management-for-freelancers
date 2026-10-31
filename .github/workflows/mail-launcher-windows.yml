@@ -1,0 +1,20 @@
+name: Mail launcher Windows transport
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/email/**
+      - tests/windows-mail-launcher.ps1
+      - .github/workflows/mail-launcher-windows.yml
+  workflow_dispatch:
+jobs:
+  native-ssh:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows PowerShell 5.1 native SSH stdin
+        shell: powershell
+        run: ./tests/windows-mail-launcher.ps1
+      - name: PowerShell 7 native SSH stdin
+        shell: pwsh
+        run: ./tests/windows-mail-launcher.ps1
