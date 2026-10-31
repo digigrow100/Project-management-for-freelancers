@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import pwd
 import re
-import shutil
 import socket
 import ssl
 import stat

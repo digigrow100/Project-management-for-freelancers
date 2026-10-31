@@ -14,6 +14,8 @@ A bounded SQLite replay ledger commits each signed nonce before dispatch. Replay
 
 Source tests are not VPS acceptance. The installation is authorized by the owner but must run through their existing strict root SSH connection; Codex has no direct SSH credential.
 
+`Install-HouseMySiteDynadotRelay.ps1 -ReviewedCommit <exact40hex>` performs one Windows batch: fetch the pinned Git commit into a fresh temporary directory with CRLF conversion disabled, hash the three files, strict existing root SSH/SCP to a new root-private directory, verify all remote hashes, and invoke the installer once. No API key/passphrase is required. Preserve the final output; an error stops the batch without automatic repetition.
+
 Stage `relay.py`, `housemysite-dynadot-relay.service`, and `install.py` from one reviewed commit in a fresh root-private directory. Verify the pinned SHA256 of all three before execution. The installer verifies its relay/unit hashes again. Run:
 
 ```

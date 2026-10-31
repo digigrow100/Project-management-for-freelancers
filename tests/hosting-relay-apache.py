@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix='hms-relay-apache-') as temp:
         user='www-data';base.chmod(0o755);cert.chmod(0o644);key.chmod(0o644)
     www=base/'www';www.mkdir(mode=0o755);(www/'index.html').write_text('existing-root-fixture')
     mods=['mpm_event','authz_core','authz_host','authz_user','authn_core','ssl','proxy','proxy_http','headers','dir','mime']
-    config=f'ServerRoot "{base}"\nPidFile "{base}/apache.pid"\nListen 127.0.0.1:{port}\nServerName server1.housemysite.com\nUser {user}\nGroup {user}\nErrorLog "{base}/errors.log"\nLogLevel crit\n'
+    config=f'ServerRoot "{base}"\nPidFile "{base}/apache.pid"\nListen 127.0.0.1:{port}\nServerName server1.housemysite.com\nUser {user}\nGroup {user}\nErrorLog "{base}/errors.log"\nLogLevel warn\n'
     for mod in mods:config+=f'LoadModule {mod}_module /usr/lib/apache2/modules/mod_{mod}.so\n'
     config+='TypesConfig /etc/mime.types\n'
     source=f'''<VirtualHost *:443>
@@ -93,7 +93,8 @@ ProxyPassMatch "^/v1/services$" "https://127.0.0.1:18443"
         p={'schema':1,'nonce':str(uuid.uuid4()),'expires':int(time.time())+60,'mode':'production','method':'PUT','path':'/restful/v2/domains/example.com/domain_lock','key':'synthetic-key','signature':'A'*43+'=','request_id':str(uuid.uuid4()),'body':'{"lock":true}'}
         raw,headers=signed(p)
         with patch.object(r,'forward',return_value=(200,b'{"code":200}')) as upstream:
-            assert request('POST','/v1/dynadot-relay',raw,headers)[:2]==(200,'1')
+            first=request('POST','/v1/dynadot-relay',raw,headers)
+            assert first[:2]==(200,'1'), (first,(base/'errors.log').read_text()[-6000:])
             assert request('POST','/v1/dynadot-relay',raw,headers)[0]==409
             assert upstream.call_count==1
             assert request('POST','/v1/dynadot-relay',raw,{**headers,'X-HMS-Dynadot-Signature':'0'*64})[0]==403

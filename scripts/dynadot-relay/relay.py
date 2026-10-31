@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import http.client
 import http.server
-import ipaddress
 import json
 import os
 import re
@@ -119,6 +118,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
         self.connection.settimeout(5)
+    def handle(self):
+        def expire():
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        deadline = threading.Timer(25, expire)
+        deadline.daemon = True
+        deadline.start()
+        try:
+            super().handle()
+        finally:
+            deadline.cancel()
     def reply(self, status, data=b'{"error":"relay_unavailable"}', forwarded=False):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
