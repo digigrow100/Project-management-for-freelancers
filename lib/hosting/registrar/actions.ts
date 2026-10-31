@@ -7,7 +7,7 @@ import {getSupabase} from '@/lib/supabaseClient';
 import {Dynadot,RegistrarError} from './api';
 import {credentials,hostname,intent,type Credentials} from './schema';
 import {table,checked,connection,saveConnection,remember,prepare,operation,claim,finish} from './store';
-import {observed,validateChange} from './workflow';
+import {observed,validateChange,same} from './workflow';
 const messages:Record<string,string>={record_conflict:'This record conflicts with an existing DNS record. Review and remove the conflicting record first.',not_connected:'Connect your Dynadot account first.',credentials_rejected:'Dynadot rejected the credentials. Check the key, secret, mode and any API IP restrictions.',provider_rejected:'Dynadot refused this request. Check the domain and its account restrictions in Dynadot.',rate_limited:'Dynadot is busy. Please wait a minute before trying again.',answer_unknown:'The answer could not be confirmed. Check the operation status before trying again.',invalid_response:'Dynadot returned an unexpected answer. No successful result can be confirmed.',price_unavailable:'Dynadot did not return a usable domain-specific renewal price. Renew this domain in Dynadot until its price can be verified here.',storage_unavailable:'Domain records could not be saved. Refresh and check operation status.',review_expired:'This review expired or was already submitted. Refresh its operation status.',reconcile_required:'A previous domain change needs a status check before another change can start.',external_dns:'This domain is not using Dynadot DNS. Manage records at its current DNS provider.',record_changed:'That DNS record has changed or already exists. Reload the current records.',stale_review:'The domain or renewal price changed. Prepare a new review.',configuration_missing:'Secure credential storage is not configured on the server.'};
 function api(c:Credentials){return new Dynadot(c,fetch,async()=>{try{await rateLimit('dynadot-provider',c.mode,1,1);}catch{throw new RegistrarError('rate_limited');}});}
 function refresh(){revalidatePath('/hosting/domains');revalidatePath('/hosting/registrar');}
@@ -55,9 +55,9 @@ export async function registrarAction(form:FormData){
    let sent=false;
    try{
     const current=await provider.info(op.domain);
-    if(JSON.stringify(current)!==JSON.stringify(op.before_state))throw new RegistrarError('stale_review');
+    if(!same(current,op.before_state))throw new RegistrarError('stale_review');
     validateChange(current,change);
-    if(change.kind==='renew'&&JSON.stringify(await provider.quote(op.domain,change.currency))!==JSON.stringify(op.quote))throw new RegistrarError('stale_review');
+    if(change.kind==='renew'&&!same(await provider.quote(op.domain,change.currency),op.quote))throw new RegistrarError('stale_review');
     sent=true;await provider.change(op.domain,change,id);
     const after=await provider.info(op.domain);await remember(c.version,[after]);
     const verified=observed(current,after,change);await finish(op,verified?'confirmed':'uncertain');refresh();

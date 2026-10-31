@@ -29,3 +29,14 @@ export function observed(before:DomainInfo,after:DomainInfo,change:Intent):boole
   }
  }
 }
+
+// PostgreSQL jsonb does not preserve object-key order. Reviews compare values, not encoding order.
+export function same(a:unknown,b:unknown):boolean {
+ if(a===b)return true;
+ if(Array.isArray(a)||Array.isArray(b))return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>same(v,b[i]));
+ if(a&&b&&typeof a==='object'&&typeof b==='object'){
+  const left=a as Record<string,unknown>,right=b as Record<string,unknown>,keys=Object.keys(left).sort();
+  return keys.join('\n')===Object.keys(right).sort().join('\n')&&keys.every(k=>same(left[k],right[k]));
+ }
+ return false;
+}
