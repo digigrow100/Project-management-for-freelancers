@@ -1283,3 +1283,15 @@ proof, bounded DNS checks, reviewed Dynadot TXT helper, Email settings tab and
 sealed, scoped hosted mailbox requests with on-page signed owner approvals.
 External mail-only service allocation and live sender-policy enrollment remain
 pending; no server/DNS change or real email was executed by this UI rollout.
+
+## 2026-10-31 — Fix Windows PowerShell mail-check SSH transport
+
+Owner returned a bash syntax error because native Windows SSH invocation stripped
+the Python -c quotes. Python never ran; the uploaded file remains available.
+Check-HouseMySiteMail.ps1 now fetches the reviewed Invoke-MailReadinessCheck.ps1
+helper and pipes the hash verifier/Python code over stdin to the fixed command
+`python3 -I -`. Strict SSH options, pinned source digest and read-only check remain.
+A Windows-native ssh.exe capture regression exercises the actual helper under
+Windows PowerShell5.1 and PowerShell7, checking argument boundaries, complete
+stdin bytes, invalid-path denial and nonzero-exit propagation. Never rerun the
+Dynadot relay installer for this unrelated mail-check launch error.
