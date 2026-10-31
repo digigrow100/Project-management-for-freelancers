@@ -22,10 +22,14 @@ export function observed(before:DomainInfo,after:DomainInfo,change:Intent):boole
   case 'lock':return after.locked===change.locked;
   case 'renew_option':return after.renewOption===(change.enabled?'auto':'donot');
   case 'nameservers':return after.glue.glue_type.toLowerCase()==='name_servers'&&JSON.stringify(after.glue.nameserver_list?.map(n=>n.server_name).sort())===JSON.stringify([...change.nameservers].sort());
-  case 'renew':return after.expires>before.expires;
+  case 'renew':{const expected=new Date(before.expires);expected.setUTCFullYear(expected.getUTCFullYear()+change.years);return before.expires>0&&after.expires>=expected.getTime()-86400000;}
   case 'dns_add':case 'dns_remove':{
    if(after.glue.glue_type.toLowerCase()!=='dns')return false;
-   const present=records(after,change.record).some(r=>recordMatches(r,change.record));return change.kind==='dns_add'?present:!present;
+   const recordKey=(host:unknown,r:Record<string,unknown>)=>JSON.stringify([host,r.record_type,r.record_value1,String(r.record_value2??'')]);
+   const all=(d:DomainInfo)=>[...(d.glue.dns_main_list??[]).map(r=>recordKey('@',r)),...(d.glue.dns_sub_list??[]).map(r=>recordKey(r.sub_host,r))];
+   const target=recordKey(change.record.host,{record_type:change.record.type,record_value1:change.record.value,record_value2:change.record.type==='mx'?String(change.record.priority):''});
+   const expected=change.kind==='dns_add'?[...all(before),target]:all(before).filter(k=>k!==target);
+   return JSON.stringify(expected.sort())===JSON.stringify(all(after).sort());
   }
  }
 }
