@@ -4,6 +4,10 @@ This release is gated by `HOSTING_EMAIL_SERVICES_ENABLED=approved`. Keep it off
 until the database migration and VPS installation have succeeded. Do not infer
 live readiness from a green build, saved product, DNS presence or provider row.
 
+Database migration 20261031190001 was applied on 2026-10-31 to the canonical
+project. New email tables are empty; VPS installation and live acceptance remain
+pending. Do not apply that migration again.
+
 ## Included
 
 - Search current production Dynadot inventory, or verify an external domain with TXT.
@@ -31,8 +35,8 @@ instead of silently deleting recovery points. Optional AWS S3 enrollment is sepa
 
 1. Verify exact PR head CI, migration fixture, Chromium screenshots, existing security
    regressions and isolated production build. Review the complete change.
-2. Apply `20261031170414_independent_email_services.sql` once through the normal
-   migration mechanism and verify history/advisors. Do not create test customer data.
+2. Verify the already-applied `20261031190001_independent_email_services.sql`
+   in canonical migration history and advisors. Do not create test customer data.
 3. Deploy the portal with the independent-email flag still off; verify canonical project.
 4. Run `scripts/email/Install-EmailControlCenter.ps1 -ReviewedCommit <reviewed40hex>`
    once on the owner's Windows machine, using existing strict root SSH enrollment.

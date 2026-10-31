@@ -2,7 +2,7 @@ const {PGlite}=require('@electric-sql/pglite'),fs=require('fs'),assert=require('
 (async()=>{
  const db=new PGlite();await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table public.freelance_hq_profiles(id uuid primary key,role text);create table public.freelance_hq_clients(id uuid primary key);");
  await db.exec(fs.readFileSync('supabase/migrations/20261020202238_hosting_management.sql','utf8'));
- await db.exec(fs.readFileSync('supabase/migrations/20261031170414_independent_email_services.sql','utf8'));
+ await db.exec(fs.readFileSync('supabase/migrations/20261031190001_independent_email_services.sql','utf8'));
  const q=async(sql,args=[])=>(await db.query(sql,args)).rows,admin=randomUUID(),member=randomUUID(),client=randomUUID(),other=randomUUID();
  await q('insert into auth.users(id)values($1),($2)',[admin,member]);await q("insert into freelance_hq_profiles values($1,'admin'),($2,'member')",[admin,member]);await q("insert into freelance_hq_hosting_clients(id,name,email,status)values($1,'A','a@example.test','active'),($2,'B','b@example.test','active')",[client,other]);
  const v={hostname:'mailonly.example.test',client_id:null,mailboxes:2,mailbox_mb:512,total_mb:1024,price_minor:1200,currency:'GBP',cycle:'monthly',discount_percent:10,due_on:'2026-11-01',grace_days:7};

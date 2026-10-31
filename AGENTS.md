@@ -202,7 +202,7 @@ Next.js/automatic deployment flags are changed by this update.
 `/hosting/email` and scoped mailboxes on `/client/email`. Default remains OFF;
 legacy onboarding is available at `?view=setup`. New source is
 `lib/hosting/email/{services,servicesSchema}.ts`, migration
-`20261031170414_independent_email_services.sql`, and `scripts/email/server/`.
+`20261031190001_independent_email_services.sql`, and `scripts/email/server/`.
 Email services do not require hosting or a portal client login. Optional service
 and per-mailbox client assignments never change stable private runtime ownership.
 Client inventory is filtered in SQL before JSON aggregation; explicit unassigned
@@ -250,9 +250,10 @@ never send the private key, passphrase or pairing code to the portal/chat/server
 Use ONE reviewed `Install-EmailControlCenter.ps1 -ReviewedCommit <exactSHA>`.
 It verifies uploaded hashes, preserves root-only backups, refuses conflicting
 configuration, and tests HMAC/replay/edge/webmail before enabling new services.
-This source is not proof of VPS installation or real delivery. Keep the portal
-flag OFF until the owner returns a successful installation JSON and apply the
-migration once before activation. See `docs/email-control-center.md` for acceptance
+Canonical migration 20261031190001 is applied; no email products, assignments or
+bills were created. This source is not proof of VPS installation or real delivery. Keep the portal
+flag OFF until the owner returns a successful installation JSON. Verify migration
+history before activation; do not reapply the migration. See `docs/email-control-center.md` for acceptance
 and guarded rollback; do not restore a stale whole database over live requests.
 Tests: `email-services-db.cjs`, `test_mail*.py`, browser
 `local-checks/email-services-browser.cjs`, existing email/security tests and CI.
@@ -290,7 +291,7 @@ SPF, DKIM or nameservers. Other DNS is preserved by existing server checks.
 SPF/DMARC presence is labelled presence only; per-domain server-generated DKIM,
 actual routing, authenticated delivery and sender policy need separate verification.
 
-**Rollout limit:** external domains can be saved/verified but have no mail-only
+**Legacy rollout limit (independent-email flag OFF):** external domains can be saved/verified but have no mail-only
 service provisioning integration yet. They cannot create mailboxes merely by
 proving DNS ownership. Existing App account mail_send is currently blocked; never
 remove that policy, infer send readiness from mailboxes capability, or label
