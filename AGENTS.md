@@ -1356,3 +1356,8 @@ confirmation. External mail-only plans, future account auto-enrollment, sender-p
 activation and authenticated send/receive acceptance remain incomplete. This batch
 is PREPARED, not executed by Codex. Regression: test_mail_enrollment.py and native
 Windows5.1/7 stdin transport checks.
+
+
+## 2026-10-31 — Accept native grouped ISPConfig remote permission lists
+
+Owner installation stopped at api_permission_format_needs_review BEFORE the backup/grant/enrollment/timer mutation phase. The old parser incorrectly accepted only semicolon-separated names. ISPConfig checkPerm replaces semicolons with commas then splits on commas, so native grouped comma/semicolon lists and empty separator groups must be supported. The corrected parser preserves every original byte, checks exact method membership, appends only missing eight mail lifecycle permissions and enforces input/output budgets. Unknown encodings, wildcards, whitespace and invalid tokens still refuse. Binary permission compare-and-set, backups, owner signatures, SMTP lock and all enrollment guards remain unchanged. Twelve enrollment tests include native mixed lists, idempotency, lookalike names, unknown encodings and size limits. This source correction is not proof of VPS enrollment or delivery; use the new reviewed source pin, never the failed old batch. External mail-only provisioning and sending remain pending.
