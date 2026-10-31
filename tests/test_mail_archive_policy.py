@@ -69,6 +69,27 @@ class BackupAndPolicy(unittest.TestCase):
    target=root/(service.replace('-','')+'-'+point+'.enc');target.write_bytes(cipher[:-1]+b'!');Fake.appended.clear()
    with self.assertRaises(Refused):archive.execute('restore',service,box,{'point':point},None)
    self.assertEqual(Fake.appended,[],'tampering refuses before mailbox append')
+ def test_backup_can_restore_to_replacement_but_never_another_service(self):
+  class Fake:
+   appended=[]
+   def __init__(self,*a,**kw):pass
+   def login(self,address,password):self.address=address;return 'OK',[]
+   def logout(self):pass
+   def list(self):return 'OK',[b'(\\HasNoChildren) "." "INBOX"']
+   def select(self,*a,**kw):return 'OK',[]
+   def uid(self,verb,*a):
+    if verb=='search':return 'OK',[b'1']
+    return 'OK',[(b'1 (FLAGS () INTERNALDATE "31-Oct-2026 12:00:00 +0000" BODY[] {4}',b'mail'),b')']
+   def search(self,*a):return 'OK',[b'']
+   def append(self,*a):self.appended.append((self.address,a));return 'OK',[]
+  with tempfile.TemporaryDirectory()as directory,patch('mail_archive.PinnedIMAP',Fake):
+   root=pathlib.Path(directory)/'backups';root.mkdir(mode=0o700);db=sqlite3.connect(':memory:',isolation_level=None);store=LocalEncryptedStore(root,reserve=lambda *a:True,maximum_bytes=10485760);archive=ImapArchive(db,b'k'*32,store,'mail.example.test',directory,lambda *a:True)
+   service='11111111-1111-4111-8111-111111111111';source={'id':'a'*32,'address':'old@example.test','quota':1048576};target={'id':'c'*32,'address':'replacement@example.test','quota':1048576}
+   archive.remember(source['id'],'Original-password');archive.execute('backup',service,source,{},None);point=archive.list(service)[0]['id'];db.execute('delete from mail_vault where resource=?',(source['id'],));archive.remember(target['id'],'Replacement-password')
+   archive.execute('restore',service,target,{'point':point},None);self.assertEqual(len(Fake.appended),1);self.assertEqual(Fake.appended[0][0],target['address']);self.assertTrue(Fake.appended[0][1][3].endswith(b'mail'))
+   Fake.appended.clear()
+   with self.assertRaises(Refused):archive.execute('restore','22222222-2222-4222-8222-222222222222',target,{'point':point},None)
+   self.assertEqual(Fake.appended,[])
  def test_quota_usage_is_not_confused_with_the_limit(self):
   self.assertEqual(parse(b'Quota name\tType\tValue\tLimit\t%\nUser quota\tSTORAGE\t123\t1048576\t0\nUser quota\tMESSAGE\t4\t-\t0\n'),123*1024)
   for raw in [b'',b'User quota\tSTORAGE\tunknown\t1000\t0\n',b'A\tSTORAGE\t1\t2\t50\nB\tSTORAGE\t2\t2\t100\n']:

@@ -25,6 +25,8 @@ pending. Do not apply that migration again.
   IMAP993 TLS / SMTP587 STARTTLS setup. Existing webmail configurations are preserved.
 - Explicit encrypted local backups, safety-backup-first restore as imported copies,
   authenticated TLS IMAP migration preserving source messages, folders/flags/dates.
+  The owner can restore into a replacement mailbox in the same service after the
+  original is deleted. The destination gets a safety backup before import.
 
 Backups and encrypted mailbox credentials are stored on the same VPS. They do not
 protect against total VPS loss. No daily schedule, automatic retention or offsite
