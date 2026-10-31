@@ -5,6 +5,7 @@ on:
     paths:
       - scripts/email/**
       - tests/windows-mail-launcher.ps1
+      - tests/test_mail_readiness.py
       - .github/workflows/mail-launcher-windows.yml
   workflow_dispatch:
 jobs:
@@ -18,3 +19,10 @@ jobs:
       - name: PowerShell 7 native SSH stdin
         shell: pwsh
         run: ./tests/windows-mail-launcher.ps1
+
+  readiness-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independent read-only report sections and safe errors
+        run: python3 -m unittest discover -s tests -p test_mail_readiness.py -v

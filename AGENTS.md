@@ -1295,3 +1295,20 @@ A Windows-native ssh.exe capture regression exercises the actual helper under
 Windows PowerShell5.1 and PowerShell7, checking argument boundaries, complete
 stdin bytes, invalid-path denial and nonzero-exit propagation. Never rerun the
 Dynadot relay installer for this unrelated mail-check launch error.
+
+## 2026-10-31 — Preserve mail readiness findings after a failed section
+
+Owner's stdin recovery executed Python but returned only generic ValueError. This
+is not a successful readiness check and does not identify the actual VPS blocker.
+inspect_mail_readiness.py now isolates settings, key, inventory, each service, DNS
+and each TLS endpoint. It returns fixed stage/code findings and safe file mode,
+UID/GID/size metadata; no exception text, credentials or customer addresses.
+Missing, denied or unknown sections stay null/unavailable, never zero/ready.
+A failed section preserves independent results. Private files still require the
+original permission boundary and no symlink; non-public hostname resolution still
+blocks endpoint connections. Never chmod files or relax networking based on this
+opaque ValueError. A valid report with findings exits0; unexpected report failure
+exits2, so the existing launcher can print the findings without a false transport
+error. Seven fixture-based tests cover partial failures, no plaintext leakage,
+read-only SQLite, no mail AUTH/send and independent TLS results. Real VPS result
+remains pending; external mail-only allocation and sending enrollment remain open.
