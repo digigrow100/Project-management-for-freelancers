@@ -56,9 +56,9 @@ function loader(){
   assert.match(renderToStaticMarkup(React.createElement(ui.IntegrationOverview)),/do not confirm a running worker/);
   for(const section of ['sources','email','databases','forms','backups']){
    const Page=loader()(`app/(app)/hosting/${section}/page.tsx`).default;
-   const content=renderToStaticMarkup(await Page());
+   const content=renderToStaticMarkup(await Page({}));
    if(section==='email'){assert.match(content,/Professional email/);}else{assert.match(content,/Connection setup needed/);assert.ok(!content.includes('MANAGED_CONTROL'));}assert.ok(!content.includes('SECRET_SENTINEL'));
-   denied=true;await assert.rejects(Page(),e=>e===blocked);denied=false;
+   denied=true;await assert.rejects(Page({}),e=>e===blocked);denied=false;
   }
   assert.equal(scopeReads,0,'Unconfigured pages must not touch provider scopes or owner-bound backup context');
  }finally{for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved);}
