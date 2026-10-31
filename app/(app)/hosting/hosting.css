@@ -86,3 +86,133 @@
 }
 @media print { .hosting-shell .sidebar-themed,.hosting-shell .hms-topbar { display:none!important; } .hosting-shell .theme-main { overflow:visible!important; } }
 @media(prefers-reduced-motion:reduce) { .hosting-shell * { transition:none!important; } }
+
+/* Registrar portfolio: grouped inventory and focused domain tools. */
+.hosting-shell .hms-domains { color:#142440; }
+.hosting-shell .hms-domain-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; margin-bottom:22px; }
+.hosting-shell .hms-domain-heading p,.hosting-shell .hms-domain-summary-note { color:#718099; font-size:12px; margin-top:7px; }
+.hosting-shell .hms-domain-connection { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+.hosting-shell .hms-domain-connection > span { width:7px; height:7px; border-radius:50%; background:#16a069; }
+.hosting-shell .hms-domain-button-row { display:flex; flex-wrap:wrap; align-items:center; gap:9px; }
+.hosting-shell .hms-domain-secondary,.hosting-shell .hms-domain-manage { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 13px; min-height:38px; border:1px solid #dce4f0; border-radius:7px; background:white; color:#334766; font-size:12px; font-weight:550; }
+.hosting-shell .hms-domain-secondary:hover,.hosting-shell .hms-domain-manage:hover { background:#f3f7ff; border-color:#b8cbef; }
+.hosting-shell .hms-domain-settings { display:inline-flex; align-items:center; gap:7px; color:#2563eb; font-size:13px; font-weight:550; padding:8px; }
+.hosting-shell .hms-domains button:disabled { opacity:.5; cursor:wait; }
+.hosting-shell .hms-domain-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.hosting-shell .hms-domain-stat { display:flex; align-items:center; gap:14px; min-height:104px; padding:20px; background:white; border:1px solid #e0e7f1; border-radius:10px; }
+.hosting-shell .hms-domain-stat p { color:#718099; font-size:12px; }
+.hosting-shell .hms-domain-stat strong { display:block; margin-top:4px; font-size:28px; line-height:1.2; font-weight:650; }
+.hosting-shell .hms-domain-stat-icon { display:grid; flex-shrink:0; place-items:center; width:44px; height:44px; border-radius:50%; }
+.hosting-shell .hms-domain-stat-icon.blue { color:#2563eb; background:#edf4ff; }
+.hosting-shell .hms-domain-stat-icon.green { color:#078453; background:#eaf9f1; }
+.hosting-shell .hms-domain-stat-icon.amber { color:#b87708; background:#fff7e4; }
+.hosting-shell .hms-domain-summary-note { margin:10px 0 20px; }
+.hosting-shell .hms-domain-workspace { display:grid; gap:20px; align-items:start; grid-template-columns:minmax(0,1fr); }
+.hosting-shell .hms-domain-workspace.is-split { grid-template-columns:minmax(0,1fr) 360px; }
+.hosting-shell .hms-domain-inventory { min-width:0; overflow:hidden; background:white; border:1px solid #e0e7f1; border-radius:10px; }
+.hosting-shell .hms-domain-filters { display:flex; flex-wrap:wrap; justify-content:space-between; gap:14px; padding:16px 18px 0; }
+.hosting-shell .hms-domain-tabs { display:flex; gap:6px; overflow:auto; }
+.hosting-shell .hms-domain-tabs button { display:flex; align-items:center; gap:7px; padding:12px 9px; white-space:nowrap; border-bottom:2px solid transparent; color:#728198; font-size:12px; font-weight:600; }
+.hosting-shell .hms-domain-tabs button[aria-pressed=true] { color:#2563eb; border-color:#2563eb; }
+.hosting-shell .hms-domain-tabs span { border-radius:4px; background:#f0f4fa; padding:1px 5px; font-size:10px; }
+.hosting-shell .hms-domain-search { display:flex; flex-wrap:wrap; align-items:center; gap:7px; padding-bottom:14px; width:100%; }
+.hosting-shell .hms-domain-search label { display:flex; gap:8px; align-items:center; flex:1; min-width:150px; border:1px solid #dce4ef; padding:9px 11px; border-radius:7px; color:#8291a7; }
+.hosting-shell .hms-domain-search input { width:100%; min-width:0; font-size:12px; border:0; outline:0; padding:0; background:transparent; }
+.hosting-shell .hms-domain-search select { min-height:38px; padding:8px; font-size:12px; border:1px solid #dce4ef; border-radius:7px; }
+.hosting-shell .hms-domain-table-scroll { overflow:auto; max-height:650px; }
+.hosting-shell .hms-domain-table { width:100%; min-width:640px; text-align:left; border-collapse:separate; border-spacing:0; }
+.hosting-shell .hms-domain-table thead th { position:sticky; top:0; z-index:1; background:#f7f9fd; border-top:1px solid #e7ecf5; border-bottom:1px solid #e7ecf5; padding:12px 15px; white-space:nowrap; color:#7c8ba3; font-size:11px; font-weight:600; }
+.hosting-shell .hms-domain-table td { padding:15px; border-bottom:1px solid #edf1f7; color:#405371; font-size:12px; vertical-align:middle; }
+.hosting-shell .hms-domain-table small { display:block; margin-top:4px; color:#8190a6; font-size:10px; }
+.hosting-shell .hms-domain-table tr.is-selected td { background:#edf4ff; }
+.hosting-shell .hms-domain-table tr.is-selected td:first-child { box-shadow:inset 3px 0 #2563eb; }
+.hosting-shell .hms-domain-group th { text-align:left; padding:12px 16px; color:#405473; font-size:12px; font-weight:600; background:#fbfcff; border-bottom:1px solid #e9eef6; }
+.hosting-shell .hms-domain-group.expiring th { box-shadow:inset 3px 0 #f1aa27; background:#fffcf5; }
+.hosting-shell .hms-domain-group.expired th { box-shadow:inset 3px 0 #e88c8c; }
+.hosting-shell .hms-domain-group span { float:right; color:#8290a6; font-size:10px; font-weight:400; }
+.hosting-shell .hms-domain-name { display:flex; gap:10px; align-items:center; min-width:190px; }
+.hosting-shell .hms-domain-name button { color:#142440; font-weight:600; text-align:left; overflow-wrap:anywhere; }
+.hosting-shell .hms-domain-name button:hover { color:#2563eb; }
+.hosting-shell .hms-domain-avatar { display:grid; flex-shrink:0; place-items:center; height:33px; width:33px; color:#2563eb; background:#eaf2ff; border-radius:7px; font-size:14px; font-weight:600; }
+.hosting-shell .hms-domain-pill { display:inline-flex; align-items:center; padding:4px 9px; border-radius:6px; font-size:11px; font-weight:550; white-space:nowrap; }
+.hosting-shell .hms-domain-pill.green { background:#e8f8f0; color:#087b4d; }
+.hosting-shell .hms-domain-pill.muted { background:#f0f3f8; color:#718099; }
+.hosting-shell .hms-domain-pill.blue { background:#edf4ff; color:#2563eb; }
+.hosting-shell .hms-domain-pill.amber { background:#fff3d9; color:#a96b05; }
+.hosting-shell .hms-domain-lock { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
+.hosting-shell .hms-domain-manage { color:#2563eb; border-color:#d3e1ff; padding:7px 9px; min-height:32px; }
+.hosting-shell .hms-domain-amber { color:#b27b1b!important; }
+.hosting-shell .hms-domain-red { color:#bd5252!important; }
+.hosting-shell .hms-domain-pagination { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; padding:15px 18px; color:#7e8da5; font-size:11px; border-top:1px solid #e7ecf5; }
+.hosting-shell .hms-domain-pagination > div { display:flex; gap:12px; align-items:center; }
+.hosting-shell .hms-domain-pagination button { color:#2563eb; }
+.hosting-shell .hms-domain-empty { display:grid; justify-items:center; gap:10px; padding:48px 20px; color:#8190a7; font-size:13px; }
+.hosting-shell .hms-domain-empty h3 { color:#405371; font-weight:600; }
+.hosting-shell .hms-domain-empty button { color:#2563eb; }
+.hosting-shell .hms-domain-detail { min-width:0; padding:22px; border:1px solid #e0e7f1; border-radius:10px; background:white; box-shadow:0 8px 24px #14244003; }
+.hosting-shell .hms-domain-detail > header { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding-bottom:20px; border-bottom:1px solid #edf1f7; }
+.hosting-shell .hms-domain-detail h2 { font-weight:650; font-size:19px; overflow-wrap:anywhere; margin-bottom:8px; }
+.hosting-shell .hms-domain-facts { display:grid; gap:16px; padding:20px 0; }
+.hosting-shell .hms-domain-facts dt { color:#8592a7; font-size:11px; }
+.hosting-shell .hms-domain-facts dd { color:#304767; font-size:13px; font-weight:550; margin-top:5px; }
+.hosting-shell .hms-domain-security { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:18px 0; border-block:1px solid #edf1f7; }
+.hosting-shell .hms-domain-security > div { display:grid; align-content:start; gap:6px; color:#405371; }
+.hosting-shell .hms-domain-security > div:first-child { border-right:1px solid #e8edf5; }
+.hosting-shell .hms-domain-security span { color:#8090a7; font-size:11px; }
+.hosting-shell .hms-domain-security strong { font-size:14px; }
+.hosting-shell .hms-domain-security button { text-align:left; font-size:10px; color:#2563eb; margin-top:4px; }
+.hosting-shell .hms-domain-actions { display:grid; gap:9px; padding-top:22px; }
+.hosting-shell .hms-domain-actions button { display:flex; gap:10px; align-items:center; border:1px solid #e1e7f0; border-radius:7px; padding:13px 12px; font-size:12px; color:#405371; text-align:left; }
+.hosting-shell .hms-domain-actions button span { flex:1; font-weight:550; }
+.hosting-shell .hms-domain-actions button:hover { border-color:#bacff3; background:#f8faff; }
+.hosting-shell .hms-domain-footnote { color:#8291a8; font-size:10px; padding-top:16px; }
+.hosting-shell .hms-domain-back { display:flex; align-items:center; gap:6px; font-size:11px; color:#2563eb; margin:18px 0; }
+.hosting-shell .hms-domain-form { display:grid; gap:15px; font-size:12px; }
+.hosting-shell .hms-domain-form h3,.hosting-shell .hms-domain-section-title { font-size:15px; font-weight:600; margin-top:18px; }
+.hosting-shell .hms-domain-form label { display:grid; gap:7px; color:#405371; font-size:12px; font-weight:550; }
+.hosting-shell .hms-domain-form :is(input,select,textarea) { width:100%; padding:10px 11px; border:1px solid #d9e2ef; border-radius:7px; background:white; color:#2e4464; font-size:12px; font-weight:400; }
+.hosting-shell .hms-domain-form textarea { min-height:125px; resize:vertical; }
+.hosting-shell .hms-domain-form p { font-weight:400; color:#7c8da5; font-size:12px; line-height:1.65; }
+.hosting-shell .hms-domain-review { border:1px solid #cbdcf8; border-radius:9px; background:#f8fbff; padding:18px; margin-top:20px; font-size:12px; overflow-wrap:anywhere; }
+.hosting-shell .hms-domain-review h3 { font-size:15px; font-weight:650; }
+.hosting-shell .hms-domain-review > p { line-height:1.65; margin:11px 0; color:#61748f; }
+.hosting-shell .hms-domain-review-change { background:white; border:1px solid #e2eaf6; border-radius:6px; padding:12px; margin:12px 0; }
+.hosting-shell .hms-domain-review-change p { margin-top:6px; }
+.hosting-shell .hms-domain-review .hms-domain-price { font-weight:600; color:#142440; }
+.hosting-shell .hms-domain-notice { padding:12px 15px; border:1px solid #f6dfac; border-radius:8px; background:#fffaf0; color:#916214!important; font-size:12px; line-height:1.7; margin:14px 0; }
+.hosting-shell .hms-domain-notice button { color:#9b6504; text-decoration:underline; margin-left:8px; }
+.hosting-shell .hms-domain-message { padding:12px 15px; background:#edf5ff; border-radius:7px; color:#225ab3; font-size:12px; margin:15px 0; }
+.hosting-shell .hms-domain-message.is-error { color:#b54242; background:#fff1f1; }
+.hosting-shell .hms-domain-history-card { background:white; border:1px solid #e0e7f1; border-radius:10px; padding:22px; margin-top:20px; }
+.hosting-shell .hms-domain-history-heading { display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:15px; }
+.hosting-shell .hms-domain-history-heading h2 { font-size:16px; font-weight:600; }
+.hosting-shell .hms-domain-history { display:grid; gap:10px; margin-top:14px; }
+.hosting-shell .hms-domain-history > div { border-bottom:1px solid #edf1f7; padding:12px 0; display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:11px; }
+.hosting-shell .hms-domain-history strong { overflow-wrap:anywhere; }
+.hosting-shell .hms-domain-history button { color:#2563eb; margin-left:auto; }
+.hosting-shell .hms-domain-setup { display:grid; justify-items:center; gap:14px; background:white; border:1px solid #e0e7f1; border-radius:10px; text-align:center; padding:48px 20px; }
+.hosting-shell .hms-domain-setup h2 { font-size:18px; font-weight:600; }
+.hosting-shell .hms-domain-setup p { color:#8090a7; font-size:13px; }
+.hosting-shell .hms-dns-dialog { width:min(950px,calc(100vw - 32px)); max-width:950px; max-height:90dvh; padding:0; margin:auto; border:1px solid #dce5f3; border-radius:15px; box-shadow:0 28px 100px #0d1e3840; background:white; color:#142440; color-scheme:light; }
+.hosting-shell .hms-dns-dialog::backdrop { background:#0c1d3870; backdrop-filter:blur(4px); }
+.hosting-shell .hms-dns-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:2; padding:22px 26px; border-bottom:1px solid #e5ebf5; background:white; }
+.hosting-shell .hms-dns-title { display:flex; align-items:center; gap:13px; min-width:0; }
+.hosting-shell .hms-dns-title > span { color:#2563eb; background:#eef4ff; border-radius:10px; padding:10px; }
+.hosting-shell .hms-dns-title h2 { font-size:19px; font-weight:650; }
+.hosting-shell .hms-dns-title p { color:#8391a7; font-size:12px; overflow-wrap:anywhere; margin-top:4px; }
+.hosting-shell .hms-dns-body { padding:22px 26px; }
+.hosting-shell .hms-dns-context { display:flex; flex-wrap:wrap; align-items:center; gap:10px; color:#7d8da5; font-size:11px; margin-bottom:16px; }
+.hosting-shell .hms-dns-records { overflow:auto; border:1px solid #e1e8f3; border-radius:8px; }
+.hosting-shell .hms-dns-records table { width:100%; min-width:550px; text-align:left; border-collapse:collapse; font-size:12px; }
+.hosting-shell .hms-dns-records th { padding:12px; color:#8090a7; background:#f8fafd; font-size:11px; }
+.hosting-shell .hms-dns-records td { border-top:1px solid #e8edf5; padding:12px; }
+.hosting-shell .hms-dns-records small { font-size:10px; color:#8492a8; }
+.hosting-shell .hms-dns-value { overflow-wrap:anywhere; max-width:350px; }
+.hosting-shell .hms-dns-value small { display:block; }
+.hosting-shell .hms-dns-no-records { text-align:center; padding:28px; color:#8291a8; font-size:12px; }
+.hosting-shell .hms-dns-form { background:#f9fbff; border:1px solid #e3eaf6; border-radius:10px; padding:18px; margin-top:22px; }
+.hosting-shell .hms-dns-form h3 { margin:0; }
+.hosting-shell .hms-dns-fields { display:grid; grid-template-columns:100px 130px minmax(0,1fr) 80px; gap:12px; }
+@media(max-width:1350px) { .hosting-shell .hms-domain-workspace.is-split { grid-template-columns:minmax(0,1fr) 320px; } .hosting-shell .hms-domain-stat { padding:16px; gap:10px; } .hosting-shell .hms-domain-stat strong { font-size:25px; } }
+@media(max-width:1100px) { .hosting-shell .hms-domain-workspace.is-split { grid-template-columns:minmax(0,1fr); } .hosting-shell .hms-domain-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .hosting-shell .hms-domain-detail { order:-1; } }
+@media(max-width:650px) { .hosting-shell .hms-domain-stat { min-height:90px; padding:14px; } .hosting-shell .hms-domain-stats { gap:10px; } .hosting-shell .hms-domain-stat-icon { height:34px; width:34px; } .hosting-shell .hms-domain-stat p { font-size:10px; } .hosting-shell .hms-domain-group span { display:none; } .hosting-shell .hms-dns-heading { padding:16px; } .hosting-shell .hms-dns-body { padding:16px; } .hosting-shell .hms-dns-fields { grid-template-columns:1fr 1fr; } .hosting-shell .hms-dns-fields label:nth-child(3) { grid-column:1/-1; } }
