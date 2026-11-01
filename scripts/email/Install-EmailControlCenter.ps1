@@ -1,4 +1,7 @@
-param([Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{40}$')][string]$ReviewedCommit)
+param(
+    [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{40}$')][string]$ReviewedCommit,
+    [ValidatePattern('^/root/hms-email-center-[a-f0-9]{32}$')][string]$ResumeBackup
+)
 $ErrorActionPreference='Stop'
 $work=Join-Path ([IO.Path]::GetTempPath()) ('hms-email-center-'+[Guid]::NewGuid().ToString('N'))
 $remote='/root/hms-email-center-'+[Guid]::NewGuid().ToString('N')
@@ -26,7 +29,11 @@ if($LASTEXITCODE -ne 0){throw 'Private upload directory could not be created.'}
 & scp -r -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=yes $stage "root@62.171.130.156`:$remote/source"
 if($LASTEXITCODE -ne 0){throw 'Reviewed upload failed.'}
 . (Join-Path $stage 'Invoke-EmailControlCenter.ps1')
-Invoke-HouseMySiteEmailControlCenter -RemoteRoot ($remote+'/source') -ManifestDigest $manifestHash
+if ($ResumeBackup) {
+    Invoke-HouseMySiteEmailControlCenter -RemoteRoot ($remote+'/source') -ManifestDigest $manifestHash -ResumeBackup $ResumeBackup
+} else {
+    Invoke-HouseMySiteEmailControlCenter -RemoteRoot ($remote+'/source') -ManifestDigest $manifestHash
+}
 New-Item -ItemType Directory -Path $local -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $stage 'hms_mail_signer.py') -Destination $local
 Copy-Item -LiteralPath (Join-Path $stage 'Start-HouseMySiteMailSigner.ps1') -Destination $local

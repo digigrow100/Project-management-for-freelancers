@@ -52,6 +52,13 @@ public class CaptureNativeSsh {
     if (($arguments -join '|') -cne ($expected -join '|')) { throw 'Email center SSH argument boundaries changed.' }
     $stdin = [IO.File]::ReadAllText((Join-Path $stage 'stdin.txt'))
     if (!$stdin.Contains("root=Path('$centerRoot')") -or !$stdin.Contains("hexdigest()=='$digest'") -or !$stdin.Contains("sys.argv=[str(p),'--execute']") -or !$stdin.Contains("runpy.run_path(str(p),run_name='__main__')")) { throw 'Email center manifest verifier or execution flag changed.' }
+    $resumeBackup = '/root/hms-email-center-' + ('c' * 32)
+    Invoke-HouseMySiteEmailControlCenter -RemoteRoot $centerRoot -ManifestDigest $digest -ResumeBackup $resumeBackup
+    $stdin = [IO.File]::ReadAllText((Join-Path $stage 'stdin.txt'))
+    if (!$stdin.Contains("sys.argv=[str(p),'--resume-backup','$resumeBackup']") -or $stdin.Contains("sys.argv=[str(p),'--execute']")) { throw 'Resume must be explicit and must not rerun installation.' }
+    $resumeRejected = $false
+    try { Invoke-HouseMySiteEmailControlCenter -RemoteRoot $centerRoot -ManifestDigest $digest -ResumeBackup '/root/unrelated' } catch { $resumeRejected = $true }
+    if (!$resumeRejected) { throw 'Invalid resume backup was accepted.' }
     $centerRejected = $false
     try { Invoke-HouseMySiteEmailControlCenter -RemoteRoot '/root/unrelated/source' -ManifestDigest $digest } catch { $centerRejected = $true }
     if (!$centerRejected) { throw 'Invalid email center path was accepted.' }

@@ -273,6 +273,17 @@ use the existing OS `mysql` Unix-socket identity. Before each operation it verif
 timeouts and uncertain operations never trigger another execution. This route
 does not reset passwords, edit grants or stop MariaDB. Owner verified this local
 admin login on 2026-11-01; full VPS installation is still pending.
+The owner then reached `smtp_socket_health`; stopped receipt
+`/root/hms-email-center-b68734237a794984a4b3c3ec4a0a4201` preserves that partial
+installation. Database tables exist and a direct fixed policy probe returns
+DUNNO. Startup timing/stream framing remain possible causes, not proven ones.
+The health check now reads a complete bounded frame and waits up to30 seconds
+using only empty-user non-mutating probes. Use explicit `-ResumeBackup` for this
+reviewed stopped phase, never rerun a fresh install. Resume requires unchanged
+sources/units/config hashes, no unit overrides, stopped control services and empty
+account/mailbox/job tables; it reuses packages/webmail DB and the same signed-edge,
+replay, webmail and existing-root checks. A lock and one-attempt receipt prevent
+concurrent/repeated resume. Failure preserves state and restores changed routes.
 CI installs the pinned browser tooling under RUNNER_TEMP, outside the portal
 package tree, so browser installation cannot re-resolve the locked app dependencies.
 Tests: `email-services-db.cjs`, `test_mail*.py`, browser
@@ -1500,3 +1511,13 @@ environment, and never retries a submitted SQL failure or timeout. No root
 password reset, new recovery account, grant edit or database restart is needed
 to establish access. Existing isolated webmail creation remains the only SQL
 installation work. Email release gate stays OFF pending successful VPS JSON.
+
+## 2026-11-01 — Guarded resume after SMTP installation health failure
+
+Read complete SMTP policy frames and retry only bounded empty-user readiness
+probes. An explicit stopped-receipt resume path validates the exact partial
+installation and empty customer state, preserves its original receipt, and skips
+package/database creation. Shared activation retains SMTP, signed HMAC/replay,
+webmail and existing-root health checks. Rollback fixtures exercise changed-route
+restoration and permission restoration. Native Windows transport tests require
+explicit validated resume argv; default fresh installation remains separate.

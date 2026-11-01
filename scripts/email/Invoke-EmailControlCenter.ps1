@@ -1,7 +1,8 @@
 function Invoke-HouseMySiteEmailControlCenter {
     param(
         [Parameter(Mandatory=$true)][ValidatePattern('^/root/hms-email-center-[a-f0-9]{32}/source$')][string]$RemoteRoot,
-        [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{64}$')][string]$ManifestDigest
+        [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{64}$')][string]$ManifestDigest,
+        [ValidatePattern('^/root/hms-email-center-[a-f0-9]{32}$')][string]$ResumeBackup
     )
     $program=@"
 import hashlib,json,runpy,sys
@@ -17,6 +18,9 @@ p=root/'install_control_center.py'
 sys.argv=[str(p),'--execute']
 runpy.run_path(str(p),run_name='__main__')
 "@
+    if ($ResumeBackup) {
+        $program = $program.Replace("sys.argv=[str(p),'--execute']", "sys.argv=[str(p),'--resume-backup','$ResumeBackup']")
+    }
     $program|& ssh -T -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=yes root@62.171.130.156 'python3 -I -'
     if($LASTEXITCODE -ne 0){throw 'Email installation stopped. Preserve the JSON and backup; do not repeat.'}
 }
