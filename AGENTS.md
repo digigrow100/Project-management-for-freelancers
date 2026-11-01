@@ -1479,4 +1479,6 @@ disk disclosure; strict literal parsing rejects code/interpolation/remote hosts.
 The fixed installer preserves safe authentication error codes and phase/backup
 metadata. Tests cover real child FD inheritance, real disposable MariaDB option
 parsing, escaped passwords, safe failure output, cleanup and socket fallback.
+New webmail config directories explicitly receive0750 for the isolated FPM group
+despite installer umask0077; existing directories are never chmodded.
 No live correction has run yet; new email controls stay OFF pending owner JSON.

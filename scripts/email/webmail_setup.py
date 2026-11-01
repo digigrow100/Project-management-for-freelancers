@@ -116,6 +116,11 @@ def mysql(sql,database=None):
     except Exception:raise WebmailRefused('mysql_operation_failed')from None
     finally:
         if fd is not None:os.close(fd)
+def create_config_directory(path,gid):
+    # The installer uses umask0077; explicitly grant the isolated FPM group
+    # traversal on this NEW directory without changing existing directories.
+    path.mkdir(mode=0o750);path.chmod(0o750);os.chown(path,0,gid)
+
 def existing(request):
     try:
         status,body,_=request('GET','/housemysite-webmail/')
@@ -148,7 +153,7 @@ def install(atomic,backup):
     schema=Path('/usr/share/roundcube/SQL/mysql.initial.sql');need(schema.is_file()and schema.stat().st_uid==0)
     run(['useradd','--system','--user-group','--home-dir',str(STATE),'--shell','/usr/sbin/nologin','hms-webmail'])
     user=pwd.getpwnam('hms-webmail')
-    CONFIG.parent.mkdir(mode=0o750);os.chown(CONFIG.parent,0,user.pw_gid)
+    create_config_directory(CONFIG.parent,user.pw_gid)
     defaults=next((p for p in (root/'config/defaults.inc.php',Path('/etc/roundcube/defaults.inc.php'))if p.is_file()),None);need(defaults is not None)
     atomic(CONFIG.parent/'defaults.inc.php',defaults.read_bytes(),0o640,owner=(0,user.pw_gid))
     PUBLIC.parent.mkdir(mode=0o755);PUBLIC.parent.chmod(0o755);PUBLIC.mkdir(mode=0o755);PUBLIC.chmod(0o755)

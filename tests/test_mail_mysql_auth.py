@@ -69,6 +69,13 @@ class NativeMysql(unittest.TestCase):
    self.assertIn(b'--user=fixture_memfd_admin',result.stdout);self.assertIn(b'--password=',result.stdout)
    return subprocess.CompletedProcess(args,0,b'1\n',b'')
   with patch.object(webmail,'CLIENTDB',SimpleNamespace(exists=lambda:True,is_symlink=lambda:False)),patch.object(webmail,'native_text',return_value=FIXTURE.replace("'root'","'fixture_memfd_admin'")),patch.object(webmail.subprocess,'run',side_effect=probe):self.assertEqual(webmail.mysql('SELECT 1'),'1\n')
+ def test_new_config_directory_is_readable_by_fpm_under_private_umask(self):
+  with tempfile.TemporaryDirectory()as directory,patch.object(webmail.os,'chown')as owner:
+   path=Path(directory)/'isolated-config';previous=os.umask(0o077)
+   try:webmail.create_config_directory(path,1234)
+   finally:os.umask(previous)
+   self.assertEqual(stat.S_IMODE(path.stat().st_mode),0o750);owner.assert_called_once_with(path,0,1234)
+   with self.assertRaises(FileExistsError):webmail.create_config_directory(path,1234)
  def test_unknown_exception_message_cannot_become_a_public_code(self):
   error=webmail.WebmailRefused('Fixture-Only-Pass');self.assertEqual(error.code,'webmail_configuration_conflict');self.assertNotIn('Fixture',str(error))
 if __name__=='__main__':unittest.main()
