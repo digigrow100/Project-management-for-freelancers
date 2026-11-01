@@ -27,6 +27,7 @@ POLICY=Path('/etc/housemysite-services/mail-policy.json')
 VHOST=Path('/etc/apache2/sites-available/server1-ssl.conf')
 POSTFIX=Path('/etc/postfix/main.cf')
 UNITROOT=Path('/etc/systemd/system')
+STAGE='initialization'
 SOURCES=('mail_accounts.py','mail_agent.py','mail_archive.py','mail_smtp_policy.py','mail_usage_broker.py','mail_delivery.py')
 class Refused(ValueError):pass
 
@@ -136,11 +137,18 @@ def render(raw):
     return text.replace('# BEGIN HOUSEMYSITE PRIVATE SERVICES',block+'    # BEGIN HOUSEMYSITE PRIVATE SERVICES',1).encode()
 
 def install(execute):
+    global STAGE
+    STAGE='source_integrity'
     stage=Path(__file__).resolve().parent;helpers=import_file(stage/'enroll_verified_mail.py','enrollment_helpers');proxy=import_file(stage/'relay_install_helpers.py','proxy_helpers')
     for name in SOURCES:proxy.trusted(stage/'server'/name)
     proxy.trusted(stage/'webmail_setup.py');webmail=import_file(stage/'webmail_setup.py','webmail_setup')
+    STAGE='webmail_preflight'
     need(webmail.existing(proxy.request)is None,'existing_mail_center_webmail_do_not_repeat')
-    webmail.preflight()
+    try:webmail.preflight()
+    except Exception as error:
+        code=getattr(error,'code',None)
+        raise Refused(code if code in webmail.SAFE_CODES else 'webmail_preflight_'+type(error).__name__)from None
+    STAGE='local_identity_and_settings'
     proxy.trusted(VHOST);proxy.trusted(POSTFIX)
     actor=pwd.getpwnam('hms-services');vmail=pwd.getpwnam('vmail');need(actor.pw_uid>=500,'service_identity')
     config=json.loads(helpers.read_private(helpers.SETTINGS,actor.pw_uid));need(config['state_dir']=='/var/lib/housemysite-services','state_directory')
@@ -148,12 +156,16 @@ def install(execute):
     need(not ROOT.exists() and not POLICY.exists() and not POLICY.is_symlink(),'existing_installation_do_not_repeat')
     units=unit_files();need(all(not(UNITROOT/name).exists()and not(UNITROOT/name).is_symlink()for name in units),'existing_unit_needs_review')
     username_path=Path(config['provider']['username_file']);need(username_path.is_relative_to(helpers.SETTINGS.parent),'provider_username_path')
+    STAGE='provider_metadata'
     username=helpers.read_private(username_path,actor.pw_uid).decode().strip();metadata=helpers.php({'mode':'inspect','username':username,'uid':vmail.pw_uid,'gid':vmail.pw_gid})
     mail_template=helpers.mail_template(metadata['samples'],vmail.pw_uid,vmail.pw_gid,vmail.pw_dir)
+    STAGE='reviewed_client_template'
     client_template=template(config,actor.pw_uid,actor.pw_gid,helpers)
     helpers.METHODS=['client_get','client_add','client_update','mail_domain_get','mail_domain_add','mail_domain_update','mail_domain_delete','mail_user_get','mail_user_add','mail_user_update','mail_user_delete','mail_alias_get','mail_alias_add','mail_alias_delete','client_get_by_username']
+    STAGE='provider_permissions'
     after,missing=helpers.permission_delta(metadata['functions'])
     need(not(Path(config['state_dir'])/'mail-backups').exists(),'backup_directory_exists')
+    STAGE='smtp_policy_preflight'
     relay_rules=run('postconf','-h','smtpd_relay_restrictions')+' '+run('postconf','-h','smtpd_recipient_restrictions');need(re.search(r'\b(?:reject|defer)_unauth_destination\b',relay_rules),'existing_relay_protection_required')
     space=os.statvfs(config['state_dir']);available=space.f_bavail*space.f_frsize-config['min_free_bytes'];pool=min(16384,available//(4*1048576));need(pool>=1024,'insufficient_reserved_capacity')
     policy={'server':1,'client_template':client_template,'mail_template':mail_template,'capacity':{'mailboxes':50,'mailbox_mb':102400,'total_mb':pool},'mx_host':'server1.housemysite.com','spf':'v=spf1 ip4:62.171.130.156 -all','sending_ready':True,'hourly_recipients':100,'daily_recipients':1000,'service_hourly_recipients':1000,'local_backups':{'maximum_bytes':pool*1048576},'usage_broker':True,'webmail_url':'https://server1.housemysite.com/housemysite-webmail/'}
@@ -161,6 +173,7 @@ def install(execute):
     need(run('postconf','-h','queue_directory').strip()=='/var/spool/postfix','postfix_queue_layout')
     need(not re.search(r'^[^=\n]+/smtpd_end_of_data_restrictions\s*=',run('postconf','-P'),re.M),'smtp_master_override_needs_review')
     postfix_before=POSTFIX.read_bytes();postfix_after=postfix_before+b'\n# HouseMySite scoped email recipient limits\nsmtpd_end_of_data_restrictions = check_policy_service unix:private/housemysite-mail-policy\n'
+    STAGE='edge_preflight'
     raw=VHOST.read_bytes();candidate=render(raw);
     candidate=candidate.replace(b'# BEGIN HOUSEMYSITE PRIVATE SERVICES',webmail.apache_block().encode()+b'    # BEGIN HOUSEMYSITE PRIVATE SERVICES',1)
     run('apache2ctl','configtest');need(run('systemctl','is-active','housemysite-services.service').strip()=='active','existing_services_not_active')
@@ -170,19 +183,29 @@ def install(execute):
     backup=Path('/root')/('hms-email-center-'+uuid.uuid4().hex);backup.mkdir(mode=0o700);atomic(backup/'original.conf',raw);atomic(backup/'postfix-original.cf',postfix_before);record={'vhost_before':sha(raw),'vhost_after':sha(candidate),'role_id':metadata['role_id'],'permissions_before':metadata['functions'],'permissions_after':after,'units':list(units),'files':list(SOURCES),'phase':'prepared','postfix_before':sha(postfix_before),'postfix_after':sha(postfix_after)};atomic(backup/'receipt.json',json.dumps(record).encode())
     changed=False;granted=False;smtp_changed=False
     try:
-        webmail_result=webmail.install(atomic,backup)
+        STAGE='webmail_installation'
+        try:webmail_result=webmail.install(atomic,backup)
+        except Exception as error:
+            code=getattr(error,'code',None)
+            raise Refused(code if code in webmail.SAFE_CODES else 'webmail_installation_'+type(error).__name__)from None
+        STAGE='private_agent_installation'
         ROOT.mkdir(mode=0o755);ROOT.chmod(0o755)
         for name in SOURCES:atomic(ROOT/name,(stage/'server'/name).read_bytes(),0o644)
         atomic(POLICY,json.dumps(policy).encode(),owner=(actor.pw_uid,actor.pw_gid))
         destination=Path(config['state_dir'])/'mail-backups';need(not destination.exists(),'backup_directory_exists');destination.mkdir(mode=0o700);os.chown(destination,actor.pw_uid,actor.pw_gid)
         if missing:helpers.php({'mode':'grant','username':username,'role_id':metadata['role_id'],'before':metadata['functions'],'after':after});granted=True
         for name,content in units.items():atomic(UNITROOT/name,content.encode(),0o644)
+        STAGE='service_unit_validation'
         run('systemd-analyze','verify',*[str(UNITROOT/name)for name in units]);run('systemctl','daemon-reload');run('systemctl','start','housemysite-email-center.service');run('systemctl','is-active','housemysite-email-center.service')
         run('systemctl','start','housemysite-mail-policy.socket','housemysite-mail-usage.socket')
+        STAGE='smtp_socket_health'
         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)as probe:
             probe.settimeout(10);probe.connect('/var/spool/postfix/private/housemysite-mail-policy');probe.sendall(b'request=smtpd_access_policy\nprotocol_state=END-OF-MESSAGE\nsasl_username=\n\n');need(probe.recv(128)==b'action=DUNNO\n\n','smtp_policy_health_failed')
+        STAGE='smtp_policy_activation'
         need(sha(POSTFIX.read_bytes())==sha(postfix_before),'concurrent_postfix_change');atomic(POSTFIX,postfix_after,stat.S_IMODE(POSTFIX.stat().st_mode));smtp_changed=True;run('postfix','check');run('systemctl','reload','postfix')
+        STAGE='edge_activation'
         need(sha(VHOST.read_bytes())==sha(raw),'concurrent_apache_change');atomic(VHOST,candidate,stat.S_IMODE(VHOST.stat().st_mode));changed=True;run('apache2ctl','configtest');run('systemctl','reload','apache2')
+        STAGE='signed_edge_health'
         owners=[name for name,row in json.loads(helpers.read_private(config['actors_file'],actor.pw_uid)).items()if row.get('enabled')is True and row.get('owner')is True and row.get('write')is True];need(owners,'owner_access_missing')
         key=helpers.read_private(config['portal_key_file'],actor.pw_uid).strip()
         for attempt in range(5):
@@ -195,18 +218,23 @@ def install(execute):
                 time.sleep(1)
         need(proxy.request('POST','/v1/mail',body,headers)[0]==403,'replay_not_denied')
         headers['X-HMS-Mail-Signature']='0'*64;need(proxy.request('POST','/v1/mail',body,headers)[0]==403,'bad_signature_not_denied')
+        STAGE='webmail_health'
         need(webmail.existing(proxy.request)is not None,'webmail_health_failed')
         current=proxy.request('HEAD','/');need((current[0],current[2])==(baseline[0],baseline[2]),'existing_root_changed')
         run('systemctl','enable','--now','housemysite-email-center.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket');record['phase']='installed';atomic(backup/'receipt.json',json.dumps(record).encode())
         return {'installed':True,'backup':str(backup),'storage_pool_mb':pool,'local_encrypted_backups':True,'offsite_backups':False,'webmail':webmail_result,'signed_worker':'active','mail_api_permissions_added':missing,'mailboxes_created':0,'dns_changes':0,'sending_policy_installed':True,'delivery_verified':False,'sending_enabled':False,'next':'Enable the reviewed portal release. Mailbox sending still needs an explicit signed control request and real delivery testing.'}
-    except Exception:
+    except Exception as error:
+        record['failure_stage']=STAGE
+        record['failure_code']=str(error)if isinstance(error,Refused)else type(error).__name__
+        atomic(backup/'receipt.json',json.dumps(record).encode())
         if smtp_changed and sha(POSTFIX.read_bytes())==sha(postfix_after):atomic(POSTFIX,postfix_before,stat.S_IMODE(POSTFIX.stat().st_mode));run('postfix','check');run('systemctl','reload','postfix')
         subprocess.run(['systemctl','disable','--now','housemysite-email-center.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
         if changed and sha(VHOST.read_bytes())==sha(candidate):atomic(VHOST,raw,stat.S_IMODE(VHOST.stat().st_mode));run('apache2ctl','configtest');run('systemctl','reload','apache2')
         if granted:
             try:helpers.php({'mode':'restore','username':username,'role_id':metadata['role_id'],'before':after,'after':metadata['functions']})
             except Exception:pass
-        record['phase']='stopped_review_required';atomic(backup/'receipt.json',json.dumps(record).encode());raise Refused('installation_stopped_preserve_'+backup.name)
+        record['phase']='stopped_review_required';atomic(backup/'receipt.json',json.dumps(record).encode())
+        failure=Refused('installation_stopped_preserve_'+backup.name);failure.reason=record['failure_code'];failure.backup=str(backup);raise failure from None
 def rollback(directory):
     # Installation rollback is allowed only before any provider allocation. Once
     # customer mail exists the SMTP limiter must remain until a reviewed migration.
@@ -237,4 +265,4 @@ def rollback(directory):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();group=parser.add_mutually_exclusive_group();group.add_argument('--execute',action='store_true');group.add_argument('--rollback-backup');args=parser.parse_args();os.umask(0o077)
     try:need(os.geteuid()==0,'root_required');print(json.dumps(rollback(args.rollback_backup)if args.rollback_backup else install(args.execute)))
-    except Exception as error:print(json.dumps({'installed':False,'code':str(error)if isinstance(error,Refused)else'preflight_or_installation_needs_review','mailboxes_created':0,'dns_changes':0,'sending_enabled':False}));raise SystemExit(1)
+    except Exception as error:print(json.dumps({'installed':False,'code':str(error)if isinstance(error,Refused)else'preflight_or_installation_needs_review','stage':STAGE,'error_type':type(error).__name__,'reason':getattr(error,'reason',None),'backup':getattr(error,'backup',None),'mailboxes_created':0,'dns_changes':0,'sending_enabled':False}));raise SystemExit(1)

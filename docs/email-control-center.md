@@ -96,3 +96,20 @@ migration is required; do not remove sender controls or restore stale SQLite fil
 An installation failure similarly preserves the private receipt and stops the new
 controls. Package/database preparation may remain; no unattended cleanup drops
 mailbox or webmail data. Review the saved state before a corrective batch.
+
+
+## Native database authentication correction (2026-11-01)
+
+The owner's first installation stopped during bare local mysql preflight. The
+combined read-only report shows existing services active, package simulation
+successful and new email/webmail paths absent. Do not rerun the old source pin.
+The corrected installer reads ISPConfig's root-protected
+`/usr/local/ispconfig/server/lib/mysql_clientdb.conf` as literal DATA only. It
+accepts only local host/admin user/password fields and rejects executable PHP,
+interpolation, insecure permissions and remote hosts. The client receives a0600
+inherited memory descriptor, with no credential in argv/environment/disk/output.
+It never changes root authentication or requests passwords in chat. Native-file
+absence retains a noninteractive clean socket route; failures are not retried.
+Fixed safe codes distinguish credential format/trust/auth/socket/client errors.
+The installer now reports failure stage and protected backup/reason metadata.
+Successful correction and real mail acceptance still require the owner's result.

@@ -259,6 +259,13 @@ bills were created. This source is not proof of VPS installation or real deliver
 flag OFF until the owner returns a successful installation JSON. Verify migration
 history before activation; do not reapply the migration. See `docs/email-control-center.md` for acceptance
 and guarded rollback; do not restore a stale whole database over live requests.
+Webmail database setup reads root-protected ISPConfig mysql_clientdb.conf as DATA
+only, never executes/includes it. Only literal local host/user/password fields
+are accepted. A private0600 inherited memory descriptor supplies client options;
+credentials never enter argv, environment, disk or diagnostic output. Root DB
+passwords/auth plugins/permissions are never reset. Without a native file, the
+noninteractive clean Unix-socket route is retained. Auth/socket/format errors have
+fixed safe codes and installer stage metadata; do not repeat old failed pins.
 CI installs the pinned browser tooling under RUNNER_TEMP, outside the portal
 package tree, so browser installation cannot re-resolve the locked app dependencies.
 Tests: `email-services-db.cjs`, `test_mail*.py`, browser
@@ -1459,3 +1466,17 @@ source resource, captures a destination safety backup and requires a signed
 service/point/destination request. Cross-service restores remain denied. Fixture
 checks cover removal of the old credential, replacement import and scope denial.
 No real mailbox or DNS operation was executed; rollout stays OFF pending VPS batch.
+
+
+## 2026-11-01 — Fix standalone webmail database authentication
+
+Owner's combined read-only result isolates failure to webmail preflight's bare
+mysql SELECT; MariaDB/Apache/Postfix/PHP/services are active, package simulation
+passes, all new agent/policy/webmail paths absent. Installer now uses existing
+root-protected ISPConfig admin credentials without evaluating PHP or changing
+root authentication. An inherited0600 memory-only option file prevents argv/env/
+disk disclosure; strict literal parsing rejects code/interpolation/remote hosts.
+The fixed installer preserves safe authentication error codes and phase/backup
+metadata. Tests cover real child FD inheritance, real disposable MariaDB option
+parsing, escaped passwords, safe failure output, cleanup and socket fallback.
+No live correction has run yet; new email controls stay OFF pending owner JSON.
