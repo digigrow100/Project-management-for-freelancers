@@ -8,6 +8,7 @@ import sys
 import time
 import unittest
 import uuid
+from unittest.mock import patch
 from types import SimpleNamespace
 from contextlib import contextmanager
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'scripts/email/server'))
@@ -32,6 +33,20 @@ class TransportAndInstall(unittest.TestCase):
   with self.assertRaises(Refused):call(value|{'actor':'client'})
   self.assertEqual(call(value),{'state':'fixture'})
   with self.assertRaises(sqlite3.IntegrityError):call(value)
+ def test_webmail_failure_reports_fixed_auth_code_and_exact_stage(self):
+  def refuse():raise webmail.WebmailRefused('mysql_admin_auth_failed')
+  proxy=SimpleNamespace(trusted=lambda *a:None,request=lambda *a:None)
+  module=SimpleNamespace(existing=lambda *a:None,preflight=refuse,SAFE_CODES=webmail.SAFE_CODES)
+  with patch.object(installer,'import_file',side_effect=[object(),proxy,module]):
+   with self.assertRaises(installer.Refused)as error:installer.install(False)
+  self.assertEqual(str(error.exception),'mysql_admin_auth_failed');self.assertEqual(installer.STAGE,'webmail_preflight')
+ def test_unexpected_webmail_failure_does_not_publish_exception_text(self):
+  def refuse():raise RuntimeError('fixture-private-password')
+  proxy=SimpleNamespace(trusted=lambda *a:None,request=lambda *a:None)
+  module=SimpleNamespace(existing=lambda *a:None,preflight=refuse,SAFE_CODES=webmail.SAFE_CODES)
+  with patch.object(installer,'import_file',side_effect=[object(),proxy,module]):
+   with self.assertRaises(installer.Refused)as error:installer.install(False)
+  self.assertEqual(str(error.exception),'webmail_preflight_RuntimeError');self.assertNotIn('password',str(error.exception))
  def test_installer_rejects_changed_vhost_before_writing(self):
   raw=b'<VirtualHost *:443>\nServerName server1.housemysite.com\nSSLProxyVerify require\nSSLProxyCheckPeerName On\nSSLProxyCheckPeerExpire On\n# BEGIN HOUSEMYSITE PRIVATE SERVICES\nProxyPassMatch "^/v1/services$" "https://127.0.0.1:18443"\n</VirtualHost>\n'
   rendered=installer.render(raw);self.assertIn(b'^/v1/mail$',rendered);self.assertIn(b'SSLProxyVerify require',rendered);self.assertIn(b'18443',rendered)
