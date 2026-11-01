@@ -91,6 +91,35 @@ unrelated provider accounts keep their current policy; this is not whole-VM egre
 
 ## Rollback and uncertain results
 
+### Reviewed partial-install resume
+
+The owner's first socket-admin installer reached `smtp_socket_health` then stopped
+with `smtp_policy_health_failed`. Its backup is
+`/root/hms-email-center-b68734237a794984a4b3c3ec4a0a4201`.
+Read-only follow-up confirmed unchanged reviewed runtime code, all policy tables,
+inactive new control services, active Apache/Postfix and a direct policy result
+of DUNNO. This does not prove whether startup timing, stream framing or the
+socket-activated environment caused the original failure.
+
+Use the newly reviewed launcher with BOTH `-ReviewedCommit <exactSHA>` and
+`-ResumeBackup /root/hms-email-center-<exactReceiptUUID>` once. Do not use a fresh
+installation or the old rollback command for this stopped partial installation.
+Resume only accepts that exact stopped SMTP health phase, root-private backups,
+matching original and intended Apache/Postfix digests, unchanged runtime/unit
+contents, no unit overrides, stopped control services and empty account/box/job
+tables. Customer data or drift refuses before activation. An exclusive lock and
+preserved pre-resume receipt prevent overlapping/repeated attempts.
+
+It reuses the installed Roundcube package, database, configuration and private mail
+state. It restores only the previously reviewed provider permission delta and
+calls the same activation checks as fresh installation. SMTP readiness consumes
+the full bounded protocol frame with a30-second total wait; only empty-user health
+probes retry. No message is sent. Signed API, replay/bad-signature, webmail and
+unchanged-root checks still precede enabling. On failure, changed configuration
+is restored and new controls are stopped; customer state/packages/databases remain.
+Preserve the result and do not repeat a failed resume. The portal flag stays OFF
+until an actual successful installation/resume JSON is returned.
+
 Turning off the portal flag returns the old page without deleting new customer data.
 Keep the scoped SMTP limiter in place once new customer mail exists. Never blindly
 retry uncertain provider operations or IMAP imports. Read-only reconciliation handles

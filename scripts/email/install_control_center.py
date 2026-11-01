@@ -4,6 +4,7 @@ mailboxes, signing keys and registrar routes are preserved. No provider resource
 or DNS operation is performed here. Private backups and a rollback receipt remain.
 """
 import argparse
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -136,6 +137,59 @@ def render(raw):
 '''
     return text.replace('# BEGIN HOUSEMYSITE PRIVATE SERVICES',block+'    # BEGIN HOUSEMYSITE PRIVATE SERVICES',1).encode()
 
+def smtp_health(timeout=30):
+    """Read complete bounded policy frames; retry only empty-user health probes."""
+    deadline=time.monotonic()+timeout;last='timeout'
+    while time.monotonic()<deadline:
+        try:
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)as probe:
+                probe.settimeout(max(.01,min(3,deadline-time.monotonic())))
+                probe.connect('/var/spool/postfix/private/housemysite-mail-policy')
+                probe.sendall(b'request=smtpd_access_policy\nprotocol_state=END-OF-MESSAGE\nsasl_username=\n\n')
+                answer=b''
+                while b'\n\n'not in answer and len(answer)<512:
+                    probe.settimeout(max(.01,min(3,deadline-time.monotonic())))
+                    part=probe.recv(512-len(answer))
+                    if not part:break
+                    answer+=part
+                    if time.monotonic()>=deadline:break
+                if answer==b'action=DUNNO\n\n':return
+                last='closed'if not answer else'temporary'if answer.startswith(b'action=451 ')else'unexpected'
+        except TimeoutError:last='timeout'
+        except OSError:last='socket'
+        if time.monotonic()<deadline:time.sleep(max(0,min(.5,deadline-time.monotonic())))
+    raise Refused('smtp_policy_health_failed_'+last)
+
+def activate_existing(backup,record,config,actor,helpers,proxy,webmail,raw,candidate,postfix_before,postfix_after,baseline,webmail_result,units,pool,missing,flags):
+    global STAGE
+    STAGE='service_unit_validation'
+    run('systemd-analyze','verify',*[str(UNITROOT/name)for name in units]);run('systemctl','daemon-reload');run('systemctl','start','housemysite-email-center.service');run('systemctl','is-active','housemysite-email-center.service')
+    run('systemctl','start','housemysite-mail-policy.socket','housemysite-mail-usage.socket')
+    STAGE='smtp_socket_health'
+    smtp_health()
+    STAGE='smtp_policy_activation'
+    need(sha(POSTFIX.read_bytes())==sha(postfix_before),'concurrent_postfix_change');atomic(POSTFIX,postfix_after,stat.S_IMODE(POSTFIX.stat().st_mode));flags['smtp']=True;run('postfix','check');run('systemctl','reload','postfix')
+    STAGE='edge_activation'
+    need(sha(VHOST.read_bytes())==sha(raw),'concurrent_apache_change');atomic(VHOST,candidate,stat.S_IMODE(VHOST.stat().st_mode));flags['apache']=True;run('apache2ctl','configtest');run('systemctl','reload','apache2')
+    STAGE='signed_edge_health'
+    owners=[name for name,row in json.loads(helpers.read_private(config['actors_file'],actor.pw_uid)).items()if row.get('enabled')is True and row.get('owner')is True and row.get('write')is True];need(owners,'owner_access_missing')
+    key=helpers.read_private(config['portal_key_file'],actor.pw_uid).strip()
+    for attempt in range(5):
+        body=json.dumps({'schema':1,'actor':owners[0],'nonce':str(uuid.uuid4()),'expires':int(time.time())+60,'command':{'action':'snapshot','service':str(uuid.uuid4()),'client':str(uuid.uuid4()),'domain':'mail-health.example.invalid'}}).encode()
+        headers={'Content-Type':'application/json','X-HMS-Mail-Signature':hmac.new(key,b'hms:mail-portal:v1:'+body,hashlib.sha256).hexdigest()}
+        try:
+            status,answer,_=proxy.request('POST','/v1/mail',body,headers);need(status==200 and json.loads(answer).get('state')=='not_enrolled','signed_mail_health_failed');break
+        except Exception:
+            if attempt==4:raise
+            time.sleep(1)
+    need(proxy.request('POST','/v1/mail',body,headers)[0]==403,'replay_not_denied')
+    headers['X-HMS-Mail-Signature']='0'*64;need(proxy.request('POST','/v1/mail',body,headers)[0]==403,'bad_signature_not_denied')
+    STAGE='webmail_health'
+    need(webmail.existing(proxy.request)is not None,'webmail_health_failed')
+    current=proxy.request('HEAD','/');need((current[0],current[2])==(baseline[0],baseline[2]),'existing_root_changed')
+    run('systemctl','enable','--now','housemysite-email-center.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket');record['phase']='installed';atomic(backup/'receipt.json',json.dumps(record).encode())
+    return {'installed':True,'backup':str(backup),'storage_pool_mb':pool,'local_encrypted_backups':True,'offsite_backups':False,'webmail':webmail_result,'signed_worker':'active','mail_api_permissions_added':missing,'mailboxes_created':0,'dns_changes':0,'sending_policy_installed':True,'delivery_verified':False,'sending_enabled':False,'next':'Enable the reviewed portal release. Mailbox sending still needs an explicit signed control request and real delivery testing.'}
+
 def install(execute):
     global STAGE
     STAGE='source_integrity'
@@ -181,7 +235,7 @@ def install(execute):
     if not execute:return {'plan_only':True,'storage_pool_mb':pool,'local_encrypted_backups':True,'sending_enabled':False,'mailboxes_created':0,'dns_changes':0}
     baseline=proxy.request('HEAD','/')
     backup=Path('/root')/('hms-email-center-'+uuid.uuid4().hex);backup.mkdir(mode=0o700);atomic(backup/'original.conf',raw);atomic(backup/'postfix-original.cf',postfix_before);record={'vhost_before':sha(raw),'vhost_after':sha(candidate),'role_id':metadata['role_id'],'permissions_before':metadata['functions'],'permissions_after':after,'units':list(units),'files':list(SOURCES),'phase':'prepared','postfix_before':sha(postfix_before),'postfix_after':sha(postfix_after)};atomic(backup/'receipt.json',json.dumps(record).encode())
-    changed=False;granted=False;smtp_changed=False
+    granted=False;flags={'smtp':False,'apache':False}
     try:
         STAGE='webmail_installation'
         try:webmail_result=webmail.install(atomic,backup)
@@ -195,46 +249,102 @@ def install(execute):
         destination=Path(config['state_dir'])/'mail-backups';need(not destination.exists(),'backup_directory_exists');destination.mkdir(mode=0o700);os.chown(destination,actor.pw_uid,actor.pw_gid)
         if missing:helpers.php({'mode':'grant','username':username,'role_id':metadata['role_id'],'before':metadata['functions'],'after':after});granted=True
         for name,content in units.items():atomic(UNITROOT/name,content.encode(),0o644)
-        STAGE='service_unit_validation'
-        run('systemd-analyze','verify',*[str(UNITROOT/name)for name in units]);run('systemctl','daemon-reload');run('systemctl','start','housemysite-email-center.service');run('systemctl','is-active','housemysite-email-center.service')
-        run('systemctl','start','housemysite-mail-policy.socket','housemysite-mail-usage.socket')
-        STAGE='smtp_socket_health'
-        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)as probe:
-            probe.settimeout(10);probe.connect('/var/spool/postfix/private/housemysite-mail-policy');probe.sendall(b'request=smtpd_access_policy\nprotocol_state=END-OF-MESSAGE\nsasl_username=\n\n');need(probe.recv(128)==b'action=DUNNO\n\n','smtp_policy_health_failed')
-        STAGE='smtp_policy_activation'
-        need(sha(POSTFIX.read_bytes())==sha(postfix_before),'concurrent_postfix_change');atomic(POSTFIX,postfix_after,stat.S_IMODE(POSTFIX.stat().st_mode));smtp_changed=True;run('postfix','check');run('systemctl','reload','postfix')
-        STAGE='edge_activation'
-        need(sha(VHOST.read_bytes())==sha(raw),'concurrent_apache_change');atomic(VHOST,candidate,stat.S_IMODE(VHOST.stat().st_mode));changed=True;run('apache2ctl','configtest');run('systemctl','reload','apache2')
-        STAGE='signed_edge_health'
-        owners=[name for name,row in json.loads(helpers.read_private(config['actors_file'],actor.pw_uid)).items()if row.get('enabled')is True and row.get('owner')is True and row.get('write')is True];need(owners,'owner_access_missing')
-        key=helpers.read_private(config['portal_key_file'],actor.pw_uid).strip()
-        for attempt in range(5):
-            body=json.dumps({'schema':1,'actor':owners[0],'nonce':str(uuid.uuid4()),'expires':int(time.time())+60,'command':{'action':'snapshot','service':str(uuid.uuid4()),'client':str(uuid.uuid4()),'domain':'mail-health.example.invalid'}}).encode()
-            headers={'Content-Type':'application/json','X-HMS-Mail-Signature':hmac.new(key,b'hms:mail-portal:v1:'+body,hashlib.sha256).hexdigest()}
-            try:
-                status,answer,_=proxy.request('POST','/v1/mail',body,headers);need(status==200 and json.loads(answer).get('state')=='not_enrolled','signed_mail_health_failed');break
-            except Exception:
-                if attempt==4:raise
-                time.sleep(1)
-        need(proxy.request('POST','/v1/mail',body,headers)[0]==403,'replay_not_denied')
-        headers['X-HMS-Mail-Signature']='0'*64;need(proxy.request('POST','/v1/mail',body,headers)[0]==403,'bad_signature_not_denied')
-        STAGE='webmail_health'
-        need(webmail.existing(proxy.request)is not None,'webmail_health_failed')
-        current=proxy.request('HEAD','/');need((current[0],current[2])==(baseline[0],baseline[2]),'existing_root_changed')
-        run('systemctl','enable','--now','housemysite-email-center.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket');record['phase']='installed';atomic(backup/'receipt.json',json.dumps(record).encode())
-        return {'installed':True,'backup':str(backup),'storage_pool_mb':pool,'local_encrypted_backups':True,'offsite_backups':False,'webmail':webmail_result,'signed_worker':'active','mail_api_permissions_added':missing,'mailboxes_created':0,'dns_changes':0,'sending_policy_installed':True,'delivery_verified':False,'sending_enabled':False,'next':'Enable the reviewed portal release. Mailbox sending still needs an explicit signed control request and real delivery testing.'}
+        return activate_existing(backup,record,config,actor,helpers,proxy,webmail,raw,candidate,postfix_before,postfix_after,baseline,webmail_result,units,pool,missing,flags)
     except Exception as error:
         record['failure_stage']=STAGE
         record['failure_code']=str(error)if isinstance(error,Refused)else type(error).__name__
         atomic(backup/'receipt.json',json.dumps(record).encode())
-        if smtp_changed and sha(POSTFIX.read_bytes())==sha(postfix_after):atomic(POSTFIX,postfix_before,stat.S_IMODE(POSTFIX.stat().st_mode));run('postfix','check');run('systemctl','reload','postfix')
+        if flags['smtp'] and sha(POSTFIX.read_bytes())==sha(postfix_after):atomic(POSTFIX,postfix_before,stat.S_IMODE(POSTFIX.stat().st_mode));run('postfix','check');run('systemctl','reload','postfix')
         subprocess.run(['systemctl','disable','--now','housemysite-email-center.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
-        if changed and sha(VHOST.read_bytes())==sha(candidate):atomic(VHOST,raw,stat.S_IMODE(VHOST.stat().st_mode));run('apache2ctl','configtest');run('systemctl','reload','apache2')
+        if flags['apache'] and sha(VHOST.read_bytes())==sha(candidate):atomic(VHOST,raw,stat.S_IMODE(VHOST.stat().st_mode));run('apache2ctl','configtest');run('systemctl','reload','apache2')
         if granted:
             try:helpers.php({'mode':'restore','username':username,'role_id':metadata['role_id'],'before':after,'after':metadata['functions']})
             except Exception:pass
         record['phase']='stopped_review_required';atomic(backup/'receipt.json',json.dumps(record).encode())
         failure=Refused('installation_stopped_preserve_'+backup.name);failure.reason=record['failure_code'];failure.backup=str(backup);raise failure from None
+def resume_empty_state(path):
+    need(path.is_file()and not path.is_symlink(),'resume_state_missing')
+    with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=5)as db:
+        for table in ('mail_accounts','mail_boxes','mail_jobs'):
+            need(not db.execute('SELECT 1 FROM '+table+' LIMIT 1').fetchone(),'resume_customer_state_present')
+
+def resume(directory):
+    fd=os.open('/run/lock/housemysite-email-resume.lock',os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    try:
+        info=os.fstat(fd);need(stat.S_ISREG(info.st_mode)and info.st_uid==0 and stat.S_IMODE(info.st_mode)==0o600,'resume_lock_permissions')
+        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        return _resume(directory)
+    finally:os.close(fd)
+
+def resume_backup(directory):
+    backup=Path(directory)
+    need(backup.parent==Path('/root')and re.fullmatch('hms-email-center-[a-f0-9]{32}',backup.name)and backup.resolve()==backup,'resume_backup_path')
+    info=backup.stat();need(info.st_uid==0 and stat.S_IMODE(info.st_mode)==0o700,'resume_backup_permissions')
+    return backup
+
+def trusted_directory(directory):
+    for path in (directory,*directory.parents):
+        info=path.lstat();need(stat.S_ISDIR(info.st_mode)and info.st_uid==0 and not info.st_mode&0o022,'resume_runtime_directory')
+
+def _resume(directory):
+    global STAGE
+    STAGE='resume_preflight'
+    backup=resume_backup(directory)
+    stage=Path(__file__).resolve().parent;helpers=import_file(stage/'enroll_verified_mail.py','enrollment_helpers');proxy=import_file(stage/'relay_install_helpers.py','proxy_helpers')
+    record=json.loads(helpers.read_private(backup/'receipt.json',0))
+    need(record.get('phase')=='stopped_review_required'and record.get('failure_stage')=='smtp_socket_health'and record.get('failure_code')=='smtp_policy_health_failed','resume_receipt_state')
+    need(not(backup/'pre-resume-receipt.json').exists(),'resume_already_attempted')
+    raw=helpers.read_private(backup/'original.conf',0);postfix_before=helpers.read_private(backup/'postfix-original.cf',0)
+    need(sha(raw)==record['vhost_before']and sha(postfix_before)==record['postfix_before'],'resume_backup_digest')
+    for path in (VHOST,POSTFIX):proxy.trusted(path)
+    need(sha(VHOST.read_bytes())==sha(raw)and sha(POSTFIX.read_bytes())==sha(postfix_before),'resume_configuration_changed')
+    units=unit_files();need(record['units']==list(units)and record['files']==list(SOURCES),'resume_inventory_changed')
+    for name,content in units.items():
+        path=UNITROOT/name;proxy.trusted(path);need(path.read_bytes()==content.encode(),'resume_unit_changed')
+        inspected=name.replace('@.','@hms-review.')
+        need(not run('systemctl','show',inspected,'--property=DropInPaths','--value').strip(),'resume_unit_override')
+    for name in ('housemysite-email-center.service','housemysite-email-worker.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket'):
+        need(run('systemctl','show',name,'--property=ActiveState','--value').strip()in('inactive','failed'),'resume_service_running')
+    trusted_directory(ROOT)
+    for name in SOURCES:
+        proxy.trusted(stage/'server'/name);proxy.trusted(ROOT/name)
+        need(sha((ROOT/name).read_bytes())==sha((stage/'server'/name).read_bytes()),'resume_runtime_changed')
+    actor=pwd.getpwnam('hms-services');vmail=pwd.getpwnam('vmail')
+    config=json.loads(helpers.read_private(helpers.SETTINGS,actor.pw_uid));need(config['state_dir']=='/var/lib/housemysite-services','state_directory')
+    state=Path(config['state_dir'])/'mail-services.sqlite';resume_empty_state(state)
+    policy=json.loads(helpers.read_private(POLICY,actor.pw_uid));pool=policy['capacity']['total_mb'];need(type(pool)is int and 1024<=pool<=16384 and policy['server']==1 and policy['sending_ready']is True,'resume_policy_changed')
+    space=os.statvfs(config['state_dir']);need(space.f_bavail*space.f_frsize>=config['min_free_bytes']+pool*1048576,'resume_capacity_unavailable')
+    proxy.trusted(stage/'webmail_setup.py');webmail=import_file(stage/'webmail_setup.py','webmail_setup')
+    for path in (webmail.CONFIG,webmail.POOL,webmail.PUBLIC/'index.php'):proxy.trusted(path)
+    need(webmail.CONFIG.read_bytes()==helpers.read_private(backup/'roundcube-recovery-config.php',0),'resume_webmail_changed')
+    candidate=render(raw).replace(b'# BEGIN HOUSEMYSITE PRIVATE SERVICES',webmail.apache_block().encode()+b'    # BEGIN HOUSEMYSITE PRIVATE SERVICES',1)
+    postfix_after=postfix_before+b'\n# HouseMySite scoped email recipient limits\nsmtpd_end_of_data_restrictions = check_policy_service unix:private/housemysite-mail-policy\n'
+    need(sha(candidate)==record['vhost_after']and sha(postfix_after)==record['postfix_after'],'resume_activation_digest')
+    username=helpers.read_private(config['provider']['username_file'],actor.pw_uid).decode().strip()
+    metadata=helpers.php({'mode':'inspect','username':username,'uid':vmail.pw_uid,'gid':vmail.pw_gid})
+    need(metadata['role_id']==record['role_id']and metadata['functions']==record['permissions_before'],'resume_provider_permissions_changed')
+    helpers.METHODS=['client_get','client_add','client_update','mail_domain_get','mail_domain_add','mail_domain_update','mail_domain_delete','mail_user_get','mail_user_add','mail_user_update','mail_user_delete','mail_alias_get','mail_alias_add','mail_alias_delete','client_get_by_username']
+    after,missing=helpers.permission_delta(metadata['functions']);need(after==record['permissions_after'],'resume_permission_delta_changed')
+    run('apache2ctl','configtest');run('postfix','check');run('systemctl','is-active','housemysite-services.service')
+    baseline=proxy.request('HEAD','/');webmail_result={'url':'https://server1.housemysite.com/housemysite-webmail/','existing':True,'internal_database_created':False}
+    flags={'smtp':False,'apache':False};granted=False
+    atomic(backup/'pre-resume-receipt.json',json.dumps(record).encode());record['phase']='resuming';atomic(backup/'receipt.json',json.dumps(record).encode())
+    try:
+        if missing:helpers.php({'mode':'grant','username':username,'role_id':record['role_id'],'before':record['permissions_before'],'after':after});granted=True
+        result=activate_existing(backup,record,config,actor,helpers,proxy,webmail,raw,candidate,postfix_before,postfix_after,baseline,webmail_result,units,pool,missing,flags)
+        return dict(result,resumed=True,packages_reinstalled=False,database_recreated=False)
+    except Exception as error:
+        failure_stage=STAGE
+        subprocess.run(['systemctl','disable','--now','housemysite-email-center.service','housemysite-email-worker.timer','housemysite-mail-policy.socket','housemysite-mail-usage.socket'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+        if flags['apache']and sha(VHOST.read_bytes())==sha(candidate):atomic(VHOST,raw,stat.S_IMODE(VHOST.stat().st_mode));run('apache2ctl','configtest');run('systemctl','reload','apache2')
+        if flags['smtp']and sha(POSTFIX.read_bytes())==sha(postfix_after):atomic(POSTFIX,postfix_before,stat.S_IMODE(POSTFIX.stat().st_mode));run('postfix','check');run('systemctl','reload','postfix')
+        if granted:
+            try:helpers.php({'mode':'restore','username':username,'role_id':record['role_id'],'before':after,'after':record['permissions_before']})
+            except Exception:pass
+        record.update(phase='stopped_review_required',failure_stage='resume_'+failure_stage,failure_code=str(error)if isinstance(error,Refused)else type(error).__name__)
+        atomic(backup/'receipt.json',json.dumps(record).encode())
+        failure=Refused('resume_stopped_preserve_'+backup.name);failure.backup=str(backup);failure.reason=record['failure_code'];raise failure from None
+
 def rollback(directory):
     # Installation rollback is allowed only before any provider allocation. Once
     # customer mail exists the SMTP limiter must remain until a reviewed migration.
@@ -263,6 +373,6 @@ def rollback(directory):
     return {'rolled_back':True,'customer_data_deleted':False,'private_keys_preserved':True,'packages_preserved':True,'state_preserved':True,'next':'Keep the portal independent-email flag disabled. Preserve the backup and source for review.'}
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();group=parser.add_mutually_exclusive_group();group.add_argument('--execute',action='store_true');group.add_argument('--rollback-backup');args=parser.parse_args();os.umask(0o077)
-    try:need(os.geteuid()==0,'root_required');print(json.dumps(rollback(args.rollback_backup)if args.rollback_backup else install(args.execute)))
+    parser=argparse.ArgumentParser();group=parser.add_mutually_exclusive_group();group.add_argument('--execute',action='store_true');group.add_argument('--rollback-backup');group.add_argument('--resume-backup');args=parser.parse_args();os.umask(0o077)
+    try:need(os.geteuid()==0,'root_required');print(json.dumps(rollback(args.rollback_backup)if args.rollback_backup else resume(args.resume_backup)if args.resume_backup else install(args.execute)))
     except Exception as error:print(json.dumps({'installed':False,'code':str(error)if isinstance(error,Refused)else'preflight_or_installation_needs_review','stage':STAGE,'error_type':type(error).__name__,'reason':getattr(error,'reason',None),'backup':getattr(error,'backup',None),'mailboxes_created':0,'dns_changes':0,'sending_enabled':False}));raise SystemExit(1)
