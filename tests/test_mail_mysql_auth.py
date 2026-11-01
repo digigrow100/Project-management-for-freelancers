@@ -38,7 +38,7 @@ class NativeMysql(unittest.TestCase):
  def test_failed_auth_reports_only_fixed_code_and_closes_descriptor(self):
   seen={}
   def fail(args,**kwargs):seen['fd']=kwargs['pass_fds'][0];return subprocess.CompletedProcess(args,1,b'',b'ERROR 1045 (28000): Fixture-Only-Pass should never be returned')
-  with patch.object(webmail,'CLIENTDB',SimpleNamespace(exists=lambda:True,is_symlink=lambda:False)),patch.object(webmail,'native_text',return_value=FIXTURE),patch.object(webmail.subprocess,'run',side_effect=fail):
+  with patch.object(webmail,'CLIENTDB',SimpleNamespace(exists=lambda:True,is_symlink=lambda:False)),patch.object(webmail,'native_text',return_value=FIXTURE),patch.object(webmail.subprocess,'run',side_effect=fail),patch.object(webmail.os,'geteuid',return_value=1000):
    with self.assertRaises(webmail.WebmailRefused)as error:webmail.mysql('SELECT 1')
   self.assertEqual(str(error.exception),'mysql_admin_auth_failed');self.assertNotIn('Fixture',str(error.exception))
   with self.assertRaises(OSError):os.fstat(seen['fd'])
@@ -78,4 +78,47 @@ class NativeMysql(unittest.TestCase):
    with self.assertRaises(FileExistsError):webmail.create_config_directory(path,1234)
  def test_unknown_exception_message_cannot_become_a_public_code(self):
   error=webmail.WebmailRefused('Fixture-Only-Pass');self.assertEqual(error.code,'webmail_configuration_conflict');self.assertNotIn('Fixture',str(error))
+
+class LocalSocketAdmin(unittest.TestCase):
+ def result(self,output=b'1\n1\n',code=0,error=b''):
+  return subprocess.CompletedProcess([],code,output,error)
+ def test_verified_socket_identity_executes_once_without_password_or_inherited_fd(self):
+  responses=[self.result(code=1,error=b'ERROR 1045 (28000): Access denied for user'),self.result(),self.result(b'result\n')]
+  with patch.object(webmail,'CLIENTDB',SimpleNamespace(exists=lambda:True,is_symlink=lambda:False)),patch.object(webmail,'native_text',return_value=FIXTURE),patch.object(webmail.os,'geteuid',return_value=0),patch.object(webmail.subprocess,'run',side_effect=responses)as run:
+   self.assertEqual(webmail.mysql('SELECT fixture;','hms_webmail'),'result\n')
+  calls=run.call_args_list;self.assertEqual(len(calls),3)
+  for call in calls[1:]:
+   self.assertEqual(call.args[0][:5],['/usr/sbin/runuser','-u','mysql','--','/usr/bin/mysql'])
+   self.assertIn('--no-defaults',call.args[0]);self.assertIn('--skip-password',call.args[0]);self.assertIn('--protocol=socket',call.args[0]);self.assertEqual(call.kwargs['pass_fds'],())
+   self.assertNotIn('Fixture',str(call));self.assertNotIn('MYSQL_PWD',call.kwargs['env']);self.assertEqual(call.kwargs['env']['HOME'],'/nonexistent')
+  self.assertIn(b"CURRENT_USER()='mysql@localhost'",calls[1].kwargs['input'])
+  self.assertEqual(calls[2].kwargs['input'],b'SELECT fixture;');self.assertEqual(calls[2].args[0][-1],'hms_webmail')
+  with self.assertRaises(OSError):os.fstat(calls[0].kwargs['pass_fds'][0])
+ def test_wrong_identity_or_missing_admin_permissions_never_receives_operation(self):
+  for output in (b'0\n1\n',b'1\n0\n',b'1\n1\nextra',b''):
+   with self.subTest(output=output),patch.object(webmail.os,'geteuid',return_value=0),patch.object(webmail.subprocess,'run',return_value=self.result(output))as run:
+    with self.assertRaises(webmail.WebmailRefused)as error:webmail.local_admin_mysql('CREATE DATABASE must_not_run;')
+    self.assertEqual(error.exception.code,'mysql_local_admin_unverified');self.assertEqual(run.call_count,1);self.assertNotIn(b'CREATE DATABASE',run.call_args.kwargs['input'])
+ def test_nonroot_cannot_request_identity_switch(self):
+  with patch.object(webmail.os,'geteuid',return_value=1000),patch.object(webmail.subprocess,'run')as run:
+   with self.assertRaises(webmail.WebmailRefused):webmail.local_admin_mysql('SELECT 1')
+   run.assert_not_called()
+ def test_failed_socket_login_never_receives_operation_or_exposes_error(self):
+  with patch.object(webmail.os,'geteuid',return_value=0),patch.object(webmail.subprocess,'run',return_value=self.result(code=1,error=b'ERROR 1045 (28000): sensitive fixture'))as run:
+   with self.assertRaises(webmail.WebmailRefused)as error:webmail.local_admin_mysql('CREATE DATABASE must_not_run;')
+   self.assertEqual(str(error.exception),'mysql_admin_auth_failed');self.assertEqual(run.call_count,1)
+ def test_failed_mutation_is_not_retried(self):
+  responses=[self.result(),self.result(code=1,error=b'ERROR 2013 (HY000): uncertain fixture SQL')]
+  with patch.object(webmail.os,'geteuid',return_value=0),patch.object(webmail.subprocess,'run',side_effect=responses)as run:
+   with self.assertRaises(webmail.WebmailRefused)as error:webmail.local_admin_mysql('CREATE DATABASE fixture;')
+   self.assertEqual(str(error.exception),'mysql_operation_failed');self.assertEqual(run.call_count,2)
+ def test_sql_error_timeout_and_socket_failure_never_trigger_fallback(self):
+  failures=[self.result(code=1,error=b'ERROR 1045 (28000) at line 1: execution error'),self.result(code=1,error=b'ERROR 2002 (HY000): socket missing'),self.result(code=1,error=b'ERROR 1064 (42000) at line 1: SQL error')]
+  for failure in failures:
+   with self.subTest(stderr=failure.stderr),patch.object(webmail,'CLIENTDB',SimpleNamespace(exists=lambda:False,is_symlink=lambda:False)),patch.object(webmail.subprocess,'run',return_value=failure),patch.object(webmail,'local_admin_mysql')as fallback:
+    with self.assertRaises(webmail.WebmailRefused):webmail.mysql('CREATE DATABASE fixture;')
+    fallback.assert_not_called()
+  with patch.object(webmail,'CLIENTDB',SimpleNamespace(exists=lambda:False,is_symlink=lambda:False)),patch.object(webmail.subprocess,'run',side_effect=subprocess.TimeoutExpired('mysql',60)),patch.object(webmail,'local_admin_mysql')as fallback:
+   with self.assertRaises(webmail.WebmailRefused):webmail.mysql('CREATE DATABASE fixture;')
+   fallback.assert_not_called()
 if __name__=='__main__':unittest.main()

@@ -266,6 +266,13 @@ credentials never enter argv, environment, disk or diagnostic output. Root DB
 passwords/auth plugins/permissions are never reset. Without a native file, the
 noninteractive clean Unix-socket route is retained. Auth/socket/format errors have
 fixed safe codes and installer stage metadata; do not repeat old failed pins.
+If the native connection is explicitly rejected at login, root installation can
+use the existing OS `mysql` Unix-socket identity. Before each operation it verifies
+`CURRENT_USER()` and the account's admin privileges with read-only SQL. The fixed
+`runuser` command receives no credential FD and a clean environment. Failed SQL,
+timeouts and uncertain operations never trigger another execution. This route
+does not reset passwords, edit grants or stop MariaDB. Owner verified this local
+admin login on 2026-11-01; full VPS installation is still pending.
 CI installs the pinned browser tooling under RUNNER_TEMP, outside the portal
 package tree, so browser installation cannot re-resolve the locked app dependencies.
 Tests: `email-services-db.cjs`, `test_mail*.py`, browser
@@ -1482,3 +1489,14 @@ parsing, escaped passwords, safe failure output, cleanup and socket fallback.
 New webmail config directories explicitly receive0750 for the isolated FPM group
 despite installer umask0077; existing directories are never chmodded.
 No live correction has run yet; new email controls stay OFF pending owner JSON.
+
+## 2026-11-01 — Use verified local MariaDB admin for webmail setup
+
+Owner confirmed the existing `mysql@localhost` socket identity and required admin
+privileges after root and saved ISPConfig credentials were rejected. Webmail
+setup can now use that identity only after a connection-level auth rejection.
+It rechecks identity/privileges, excludes credential descriptors and inherited
+environment, and never retries a submitted SQL failure or timeout. No root
+password reset, new recovery account, grant edit or database restart is needed
+to establish access. Existing isolated webmail creation remains the only SQL
+installation work. Email release gate stays OFF pending successful VPS JSON.
