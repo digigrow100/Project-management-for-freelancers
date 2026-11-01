@@ -35,6 +35,18 @@ instead of silently deleting recovery points. Optional AWS S3 enrollment is sepa
 
 ## Operator release sequence
 
+The owner verified on 2026-11-01 that the existing OS `mysql` account can connect
+as `mysql@localhost` with Super/Create_user/Grant privileges. Root and saved
+ISPConfig credentials were rejected (1045); no working password was recovered
+from saved configuration or the inspected installer logs. Do not reset MariaDB
+passwords or stop the database to resolve this installation blocker.
+`webmail_setup.py` retains the protected native route first. Only an explicit
+connection-level auth rejection allows the fixed root-to-OS-mysql local socket
+route, after a fresh read-only identity/admin verification. It uses no password,
+does not inherit the native credential FD, and sends SQL once. SQL errors and
+timeouts do not retry through another identity. This is installation access,
+not proof that the full installer or authenticated mail delivery has succeeded.
+
 1. Verify exact PR head CI, migration fixture, Chromium screenshots, existing security
    regressions and isolated production build. Review the complete change.
 2. Verify the already-applied `20261031190001_independent_email_services.sql`

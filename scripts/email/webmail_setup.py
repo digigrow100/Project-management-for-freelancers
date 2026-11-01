@@ -21,7 +21,8 @@ CLIENTDB=Path('/usr/local/ispconfig/server/lib/mysql_clientdb.conf')
 SAFE_CODES=frozenset(('webmail_configuration_conflict','webmail_account_exists',
     'mysql_admin_credentials_untrusted','mysql_admin_credentials_format',
     'mysql_admin_host_not_local','mysql_admin_auth_failed','mysql_socket_unavailable',
-    'mysql_client_missing','mysql_operation_failed','mysql_secure_channel_unavailable'))
+    'mysql_client_missing','mysql_operation_failed','mysql_secure_channel_unavailable',
+    'mysql_local_admin_unverified'))
 class WebmailRefused(ValueError):
     def __init__(self,code='webmail_configuration_conflict'):
         self.code=code if code in SAFE_CODES else 'webmail_configuration_conflict'
@@ -88,6 +89,33 @@ def parse_native(text):
 def option_value(value):
     return '"'+value.replace('\\','\\\\').replace('"','\\"').replace('\n','\\n').replace('\r','\\r').replace('\t','\\t')+'"'
 
+def mysql_error(result):
+    match=re.search(rb'\bERROR\s+(\d{4})\b',result.stderr)
+    number=match[1]if match else b''
+    return 'mysql_admin_auth_failed'if number in(b'1045',b'1698',b'1130')else'mysql_socket_unavailable'if number in(b'2002',b'2003')else'mysql_operation_failed'
+
+def local_admin_mysql(sql,database=None):
+    """Existing OS mysql socket identity only; never resets root authentication.
+
+    Called only after an authentication rejection, before SQL could execute.
+    Verify identity and privileges with a read-only query before sending SQL.
+    An error after SQL submission is never retried through another identity.
+    """
+    if os.geteuid()!=0:raise WebmailRefused('mysql_admin_auth_failed')
+    args=['/usr/sbin/runuser','-u','mysql','--','/usr/bin/mysql',
+        '--no-defaults','--user=mysql','--skip-password','--protocol=socket',
+        '--host=localhost','--connect-timeout=5','--batch','--skip-column-names']
+    env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','HOME':'/nonexistent','LANG':'C','LC_ALL':'C'}
+    probe=b"SELECT CURRENT_USER()='mysql@localhost';SELECT COUNT(*) FROM mysql.user WHERE User='mysql' AND Host='localhost' AND Super_priv='Y' AND Create_user_priv='Y' AND Grant_priv='Y';"
+    check=subprocess.run(args,input=probe,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+        env=env,pass_fds=(),timeout=15,check=False)
+    if check.returncode:raise WebmailRefused(mysql_error(check))
+    if check.stdout.split()!=[b'1',b'1']:raise WebmailRefused('mysql_local_admin_unverified')
+    result=subprocess.run(args+([database]if database else[]),input=sql.encode(),
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env,pass_fds=(),timeout=60,check=False)
+    if result.returncode:raise WebmailRefused(mysql_error(result))
+    return result.stdout.decode()
+
 def mysql(sql,database=None):
     fd=None
     try:
@@ -106,9 +134,12 @@ def mysql(sql,database=None):
         args=['/usr/bin/mysql',*options,'--host=localhost','--protocol=socket','--batch','--skip-column-names']+([database]if database else[])
         result=subprocess.run(args,input=sql.encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env,pass_fds=()if fd is None else(fd,),timeout=60,check=False)
         if result.returncode:
-            match=re.search(rb'\bERROR\s+(\d{4})\b',result.stderr)
-            number=match[1]if match else b''
-            code='mysql_admin_auth_failed'if number in(b'1045',b'1698',b'1130')else'mysql_socket_unavailable'if number in(b'2002',b'2003')else'mysql_operation_failed'
+            code=mysql_error(result)
+            # SQL execution errors carry a line marker. Never replay an SQL
+            # operation (including one that reports an auth-like error code).
+            rejected=re.match(rb'ERROR (?:1045|1698|1130) \([0-9A-Z]{5}\):',result.stderr)
+            if code=='mysql_admin_auth_failed'and rejected and b'at line 'not in result.stderr:
+                return local_admin_mysql(sql,database)
             raise WebmailRefused(code)
         return result.stdout.decode()
     except WebmailRefused:raise
