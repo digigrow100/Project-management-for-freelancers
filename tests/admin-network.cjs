@@ -56,13 +56,13 @@ test('actual actor authorization, MFA/session guards and APIs deny existing admi
  for(const action of ['enroll','verify','remove']){const f=new FormData();f.set('action',action);await assert.rejects(security.securityAction({},f),/network-restricted/);}
  const passwords=await load('app/login/actions.ts');const pf=new FormData();pf.set('password','long-fixture-password');pf.set('confirmPassword','long-fixture-password');await assert.rejects(passwords.updatePasswordAction(pf),/network-restricted/);
  s.inspect=true;await assert.rejects(auth.getCurrentProfile(),/network-restricted/);s.inspect=false;
- s.role='member';assert.equal((await auth.getCurrentProfile()).role,'member');await mfa.requireHostingSession(false,true);await assert.rejects(auth.requireAdmin(),/Admin access/);
+ s.role='member';assert.equal(await auth.getCurrentProfile(),null);await mfa.requireHostingSession(false,true);await assert.rejects(auth.requireAdmin(),/Admin access/);
  s.role=null;await mfa.requireEnrolledMfa(); // hosting customer has no staff profile
  s.dbError=true;await assert.rejects(mfa.requireEnrolledMfa(),/Could not verify/);s.dbError=false;
  s.role='member';s.profileRole='admin';await assert.rejects(auth.getCurrentProfile(),/network-restricted/);delete s.profileRole;
  assert(s.calls.every(c=>c.table==='freelance_hq_profiles'&&c.fields==='role'&&c.value==='fixture-actor'));
 });
-test('actual password login signs out denied admins but admits ordinary team members',async()=>{
+test('password login keeps the existing Supabase session and network checks',async()=>{
  configure();const {loginAction}=await load('app/login/actions.ts');const f=new FormData();f.set('email','fixture@example.invalid');f.set('password','fixture-password');
  await assert.rejects(loginAction(f),{message:'redirect:/'});
  s.ip='192.0.2.99';s.signedOut=0;await assert.rejects(loginAction(f),{message:'redirect:/login/network-restricted'});assert.equal(s.signedOut,1);

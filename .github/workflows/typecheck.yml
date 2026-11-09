@@ -96,6 +96,7 @@ jobs:
 
       - run: node tests/security-hardening.cjs
       - run: node tests/team-security-boundaries.cjs
+      - run: node tests/seo-bot-workspaces.cjs
       - run: node tests/hosting-mfa-actions.cjs
 
       - run: node tests/hosting-bridge-reports.cjs

@@ -99,7 +99,7 @@ export function Sidebar({
         )}
                 {isAdmin && (
           <>
-            <Link href="/team" className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300"><Users size={17}/> Team</Link>
+            <Link href="/team" className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300"><Users size={17}/> SEO Bots</Link>
             <Link
               href="/clients"
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"

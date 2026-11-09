@@ -58,6 +58,7 @@ export default async function LoginPage({ searchParams: queryParams }: { searchP
             Sign in
           </button>
         </form>
+        <Link href="/seo-bots/login" className="mt-3 inline-block text-sm text-accent-400 underline">SEO bot sign-in</Link>
       </div>
     </div>
   );
