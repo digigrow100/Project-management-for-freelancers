@@ -1543,3 +1543,10 @@ and accept only known metadata fields. Member task queues and focus actions
 require current project membership, including after access is revoked.
 Screen-share signaling requires a live
 session and valid sender-specific payloads.
+
+## 2026-11-10 — Development dependency security updates
+
+The lockfile updates development packages only. Runtime package resolutions stay
+at the verified security release. The remaining TypeScript ESLint advisories
+come from its declared minimatch 10 range, so this update avoids an out-of-range
+major override.
