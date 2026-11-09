@@ -447,6 +447,18 @@ type ActivityInput = {
   metadata?: unknown;
 };
 
+function activityMetadata(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const { reason, browserState, platform, workStarted, aiGenerating } = raw as Record<string, unknown>;
+  return {
+    ...(typeof reason === "string" && /^[a-z0-9_]{1,64}$/.test(reason) ? { reason } : {}),
+    ...(typeof browserState === "string" && ["active", "idle", "locked"].includes(browserState) ? { browserState } : {}),
+    ...(platform === "chatgpt" || platform === "claude" ? { platform } : {}),
+    ...(typeof workStarted === "boolean" ? { workStarted } : {}),
+    ...(typeof aiGenerating === "boolean" ? { aiGenerating } : {}),
+  };
+}
+
 export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents: unknown) {
   if (!Array.isArray(rawEvents)) throw new Error("Events must be an array.");
   const events = rawEvents.slice(0, MAX_ACTIVITY_BATCH) as ActivityInput[];
@@ -473,7 +485,7 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
     const { url, domain } = sanitizeActivityUrl(event.url);
     const title = String(event.pageTitle ?? "").replace(/[\u0000-\u001F]/g, " ").slice(0, 500);
     const project = url ? await matchProject(url) : null;
-    const sessionId = typeof event.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(event.sessionId)
+    let sessionId = typeof event.sessionId === "string" && /^[0-9a-f-]{36}$/i.test(event.sessionId)
       ? event.sessionId
       : null;
 
@@ -488,7 +500,7 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
             last_seen_at: startedAt,
             status: "active",
           },
-          { onConflict: "id" },
+          { onConflict: "id", ignoreDuplicates: true },
         );
       } else {
         const sessionUpdate: Record<string, unknown> = {
@@ -503,6 +515,15 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
           .eq("employee_id", device.employeeId)
           .eq("device_id", device.id);
       }
+      const { data: ownedSession, error: sessionError } = await supabase
+        .from("freelance_hq_browser_sessions")
+        .select("id")
+        .eq("id", sessionId)
+        .eq("employee_id", device.employeeId)
+        .eq("device_id", device.id)
+        .maybeSingle();
+      if (sessionError) throw sessionError;
+      if (!ownedSession) sessionId = null;
     }
 
     const eventIdentity = createHash("sha256").update(JSON.stringify([device.id, sessionId, activityType, startedAt, endedAt])).digest("hex");
@@ -520,7 +541,7 @@ export async function ingestActivityBatch(device: AuthenticatedDevice, rawEvents
       started_at: startedAt,
       ended_at: endedAt,
       duration_seconds: clampDuration(event.durationSeconds),
-      metadata: event.metadata && typeof event.metadata === "object" ? event.metadata : {},
+      metadata: activityMetadata(event.metadata),
     });
 
     const status: BrowserDeviceStatus =
@@ -1064,18 +1085,19 @@ export async function addScreenShareSignal(input: {
   device?: AuthenticatedDevice;
 }) {
   const supabase = getSupabase();
+  const validType = input.signalType === "ice" || input.signalType === (input.device ? "offer" : "answer");
+  if (!validType || !input.payload || typeof input.payload !== "object" || Array.isArray(input.payload)
+    || JSON.stringify(input.payload).length > 100_000) throw new Error("Invalid screen share signal.");
+
+  let sessionQuery = supabase.from("freelance_hq_screen_share_sessions").select("id")
+    .eq("id", input.sessionId).neq("status", "ended")
+    .gte("last_seen_at", new Date(Date.now() - 120_000).toISOString());
   if (input.device) {
-    const { data: session, error: sessionError } = await supabase
-      .from("freelance_hq_screen_share_sessions")
-      .select("id")
-      .eq("id", input.sessionId)
-      .eq("employee_id", input.device.employeeId)
-      .eq("device_id", input.device.id)
-      .neq("status", "ended")
-      .maybeSingle();
-    if (sessionError) throw sessionError;
-    if (!session) throw new Error("Screen share session not found.");
+    sessionQuery = sessionQuery.eq("employee_id", input.device.employeeId).eq("device_id", input.device.id);
   }
+  const { data: session, error: sessionError } = await sessionQuery.maybeSingle();
+  if (sessionError) throw sessionError;
+  if (!session) throw new Error("Screen share session not found.");
   const { error } = await supabase.from("freelance_hq_screen_share_signals").insert({
     session_id: input.sessionId,
     sender: input.sender,

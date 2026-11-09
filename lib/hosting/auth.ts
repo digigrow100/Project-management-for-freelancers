@@ -17,10 +17,10 @@ export async function requireHostingAdmin() {
   return profile;
 }
 export async function requireHostingClient() {
-  const { data: { user }, error } = await createAuthClient().auth.getUser();
+  const { data: { user }, error } = await (await createAuthClient()).auth.getUser();
   if (error || !user) redirect("/login");
   await requireHostingSession();
-  const viewCookie=cookies().get(HOSTING_CLIENT_VIEW_COOKIE)?.value;
+  const viewCookie=(await cookies()).get(HOSTING_CLIENT_VIEW_COOKIE)?.value;
   if(viewCookie){
     const clientId=readClientView(viewCookie,user.id);
     if(clientId){

@@ -52,7 +52,8 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
+export default async function ProjectDetailPage({ params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (!profile) notFound();
 

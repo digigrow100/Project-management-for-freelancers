@@ -31,7 +31,7 @@ export async function loginAction(formData: FormData) {
 
   let supabase;
   try {
-    supabase = createAuthClient();
+    supabase = await createAuthClient();
   } catch {
     redirect(`/login?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
   }
@@ -54,10 +54,10 @@ export async function loginAction(formData: FormData) {
 }
 
 export async function logoutAction() {
-  cookies().delete(MEMBER_VIEW_COOKIE);
-  cookies().delete("fhq_hosting_client_view");
+  (await cookies()).delete(MEMBER_VIEW_COOKIE);
+  (await cookies()).delete("fhq_hosting_client_view");
   try {
-    const supabase = createAuthClient();
+    const supabase = await createAuthClient();
     await supabase.auth.signOut();
   } catch {
     // Auth not configured — nothing to sign out of.
@@ -76,12 +76,12 @@ export async function requestPasswordResetAction(formData: FormData) {
 
   let supabase;
   try {
-    supabase = createAuthClient();
+    supabase = await createAuthClient();
   } catch {
     redirect(`/login/forgot-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
   }
 
-  const redirectTo = `${getSiteOrigin()}/auth/confirm?next=${encodeURIComponent("/login/reset-password")}`;
+  const redirectTo = `${await getSiteOrigin()}/auth/confirm?next=${encodeURIComponent("/login/reset-password")}`;
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
   // Supabase doesn't error for an unknown email (to avoid leaking which
@@ -110,7 +110,7 @@ export async function updatePasswordAction(formData: FormData) {
 
   let supabase;
   try {
-    supabase = createAuthClient();
+    supabase = await createAuthClient();
   } catch {
     redirect(`/login/reset-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
   }

@@ -15,7 +15,7 @@ export async function rateLimit(scope:string,identity:string,limit:number,second
 }
 export async function limitSignIn(scope:string,email:string) {
  // Do not trust arbitrary forwarded headers on self-hosted development servers.
- const ip=process.env.VERCEL==='1'?headers().get('x-vercel-forwarded-for')?.split(',')[0]?.trim():null;
+ const ip=process.env.VERCEL==='1'?(await headers()).get('x-vercel-forwarded-for')?.split(',')[0]?.trim():null;
  if(ip)await rateLimit(scope+'-ip',ip,40,900);
  await rateLimit(scope+'-account',email.toLowerCase(),scope==='reset'?3:10,900);
 }

@@ -10,7 +10,7 @@ export const headers=()=>new Headers({'x-forwarded-for':s.ip,'x-real-ip':'192.0.
 export const cookies=()=>({get:()=>s.inspect?{value:'fixture-inspection'}:undefined});
 export const redirect=(path)=>{throw new Error('redirect:'+path)};
 export const createAuthClient=()=>({auth:{
- getUser:async()=>({data:{user:s.signedIn?{id:'fixture-actor',email:'owner@fixture.invalid',factors:[]}:null},error:null}),
+ getUser:async()=>({data:{user:s.signedIn?{id:'fixture-actor',email:'owner@fixture.invalid',email_confirmed_at:'fixture',factors:[{status:'verified'}]}:null},error:null}),
  getSession:async()=>({data:{session:{user:{id:'fixture-actor'},access_token:'x.'+Buffer.from(JSON.stringify({session_id:'11111111-1111-4111-8111-111111111111'})).toString('base64url')+'.x'}},error:null}),
  signInWithPassword:async()=>{s.signedIn=true;return {data:{user:{id:'fixture-actor'}},error:null}},
  signOut:async()=>{s.signedOut++;s.signedIn=false;return {error:null}},

@@ -5,7 +5,8 @@ import { ensureWhatsAppMessageTranslations } from "@/lib/whatsappTranslation";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: { clientId: string } }) {
+export async function GET(_request: Request, { params: routeParams }: { params: Promise<{ clientId: string }> }) {
+  const params = await routeParams;
   try {
     const profile = await requireProfile();
     const messages = await listWhatsAppMessages(profile, params.clientId);

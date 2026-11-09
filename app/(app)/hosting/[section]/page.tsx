@@ -18,7 +18,9 @@ import { RecordsTable } from "@/components/hosting/RecordsTable";
 import { InvoiceForm } from "@/components/hosting/InvoiceForm";
 import { FinanceOverview } from "@/components/hosting/Overview";
 import { PageTitle,Notice,Pagination,HostingForm,Hidden,Field,Select,Check,Area,cardClass,choices } from "@/components/hosting/ui";
-export default async function HostingSectionPage({params,searchParams}:{params:{section:string};searchParams:{edit?:string;new?:string;package?:string;page?:string;error?:string;saved?:string;from?:string;to?:string}}) {
+export default async function HostingSectionPage({params: routeParams,searchParams: queryParams}:{params:Promise<{section:string}>;searchParams:Promise<{edit?:string;new?:string;package?:string;page?:string;error?:string;saved?:string;from?:string;to?:string}>}) {
+  const params = await routeParams;
+  const searchParams = await queryParams;
  const section=HOSTING_SECTIONS.find(s=>s.key===params.section);if(!section)notFound();
  const [lookups,settings]=await Promise.all([adminLookups(),adminSettings()]);
  if(section.key==='settings')return <div className="space-y-6"><PageTitle title="Hosting settings"/><HostingSettingsTabs active="general"/><Notice {...searchParams}/><PanelGuide section="settings"/><HostingSettingsForm settings={settings}/><IntegrationOverview/><section className={cardClass}><h2 className="font-medium">Account security</h2><p className="mt-2 text-sm text-neutral-400">Manage the authenticator for your own account. Hosting access requires an enabled authenticator.</p><Link href="/login/security?manage=1" className="mt-4 inline-block text-sm text-blue-400">Manage authenticator →</Link></section></div>;

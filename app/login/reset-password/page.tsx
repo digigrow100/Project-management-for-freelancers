@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { updatePasswordAction } from "../actions";
 
-export default function ResetPasswordPage({ searchParams }: { searchParams: { error?: string } }) {
+export default async function ResetPasswordPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string }> }) {
+  const searchParams = await queryParams;
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
       <div className="w-full max-w-sm rounded-xl2 border border-base-700/60 bg-base-850 p-6 shadow-card">

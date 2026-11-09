@@ -18,26 +18,23 @@
     "@capacitor/ios": "^8.5.0",
     "@supabase/ssr": "0.5.2",
     "@supabase/supabase-js": "2.111.0",
-    "@tiptap/extension-link": "^2.27.2",
-    "@tiptap/extension-placeholder": "^2.27.2",
-    "@tiptap/extension-table": "^2.27.2",
-    "@tiptap/extension-table-cell": "^2.27.2",
-    "@tiptap/extension-table-header": "^2.27.2",
-    "@tiptap/extension-table-row": "^2.27.2",
-    "@tiptap/pm": "^2.27.2",
-    "@tiptap/react": "^2.27.2",
-    "@tiptap/starter-kit": "^2.27.2",
+    "@tiptap/extension-link": "3.33.0",
+    "@tiptap/extension-placeholder": "3.33.0",
+    "@tiptap/extension-table": "3.33.0",
+    "@tiptap/pm": "3.33.0",
+    "@tiptap/react": "3.33.0",
+    "@tiptap/starter-kit": "3.33.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.436.0",
-    "next": "14.2.35",
+    "next": "15.5.29",
     "openai": "^7.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "server-only": "0.0.1",
-    "xlsx": "^0.18.5",
-    "zod": "^3.23.8"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
@@ -48,10 +45,15 @@
     "autoprefixer": "^10.4.20",
     "esbuild": "0.25.12",
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.35",
-    "postcss": "^8.4.41",
+    "eslint-config-next": "15.5.29",
+    "postcss": "8.5.32",
     "react-test-renderer": "18.3.1",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4"
+  },
+  "overrides": {
+    "dompurify": "3.4.17",
+    "markdown-it": "14.3.3",
+    "postcss": "8.5.32"
   }
 }

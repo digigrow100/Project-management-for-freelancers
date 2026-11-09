@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 function load(file,mocks={},env={}){const m={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2020}}).outputText,{module:m,exports:m.exports,require:n=>n==='server-only'?{}:n in mocks?mocks[n]:require(n),process:{env},Buffer,Date,URL,FormData});return m.exports;}
 let enrolled=false,aal='aal1',active=true,dbError=false,userMismatch=false,validated=true,calls=0;
-const user={id:'11111111-1111-4111-8111-111111111111'};
+const user={id:'11111111-1111-4111-8111-111111111111',email_confirmed_at:'fixture'};
 const sessionId='22222222-2222-4222-8222-222222222222';
 const auth={auth:{getUser:async()=>({data:{user:validated?{...user,factors:enrolled?[{status:'verified'}]:[]}:null},error:null}),getSession:async()=>({data:{session:{user:{id:userMismatch?'other':user.id},access_token:'header.'+Buffer.from(JSON.stringify({session_id:sessionId})).toString('base64url')+'.signature'}},error:null}),mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:aal},error:null})}}};
 const redirect=url=>{const e=new Error(url);e.redirect=url;throw e};
@@ -27,8 +27,17 @@ unavailable=false;allowed=false;
 await assert.rejects(login.loginAction(form),e=>decodeURIComponent(e.redirect||'').includes('Too many sign-in attempts'));
 allowed=true;
 // Team auth never infers an administrator from a missing table or empty profile set.
-let missing=true;const team=load('lib/auth.ts',{'./security/adminNetwork':{requireAdminNetworkForRole:()=>{}},'./security/mfa':{requireEnrolledMfa:async()=>{}},'./supabase/server':{createAuthClient:()=>auth},'./store':{getProfile:async()=>{if(missing)throw Error('missing table');return null},createProfile:async x=>x},'next/headers':{cookies:()=>({get:()=>undefined})},'next/navigation':{redirect},'./hosting/identity':{hostingIdentity:async()=>null},'./memberView':{}});
-await assert.rejects(team.getAuthenticatedProfile(),/missing table/);missing=false;assert.equal((await team.getAuthenticatedProfile()).role,'member');
+let missing=true,profile=null,adminChecks=0;
+const team=load('lib/auth.ts',{'./security/adminNetwork':{requireAdminNetworkForRole:()=>{}},'./security/mfa':{requireEnrolledMfa:async()=>{},requireHostingSession:async required=>{assert.equal(required,true);adminChecks++;}},'./supabase/server':{createAuthClient:()=>auth},'./store':{getProfile:async()=>{if(missing)throw Error('missing table');return profile}},'next/headers':{cookies:()=>({get:()=>undefined})},'next/navigation':{redirect},'./hosting/identity':{hostingIdentity:async()=>null},'./memberView':{}});
+await assert.rejects(team.getAuthenticatedProfile(),/missing table/);
+missing=false;
+assert.equal(await team.getAuthenticatedProfile(),null);
+profile={id:user.id,role:'member'};
+assert.equal((await team.getAuthenticatedProfile()).role,'member');
+assert.equal(adminChecks,0);
+profile={id:user.id,role:'admin'};
+assert.equal((await team.getAuthenticatedProfile()).role,'admin');
+assert.equal(adminChecks,1);
 console.log('PASS: live-session/user binding, revocation and backend failures deny access; admin MFA enrollment and AAL2 required; verification has no session bypass; cookies hardened; rate limits hash identities and fail closed; missing tables never grant admin.');
 })().catch(e=>{console.error(e);process.exit(1)});
 

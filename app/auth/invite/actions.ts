@@ -6,7 +6,7 @@ export async function acceptHostingInvite(accessToken: string, refreshToken: str
  const schema=z.string().min(20).max(10000);
  try {
   schema.parse(accessToken);schema.parse(refreshToken);
-  const auth=createAuthClient();
+  const auth=await createAuthClient();
   const {data:{user},error}=await auth.auth.getUser(accessToken);
   if(error||!user||!user.email_confirmed_at) return false;
   const identity=await hostingIdentity(user.id,user.email);

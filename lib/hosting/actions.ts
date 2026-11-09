@@ -96,7 +96,7 @@ async function inviteClient(form:FormData,actor:string) {
   if(existing&&existing.client_id!==clientId) throw new Error('This email already belongs to another hosting client.');
   // Reserve access first so a fast invitation callback cannot become a team account.
   const accessId=existing?.id ?? checked<{id:string}>(await getSupabase().from(hostingTable('client_access')).insert({client_id:clientId,email:client.email}).select('id').single()).id;
-  const result=await getSupabase().auth.admin.inviteUserByEmail(client.email,{redirectTo:getSiteOrigin()+'/auth/invite'});
+  const result=await getSupabase().auth.admin.inviteUserByEmail(client.email,{redirectTo:await getSiteOrigin()+'/auth/invite'});
   if(result.error || !result.data.user) throw new Error('Invitation could not be sent. If the account already exists, use Link existing account with its user ID.');
   checked(await getSupabase().from(hostingTable('client_access')).update({auth_user_id:result.data.user.id,enabled:true,invited_at:new Date().toISOString()}).eq('id',accessId));
   await audit(actor,'client_invited','clients',clientId);

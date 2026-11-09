@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as store from "./store";
+import { requireProjectResources } from "./projectScope";
+import { rateLimit } from "./security/rateLimit";
 import {toggleSeoReviewTaskCheckAction} from "./seoReviewActions";
 import {
   requireAdmin,
@@ -213,7 +215,7 @@ export async function updateClientAction(formData: FormData) {
 export async function updateClientDetailsAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!projectId) return;
-  await requireProjectAccess(projectId);
+  await requireAdmin();
 
   const logoFile = formData.get("logoFile");
   const uploadedLogoUrl = logoFile instanceof File ? await uploadLogo(logoFile, `clients/${projectId}`) : null;
@@ -235,7 +237,7 @@ export async function updateClientDetailsAction(formData: FormData) {
 export async function updateProjectMetaAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!projectId) return;
-  await requireProjectAccess(projectId);
+  await requireAdmin();
 
   await store.updateProjectDetails(projectId, {
     description: str(formData, "description"),
@@ -249,7 +251,7 @@ export async function updateProjectMetaAction(formData: FormData) {
 export async function updateWebDetailsAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!projectId) return;
-  await requireProjectAccess(projectId);
+  await requireAdmin();
 
   const webDetails: WebDevDetails = {
     websiteName: str(formData, "websiteName"),
@@ -289,6 +291,12 @@ export async function createTaskAction(formData: FormData) {
   const checklist = parseChecklistJson(formData);
   if (!projectId || !title) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", str(formData, "keywordId"));
+  await requireProjectResources(projectId, "keyword_pages", str(formData, "pageId"));
+  await requireProjectResources(projectId, "content_items", str(formData, "contentItemId"));
+  await requireProjectResources(projectId, "outreach_prospects", str(formData, "outreachProspectId"));
+  await requireProjectResources(projectId, "stages", stageId);
+  await requireProjectResources(projectId, "backlink_entries", str(formData, "backlinkEntryId"));
 
   const task = await store.createTask({
     projectId,
@@ -321,6 +329,13 @@ export async function updateTaskDetailsAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!taskId || !projectId) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
+  await requireProjectResources(projectId, "keywords", str(formData, "keywordId"));
+  await requireProjectResources(projectId, "keyword_pages", str(formData, "pageId"));
+  await requireProjectResources(projectId, "content_items", str(formData, "contentItemId"));
+  await requireProjectResources(projectId, "outreach_prospects", str(formData, "outreachProspectId"));
+  await requireProjectResources(projectId, "stages", str(formData, "stageId"));
+  await requireProjectResources(projectId, "backlink_entries", str(formData, "backlinkEntryId"));
 
   await store.updateTaskDetails(taskId, {
     title: str(formData, "title"),
@@ -351,18 +366,21 @@ export async function updateTaskDetailsAction(formData: FormData) {
 
 export async function updateTaskStatusAction(taskId: string, projectId: string, status: TaskStatus) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   await store.updateTaskStatus(taskId, status);
   refresh(projectId);
 }
 
 export async function toggleTodayAction(taskId: string, projectId: string, today: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   await store.toggleToday(taskId, today);
   refresh(projectId);
 }
 
 export async function toggleChecklistItemAction(taskId: string, projectId: string, itemId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   if (itemId.startsWith("review:")) {
     await toggleSeoReviewTaskCheckAction(taskId, projectId, itemId);
   } else {
@@ -476,6 +494,7 @@ export async function bulkCompleteFocusTasksAction(taskIds: string[]) {
 
 export async function deleteTaskAction(taskId: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   await store.deleteTask(taskId);
   refresh(projectId);
 }
@@ -626,6 +645,7 @@ export async function addTaskFileAction(formData: FormData) {
   const file = formData.get("file");
   if (!taskId || !projectId || !(file instanceof File)) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
 
   const uploaded = await uploadTaskFile(file, taskId);
   if (!uploaded) return;
@@ -636,6 +656,7 @@ export async function addTaskFileAction(formData: FormData) {
 
 export async function removeTaskFileAction(taskId: string, projectId: string, url: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   await store.removeTaskFile(taskId, url);
   refresh(projectId);
 }
@@ -655,6 +676,7 @@ export async function addProjectAttachmentAction(formData: FormData) {
 
 export async function removeProjectAttachmentAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "project_attachments", id);
   await store.removeProjectAttachment(id);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -695,6 +717,7 @@ export async function updateBacklinkCategoryAction(
   patch: { name?: string; categoryType?: BacklinkCategoryType },
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "backlink_categories", id);
   try {
     await store.updateBacklinkCategory(id, patch);
     revalidatePath(`/projects/${projectId}`);
@@ -705,6 +728,7 @@ export async function updateBacklinkCategoryAction(
 
 export async function deleteBacklinkCategoryAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "backlink_categories", id);
   try {
     await store.deleteBacklinkCategory(id);
     revalidatePath(`/projects/${projectId}`);
@@ -729,6 +753,8 @@ export async function createBacklinkEntryAction(
   const name = str(formData, "name");
   if (!projectId || !categoryId || !name) return { ok: false, error: "Missing required fields." };
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "backlink_categories", categoryId);
+  await requireProjectResources(projectId, "keywords", str(formData, "keywordId"));
 
   try {
     const entry = await store.createBacklinkEntry({
@@ -770,6 +796,8 @@ export async function updateBacklinkEntryAction(
   const projectId = str(formData, "projectId");
   if (!id || !projectId) return { ok: false, error: "Missing required fields." };
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "backlink_entries", id);
+  await requireProjectResources(projectId, "keywords", str(formData, "keywordId"));
 
   try {
     await store.updateBacklinkEntry(id, {
@@ -804,6 +832,7 @@ export async function updateBacklinkEntryAction(
 
 export async function deleteBacklinkEntryAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "backlink_entries", id);
   try {
     await store.deleteBacklinkEntry(id);
     revalidatePath(`/projects/${projectId}`);
@@ -823,11 +852,14 @@ export async function revealBacklinkPasswordAction(
   let profile;
   try {
     profile = await requireBacklinkCredentialAccess(projectId);
+    await requireProjectResources(projectId, "backlink_entries", entryId);
   } catch {
     return { ok: false, reason: "no_permission" };
   }
   try {
-    const password = await store.revealBacklinkPassword(entryId, profile.id, vaultPassword);
+    if (typeof vaultPassword !== "string" || vaultPassword.length > 128) return { ok: false, reason: "wrong_password" };
+    await rateLimit("backlink-vault-reveal", profile.id, 10, 300);
+    const password = await store.revealBacklinkPassword(entryId, projectId, profile.id, vaultPassword);
     return { ok: true, password };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
@@ -842,9 +874,11 @@ export async function setVaultPasswordAction(
   newPassword: string,
   currentPassword: string | null,
 ): Promise<{ ok: true } | { ok: false; reason: "wrong_current_password" | "too_short" | "error" }> {
-  if (newPassword.length < 6) return { ok: false, reason: "too_short" };
+  if (typeof newPassword !== "string" || newPassword.length < 12) return { ok: false, reason: "too_short" };
   const profile = await requireProfile();
   try {
+    if (newPassword.length > 128 || (currentPassword !== null && (typeof currentPassword !== "string" || currentPassword.length > 128))) return { ok: false, reason: "error" };
+    await rateLimit("backlink-vault-change", profile.id, 5, 300);
     await store.setVaultPassword(profile.id, newPassword, currentPassword);
     return { ok: true };
   } catch (error) {
@@ -855,21 +889,21 @@ export async function setVaultPasswordAction(
 }
 
 export async function enableSharingAction(projectId: string): Promise<string> {
-  await requireProjectAccess(projectId);
+  await requireAdmin();
   const token = await store.getOrCreateShareToken(projectId);
   refresh(projectId);
   return token;
 }
 
 export async function regenerateShareTokenAction(projectId: string): Promise<string> {
-  await requireProjectAccess(projectId);
+  await requireAdmin();
   const token = await store.regenerateShareToken(projectId);
   refresh(projectId);
   return token;
 }
 
 export async function disableSharingAction(projectId: string) {
-  await requireProjectAccess(projectId);
+  await requireAdmin();
   await store.disableSharing(projectId);
   refresh(projectId);
 }
@@ -900,7 +934,12 @@ export async function inviteTeamMemberAction(
   const name = str(formData, "name");
   const role = (str(formData, "role") || "member") as Role;
   const jobRole = (str(formData, "jobRole") || "general") as JobRole;
-  if (!email || !password) return { ok: false, error: "Email and password are required." };
+  if (!email || email.length > 254 || password.length < 12 || password.length > 128) {
+    return { ok: false, error: "Enter a valid email and a password between 12 and 128 characters." };
+  }
+  if (!["admin", "member"].includes(role) || !["general", "seo_expert", "web_developer"].includes(jobRole)) {
+    return { ok: false, error: "Invalid team role." };
+  }
 
   try {
     await store.inviteTeamMember({ email, password, name, role, jobRole });
@@ -913,7 +952,8 @@ export async function inviteTeamMemberAction(
 }
 
 export async function updateMemberRoleAction(userId: string, role: Role) {
-  await requireAdmin();
+  const actor = await requireAdmin();
+  if (actor.id === userId || !["admin", "member"].includes(role)) throw new Error("Invalid role change.");
   await store.updateMemberRole(userId, role);
   revalidatePath("/admin");
   revalidatePath("/team");
@@ -966,8 +1006,8 @@ export async function setMemberTemporaryPasswordAction(
   await requireAdmin();
 
   if (!userId) return { ok: false, error: "User is required." };
-  if (!password || password.length < 6) {
-    return { ok: false, error: "Temporary password must be at least 6 characters." };
+  if (typeof password !== "string" || password.length < 12 || password.length > 128) {
+    return { ok: false, error: "Temporary password must be between 12 and 128 characters." };
   }
 
   try {
@@ -982,7 +1022,8 @@ export async function setMemberTemporaryPasswordAction(
 }
 
 export async function removeMemberAction(userId: string) {
-  await requireAdmin();
+  const actor = await requireAdmin();
+  if (actor.id === userId) throw new Error("You cannot remove your own account.");
   await store.removeMember(userId);
   revalidatePath("/admin");
   revalidatePath("/team");
@@ -1358,6 +1399,7 @@ export async function updatePageAuditCheckAction(input: {
 }) {
   const profile = await requireProfile();
   await requireProjectAccess(input.projectId);
+  await requireProjectResources(input.projectId, "project_pages", input.pageId);
   await store.updatePageAuditCheck(
     input.pageId,
     input.periodMonth,
@@ -1470,6 +1512,8 @@ export async function createKeywordAction(formData: FormData) {
   const keyword = str(formData, "keyword");
   if (!projectId || !keyword) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_groups", str(formData, "clusterId"));
+  await requireProjectResources(projectId, "keyword_pages", str(formData, "primaryPageId"), str(formData, "pageId"));
 
   const created = await store.createKeyword({
     projectId,
@@ -1517,6 +1561,9 @@ export async function updateKeywordAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!id || !projectId) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", id);
+  await requireProjectResources(projectId, "keyword_groups", str(formData, "clusterId"));
+  await requireProjectResources(projectId, "keyword_pages", str(formData, "primaryPageId"));
 
   await store.updateKeyword(id, {
     keyword: str(formData, "keyword"),
@@ -1623,8 +1670,9 @@ export async function revealSeoWorkflowPasswordAction(input: {
   projectId: string;
   itemId: string;
 }): Promise<{ ok: true; password: string } | { ok: false; error: string }> {
-  await requireProjectAccess(input.projectId);
+  const profile = await requireBacklinkCredentialAccess(input.projectId);
   try {
+    await rateLimit("seo-workflow-password-reveal", profile.id, 20, 300);
     const password = await store.revealSeoWorkflowPassword(input.itemId, input.projectId);
     if (!password) return { ok: false, error: "No password is saved for this login." };
     return { ok: true, password };
@@ -1639,12 +1687,14 @@ export async function updateKeywordRankAction(input: {
   currentRank: number | null;
 }) {
   await requireProjectAccess(input.projectId);
+  await requireProjectResources(input.projectId, "keywords", input.keywordId);
   await store.updateKeyword(input.keywordId, { currentRank: input.currentRank });
   revalidatePath(`/projects/${input.projectId}`);
 }
 
 export async function deleteKeywordAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", id);
   await store.deleteKeyword(id);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1684,6 +1734,7 @@ export async function createKeywordSeoTaskAction(keywordId: string, projectId: s
 
 export async function setKeywordTrackedAction(id: string, projectId: string, isTracked: boolean) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", id);
   await store.setKeywordTracked(id, isTracked);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1695,12 +1746,15 @@ export async function setMonthlyPositionAction(
   rank: number | null,
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", keywordId);
   await store.setMonthlyPosition(keywordId, month, rank);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function addKeywordToPageAction(keywordId: string, projectId: string, pageId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", keywordId);
+  await requireProjectResources(projectId, "keyword_pages", pageId);
   try {
     await store.addKeywordToPage(keywordId, pageId);
     revalidatePath(`/projects/${projectId}`);
@@ -1711,6 +1765,8 @@ export async function addKeywordToPageAction(keywordId: string, projectId: strin
 
 export async function removeKeywordFromPageAction(keywordId: string, projectId: string, pageId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", keywordId);
+  await requireProjectResources(projectId, "keyword_pages", pageId);
   try {
     await store.removeKeywordFromPage(keywordId, pageId);
     revalidatePath(`/projects/${projectId}`);
@@ -1721,6 +1777,8 @@ export async function removeKeywordFromPageAction(keywordId: string, projectId: 
 
 export async function bulkAssignKeywordsToPageAction(keywordIds: string[], projectId: string, pageId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", ...keywordIds);
+  await requireProjectResources(projectId, "keyword_pages", pageId);
   await Promise.all(
     keywordIds.map((keywordId) =>
       store.addKeywordToPage(keywordId, pageId).catch(() => {
@@ -1733,6 +1791,8 @@ export async function bulkAssignKeywordsToPageAction(keywordIds: string[], proje
 
 export async function bulkRemoveKeywordsFromPageAction(keywordIds: string[], projectId: string, pageId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", ...keywordIds);
+  await requireProjectResources(projectId, "keyword_pages", pageId);
   await Promise.all(
     keywordIds.map((keywordId) =>
       store.removeKeywordFromPage(keywordId, pageId).catch(() => {
@@ -1745,6 +1805,7 @@ export async function bulkRemoveKeywordsFromPageAction(keywordIds: string[], pro
 
 export async function bulkDeleteKeywordsAction(keywordIds: string[], projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", ...keywordIds);
   await Promise.all(
     keywordIds.map((keywordId) =>
       store.deleteKeyword(keywordId).catch(() => {
@@ -1772,6 +1833,7 @@ export async function updateKeywordGroupAction(
   patch: { name?: string; color?: KeywordGroupColor },
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_groups", id);
   try {
     await store.updateKeywordGroup(id, patch);
     revalidatePath(`/projects/${projectId}`);
@@ -1782,6 +1844,7 @@ export async function updateKeywordGroupAction(
 
 export async function deleteKeywordGroupAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_groups", id);
   try {
     await store.deleteKeywordGroup(id);
     revalidatePath(`/projects/${projectId}`);
@@ -1793,6 +1856,7 @@ export async function deleteKeywordGroupAction(id: string, projectId: string) {
 export async function createKeywordPageAction(groupId: string, projectId: string, name: string, url: string) {
   if (!name.trim()) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_groups", groupId);
   try {
     await store.createKeywordPage({ groupId, name, url });
     revalidatePath(`/projects/${projectId}`);
@@ -1807,6 +1871,7 @@ export async function updateKeywordPageAction(
   patch: Parameters<typeof store.updateKeywordPage>[1],
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_pages", id);
   try {
     await store.updateKeywordPage(id, patch);
     revalidatePath(`/projects/${projectId}`);
@@ -1817,6 +1882,7 @@ export async function updateKeywordPageAction(
 
 export async function deleteKeywordPageAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_pages", id);
   try {
     await store.deleteKeywordPage(id);
     revalidatePath(`/projects/${projectId}`);
@@ -1827,6 +1893,8 @@ export async function deleteKeywordPageAction(id: string, projectId: string) {
 
 export async function setPrimaryKeywordForPageAction(pageId: string, projectId: string, keywordId: string | null) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", keywordId);
+  await requireProjectResources(projectId, "keyword_pages", pageId);
   try {
     await store.setPrimaryKeywordForPage(pageId, keywordId);
     revalidatePath(`/projects/${projectId}`);
@@ -1854,6 +1922,7 @@ export async function createTechnicalIssueAction(formData: FormData) {
 
 export async function updateTechnicalIssueAction(id: string, projectId: string, formData: FormData) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "technical_issues", id);
   await store.updateTechnicalIssue(id, {
     title: str(formData, "title"),
     description: str(formData, "description"),
@@ -1884,6 +1953,7 @@ export async function createFixTaskForIssueAction(issueId: string, projectId: st
 
 export async function deleteTechnicalIssueAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "technical_issues", id);
   await store.deleteTechnicalIssue(id);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1893,6 +1963,7 @@ export async function createContentItemAction(formData: FormData) {
   const topic = str(formData, "topic");
   if (!projectId || !topic) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", str(formData, "targetKeywordId"));
 
   await store.createContentItem({
     projectId,
@@ -1909,12 +1980,15 @@ export async function updateContentItemAction(
   patch: Parameters<typeof store.updateContentItem>[1],
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keywords", patch.targetKeywordId);
+  await requireProjectResources(projectId, "content_items", id);
   await store.updateContentItem(id, patch);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function deleteContentItemAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "content_items", id);
   await store.deleteContentItem(id);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1977,6 +2051,7 @@ export async function updateSeoReportAction(
   patch: Parameters<typeof store.updateSeoReport>[1],
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "seo_reports", id);
   await store.updateSeoReport(id, patch);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -1984,6 +2059,7 @@ export async function updateSeoReportAction(
 /** Approve step ahead of attaching a report to an invoice: Generate -> Edit -> Approve -> Attach. Approving never locks the content — every field stays editable afterward. */
 export async function approveSeoReportAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "seo_reports", id);
   await store.updateSeoReport(id, { approved: true });
   revalidatePath(`/projects/${projectId}`);
 }
@@ -2020,12 +2096,14 @@ export async function updateOutreachProspectAction(
   patch: Parameters<typeof store.updateOutreachProspect>[1],
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "outreach_prospects", id);
   await store.updateOutreachProspect(id, patch);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function deleteOutreachProspectAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "outreach_prospects", id);
   await store.deleteOutreachProspect(id);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -2051,6 +2129,7 @@ export async function createCompetitorBacklinkAction(formData: FormData) {
   const competitorUrl = str(formData, "competitorUrl");
   if (!projectId || !competitorUrl) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_pages", str(formData, "targetPageId"));
 
   await store.createCompetitorBacklink({
     projectId,
@@ -2068,12 +2147,15 @@ export async function updateCompetitorBacklinkAction(
   patch: Parameters<typeof store.updateCompetitorBacklink>[1],
 ) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "keyword_pages", patch.targetPageId);
+  await requireProjectResources(projectId, "competitor_backlinks", id);
   await store.updateCompetitorBacklink(id, patch);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function deleteCompetitorBacklinkAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "competitor_backlinks", id);
   await store.deleteCompetitorBacklink(id);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -2113,6 +2195,8 @@ export async function createClientTaskAction(formData: FormData) {
 
   const stageId = str(formData, "stageId") || null;
   const notes = str(formData, "notes");
+  await rateLimit("shared-project-task", project.id, 25, 300);
+  await requireProjectResources(project.id, "stages", stageId);
 
   const task = await store.createTask({
     projectId: project.id,
@@ -2123,7 +2207,7 @@ export async function createClientTaskAction(formData: FormData) {
 
   const attachments = formData.getAll("attachmentFile").filter((f): f is File => f instanceof File && f.size > 0);
   for (const attachment of attachments) {
-    const uploaded = await uploadTaskFile(attachment, `client-${task.id}`);
+    const uploaded = await uploadTaskFile(attachment, task.id);
     if (uploaded) await store.addTaskFile(task.id, uploaded);
   }
 
@@ -2141,11 +2225,10 @@ export async function addClientTaskFileAction(formData: FormData) {
   const project = await store.getProjectByShareToken(token);
   if (!project) return;
 
-  const tasks = await store.getTasksByProject(project.id);
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task) return;
+  await rateLimit("shared-project-upload", project.id, 40, 300);
+  await requireProjectResources(project.id, "tasks", taskId);
 
-  const uploaded = await uploadTaskFile(file, `client-${taskId}`);
+  const uploaded = await uploadTaskFile(file, taskId);
   if (!uploaded) return;
 
   await store.addTaskFile(taskId, uploaded);
@@ -2545,12 +2628,14 @@ export async function deleteNoteAction(noteId: string) {
 
 export async function saveTaskNoteAction(taskId: string, projectId: string, contentJson: string) {
   const profile = await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   await store.upsertTaskNote(taskId, parseRichContent(contentJson), profile.id);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function getTaskNoteAction(taskId: string, projectId: string): Promise<RichContent> {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "tasks", taskId);
   const note = await store.getTaskNote(taskId);
   return note?.content ?? {};
 }
@@ -2611,24 +2696,28 @@ export async function updateWebAppFeatureAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!id || !projectId) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_features", id);
   await store.updateWebAppFeature(id, { name: str(formData, "name"), description: str(formData, "description") });
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function deleteWebAppFeatureAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_features", id);
   await store.deleteWebAppFeature(id);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function bulkDeleteWebAppFeaturesAction(ids: string[], projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_features", ...ids);
   await store.bulkDeleteWebAppFeatures(ids);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function bulkCopyWebAppFeaturesAction(ids: string[], projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_features", ...ids);
   await store.copyWebAppFeatures(ids);
   revalidatePath(`/projects/${projectId}`);
 }
@@ -2639,6 +2728,7 @@ export async function createWebAppSubFeatureAction(formData: FormData) {
   const name = str(formData, "name");
   if (!featureId || !projectId || !name) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_features", featureId);
   await store.createWebAppSubFeature({ featureId, name, description: str(formData, "description") });
   revalidatePath(`/projects/${projectId}`);
 }
@@ -2648,6 +2738,7 @@ export async function updateWebAppSubFeatureAction(formData: FormData) {
   const projectId = str(formData, "projectId");
   if (!id || !projectId) return;
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_subfeatures", id);
   await store.updateWebAppSubFeature(id, {
     name: str(formData, "name"),
     description: str(formData, "description"),
@@ -2658,30 +2749,36 @@ export async function updateWebAppSubFeatureAction(formData: FormData) {
 
 export async function setWebAppSubFeatureStatusAction(id: string, projectId: string, status: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_subfeatures", id);
   await store.updateWebAppSubFeature(id, { status: status as SubFeatureStatus });
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function deleteWebAppSubFeatureAction(id: string, projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_subfeatures", id);
   await store.deleteWebAppSubFeature(id);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function bulkDeleteWebAppSubFeaturesAction(ids: string[], projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_subfeatures", ...ids);
   await store.bulkDeleteWebAppSubFeatures(ids);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function bulkCopyWebAppSubFeaturesAction(ids: string[], projectId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_subfeatures", ...ids);
   await store.copyWebAppSubFeatures(ids);
   revalidatePath(`/projects/${projectId}`);
 }
 
 export async function bulkMoveWebAppSubFeaturesAction(ids: string[], projectId: string, targetFeatureId: string) {
   await requireProjectAccess(projectId);
+  await requireProjectResources(projectId, "web_app_features", targetFeatureId);
+  await requireProjectResources(projectId, "web_app_subfeatures", ...ids);
   await store.moveWebAppSubFeatures(ids, targetFeatureId);
   revalidatePath(`/projects/${projectId}`);
 }

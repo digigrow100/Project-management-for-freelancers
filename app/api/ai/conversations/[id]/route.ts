@@ -4,7 +4,8 @@ import * as store from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (!profile) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
@@ -15,7 +16,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json({ conversation, messages });
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (!profile) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 

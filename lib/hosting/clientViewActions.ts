@@ -13,13 +13,13 @@ export async function startHostingClientView(form:FormData){
  if(!client||client.status==="closed")throw new Error("Choose an existing, non-closed hosting client.");
  const signed=signClientView(actor.id,clientId);
  checked(await getSupabase().from(hostingTable("audit_logs")).insert({actor_id:actor.id,event:"admin_client_view_started",entity:"clients",entity_id:clientId}));
- cookies().set(HOSTING_CLIENT_VIEW_COOKIE,signed,{httpOnly:true,secure:process.env.NODE_ENV==="production",sameSite:"strict",path:"/",maxAge:HOSTING_CLIENT_VIEW_SECONDS});
+ (await cookies()).set(HOSTING_CLIENT_VIEW_COOKIE,signed,{httpOnly:true,secure:process.env.NODE_ENV==="production",sameSite:"strict",path:"/",maxAge:HOSTING_CLIENT_VIEW_SECONDS});
  redirect("/client");
 }
 export async function stopHostingClientView(){
  const actor=await requireHostingAdmin();
- const clientId=readClientView(cookies().get(HOSTING_CLIENT_VIEW_COOKIE)?.value,actor.id);
+ const clientId=readClientView((await cookies()).get(HOSTING_CLIENT_VIEW_COOKIE)?.value,actor.id);
  if(clientId)checked(await getSupabase().from(hostingTable("audit_logs")).insert({actor_id:actor.id,event:"admin_client_view_ended",entity:"clients",entity_id:clientId}));
- cookies().delete(HOSTING_CLIENT_VIEW_COOKIE);
+ (await cookies()).delete(HOSTING_CLIENT_VIEW_COOKIE);
  redirect("/hosting/clients");
 }

@@ -14,7 +14,8 @@ import { InvoiceDetailPanel } from "@/components/InvoiceDetailPanel";
 
 export const dynamic = "force-dynamic";
 
-export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
+export default async function InvoiceDetailPage({ params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (!profile || (profile.role !== "admin" && !profile.canAccessFinance)) notFound();
 

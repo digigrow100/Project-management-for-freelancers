@@ -17,7 +17,7 @@ export const intent=z.discriminatedUnion('kind',[
 export type Intent=z.infer<typeof intent>;
 export const credentials=z.object({key:z.string().trim().min(8).max(512).regex(/^[^\s]+$/),secret:z.string().trim().min(8).max(512).regex(/^[^\s]+$/),mode:z.enum(['sandbox','production'])});
 export type Credentials=z.infer<typeof credentials>;
-export const domainInfo=z.object({domain_name:hostname,expiration_date:z.coerce.number().int().min(0),locked:yesNo,renew_option:z.string().max(80),status:z.string().max(120),glue_info:z.object({glue_type:z.string().max(100),nameserver_list:z.array(z.object({server_name:hostname})).optional(),dns_main_list:z.array(z.record(z.unknown())).optional(),dns_sub_list:z.array(z.record(z.unknown())).optional(),ttl:z.union([z.string(),z.number()]).optional()})}).transform(d=>({name:d.domain_name,expires:d.expiration_date,locked:d.locked,renewOption:d.renew_option,status:d.status,glue:d.glue_info}));
+export const domainInfo=z.object({domain_name:hostname,expiration_date:z.coerce.number().int().min(0),locked:yesNo,renew_option:z.string().max(80),status:z.string().max(120),glue_info:z.object({glue_type:z.string().max(100),nameserver_list:z.array(z.object({server_name:hostname})).optional(),dns_main_list:z.array(z.record(z.string(), z.unknown())).optional(),dns_sub_list:z.array(z.record(z.string(), z.unknown())).optional(),ttl:z.union([z.string(),z.number()]).optional()})}).transform(d=>({name:d.domain_name,expires:d.expiration_date,locked:d.locked,renewOption:d.renew_option,status:d.status,glue:d.glue_info}));
 export type DomainInfo=z.infer<typeof domainInfo>;
 export function recordBody(r:z.infer<typeof dnsRecord>){
  const record={record_type:r.type,record_value1:r.value,record_value2:r.type==='mx'?String(r.priority):''};

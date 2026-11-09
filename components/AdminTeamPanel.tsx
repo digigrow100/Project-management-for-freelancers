@@ -109,7 +109,8 @@ function InviteMemberForm() {
           type="password"
           placeholder="Temporary password"
           required
-          minLength={6}
+          minLength={12}
+              maxLength={128}
           className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
         />
         <select
@@ -342,7 +343,8 @@ function MemberRow({
             name="password"
             type="password"
             required
-            minLength={6}
+            minLength={12}
+              maxLength={128}
             placeholder="New temporary password"
             className="w-full max-w-sm rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
           />

@@ -2,11 +2,12 @@ import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { requestPasswordResetAction } from "../actions";
 
-export default function ForgotPasswordPage({
-  searchParams,
+export default async function ForgotPasswordPage({
+  searchParams: queryParams,
 }: {
-  searchParams: { error?: string; sent?: string };
+  searchParams: Promise<{ error?: string; sent?: string }>;
 }) {
+  const searchParams = await queryParams;
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
       <div className="w-full max-w-sm rounded-xl2 border border-base-700/60 bg-base-850 p-6 shadow-card">

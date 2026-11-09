@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {useRef,useState} from 'react';
 import {managedInventory,managedRequestResult,type ManagedInventory} from '@/lib/hosting/managedSchema';
 // Plain language for every state the private service can report; nothing is called done unless the provider was read back.
@@ -17,7 +18,7 @@ export function ManagedServicePanel({kind,scope,services,readOnly=false}:{kind:'
  async function load(){const row=managedInventory.parse(await call({action:'inventory',service,kind}));if(row.kind!==kind)throw Error();setInventory(row);setFingerprint(await keyFingerprint(row.host_key));setResource('');}
  return <section className="space-y-5 rounded-xl border border-blue-200 bg-white p-5 text-slate-900"><h2 className="text-lg font-semibold">{kind==='email'?'Email accounts':'Databases'}</h2>
  <form onSubmit={e=>{e.preventDefault();void run(load);}} className="space-y-3"><label className="block text-sm">Hosting service<select className={input} required value={service} disabled={busy} onChange={e=>{setService(e.target.value);setInventory(null);setPassword('');setPin('');setConfirm(false);setRequestKey('');}}><option value="">Choose a service</option>{services.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><button className={button} disabled={busy||!service}>Load accounts</button></form>
- {inventory?<><p className="text-sm text-slate-600">{inventory.enabled?'Changes require separate owner approval before the provider is updated.':'This service is not enabled for provider changes.'}{scope==='owner'&&!readOnly?<> Waiting requests are approved under <a className="underline" href="/hosting/sources">Website source → Owner approvals</a>.</>:null}</p>
+ {inventory?<><p className="text-sm text-slate-600">{inventory.enabled?'Changes require separate owner approval before the provider is updated.':'This service is not enabled for provider changes.'}{scope==='owner'&&!readOnly?<> Waiting requests are approved under <Link className="underline" href="/hosting/sources">Website source → Owner approvals</Link>.</>:null}</p>
  <p className="text-sm text-slate-600">{inventory.limits.used} of {inventory.limits.max_resources} used{inventory.limits.pending_creates?` (+${inventory.limits.pending_creates} waiting)`:''}{inventory.limits.max_quota_mb?` · up to ${inventory.limits.max_quota_mb} MiB per mailbox`:''}.{inventory.domain&&inventory.domain.managed&&!inventory.domain.present?` The mail domain ${inventory.domain.name} has not been created yet.`:''}</p><ul className="space-y-2">{inventory.resources.map(r=><li className="rounded-lg border p-3 text-sm" key={r.id}>{r.name}</li>)}</ul>{!inventory.resources.length?<p className="text-sm text-slate-500">No enrolled accounts yet.</p>:null}
  {!readOnly?<form className="space-y-3 border-t pt-4" onSubmit={e=>{e.preventDefault();void run(async()=>{
   if(!inventory||!confirm)throw Error();const key=crypto.randomUUID();setRequestKey(key);

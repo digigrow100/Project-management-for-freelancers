@@ -5,7 +5,7 @@ import { createAuthClient } from "@/lib/supabase/server";
 import { getSupabase } from "@/lib/supabaseClient";
 // getUser validates the access token with Auth before these session claims are used.
 export async function requireHostingSession(admin=false,verificationFlow=false) {
- const auth=createAuthClient();
+ const auth=await createAuthClient();
  const {data:{user},error}=await auth.auth.getUser();
  if(error||!user)redirect('/login');
  await requireAdminNetworkForUser(user.id);
@@ -25,7 +25,7 @@ export async function requireHostingSession(admin=false,verificationFlow=false) 
  return user;
 }
 export async function requireEnrolledMfa() {
- const auth=createAuthClient();
+ const auth=await createAuthClient();
  const {data:{user},error}=await auth.auth.getUser();
  if(error||!user)redirect('/login');
  await requireAdminNetworkForUser(user.id);

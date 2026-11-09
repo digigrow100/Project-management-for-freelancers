@@ -8,7 +8,7 @@ export const dynamic='force-dynamic';
 export async function POST(request:Request){
  const headers:Record<string,string>={'Cache-Control':'private, no-store'};
  try{
-  if(request.headers.get('origin')!==getSiteOrigin())throw new ServiceDenied();
+  if(request.headers.get('origin')!==await getSiteOrigin())throw new ServiceDenied();
   const scopeName=new URL(request.url).searchParams.get('scope');if(scopeName!=='owner'&&scopeName!=='client')throw new ServiceDenied();
   if(scopeName==='client'&&!clientFeatureEnabled('sources',process.env))throw new ServiceDenied();
   const context=await serviceScope(scopeName==='owner');await rateLimit('github-start',context.actor,10,60);

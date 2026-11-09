@@ -1005,6 +1005,9 @@ Relevant migration:
 8. Do not weaken WhatsApp history privacy.
 9. Never log full device tokens, pairing tokens, passwords, or API keys.
 10. Treat production data changes as high-risk and verify before running them.
+11. Require a provisioned HQ profile and confirmed login. Admin access additionally requires a live AAL2 session and approved network.
+12. Bind caller-supplied child IDs to the authorized project. Keep project sharing admin-only and check attachment access before issuing short-lived URLs.
+13. Preserve default-deny RLS and server-only grants for HQ tables. Apply attachment bucket privacy only after the gated download route is live.
 
 ---
 
@@ -1521,3 +1524,22 @@ package/database creation. Shared activation retains SMTP, signed HMAC/replay,
 webmail and existing-root health checks. Rollback fixtures exercise changed-route
 restoration and permission restoration. Native Windows transport tests require
 explicit validated resume argv; default fresh installation remains separate.
+
+## 2026-11-10 — Team security hardening
+
+Team access requires a confirmed Auth identity with a provisioned HQ profile.
+Admin access requires an approved network, a live session and verified AAL2.
+Project actions bind supplied resource IDs to the authorized project, including
+nested keyword pages and web-app subfeatures. Public project links are managed
+by admins. Credential reveals use their permission gates and rate limits.
+Scheduled jobs require a configured secret. Browser API mutations reject
+foreign origins. HQ tables retain default-deny RLS with browser grants revoked.
+Pairing rotates credentials only for installations owned by the same account.
+Private attachments use a short-lived Storage link after project or share-token
+authorization. Public share boards send only the fields they render. Uploads
+and share writes are bounded. Dependency updates preserve existing layouts and
+keep Next request APIs asynchronous. Activity logs scope browser-session IDs
+and accept only known metadata fields. Member task queues and focus actions
+require current project membership, including after access is revoked.
+Screen-share signaling requires a live
+session and valid sender-specific payloads.

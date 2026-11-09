@@ -7,9 +7,9 @@ export const dynamic='force-dynamic';
 export async function POST(request:Request){
  const headers={'Cache-Control':'private, no-store'};
  try{
-  if(request.headers.get('origin')!==getSiteOrigin())throw new ServiceDenied();
+  if(request.headers.get('origin')!==await getSiteOrigin())throw new ServiceDenied();
   const context=await serviceScope(true);await rateLimit('managed-signer-context',context.actor,20,60);
   const body=JSON.parse(await readBackupBody(request));
-  return Response.json({...await signerContext(context,body?.service),origin:getSiteOrigin()},{headers});
+  return Response.json({...await signerContext(context,body?.service),origin:await getSiteOrigin()},{headers});
  }catch(error){return Response.json({error:'Service access denied.'},{status:error instanceof ServiceDenied?403:503,headers});}
 }

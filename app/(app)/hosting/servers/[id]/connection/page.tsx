@@ -7,7 +7,8 @@ import { PageTitle,cardClass } from '@/components/hosting/ui';
 import { ConnectionForm } from './ConnectionForm';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
-export default async function ConnectionPage({params}:{params:{id:string}}){
+export default async function ConnectionPage({params: routeParams}:{params:Promise<{id:string}>}){
+  const params = await routeParams;
  await requireHostingAdmin();
  if(!z.string().uuid().safeParse(params.id).success)notFound();
  const result=await getSupabase().from('freelance_hq_hosting_servers').select('id,name,hostname,ipv4').eq('id',params.id).single();

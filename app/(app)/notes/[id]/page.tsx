@@ -5,7 +5,8 @@ import { NoteEditor } from "@/components/NoteEditor";
 
 export const dynamic = "force-dynamic";
 
-export default async function NoteDetailPage({ params }: { params: { id: string } }) {
+export default async function NoteDetailPage({ params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 

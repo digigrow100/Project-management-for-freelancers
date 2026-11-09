@@ -13,7 +13,7 @@ export async function GET(request:Request){
   const outcome=await finishGithub({scope,query:url.searchParams,cookie:parseCookie(request.headers.get('cookie'),stateCookieName)});
   result=outcome.outcome;
  }catch(error){result=error instanceof ServiceDenied?'denied':'unavailable';}
- const response=NextResponse.redirect(new URL(`${target}?github=${result}`,getSiteOrigin()),303);
+ const response=NextResponse.redirect(new URL(`${target}?github=${result}`,await getSiteOrigin()),303);
  response.headers.set('Set-Cookie',`${stateCookieName}=; Path=/api/hosting-github; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
  response.headers.set('Cache-Control','private, no-store');
  return response;

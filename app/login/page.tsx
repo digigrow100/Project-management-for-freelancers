@@ -4,8 +4,9 @@ import { loginAction } from "./actions";
 import { headers } from "next/headers";
 import { isHostingPortalHost } from "@/lib/hosting/portalHost";
 
-export default function LoginPage({ searchParams }: { searchParams: { error?: string } }) {
-  const hosting = isHostingPortalHost(headers().get("host"));
+export default async function LoginPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string }> }) {
+  const searchParams = await queryParams;
+  const hosting = isHostingPortalHost((await headers()).get("host"));
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
       <div className="w-full max-w-sm rounded-xl2 border border-base-700/60 bg-base-850 p-6 shadow-card">

@@ -14,8 +14,8 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
  * only from Server Actions and edge middleware — so these env vars are kept
  * server-only rather than exposed to the browser via NEXT_PUBLIC_.
  */
-export function createAuthClient() {
-  const cookieStore = cookies();
+export async function createAuthClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.SUPABASE_URL!,

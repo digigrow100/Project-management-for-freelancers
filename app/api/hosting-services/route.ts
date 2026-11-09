@@ -8,7 +8,7 @@ export const dynamic='force-dynamic';
 export async function POST(request:Request){
  const headers={'Cache-Control':'private, no-store'};
  try{
-  if(request.headers.get('origin')!==getSiteOrigin())throw new ServiceDenied();
+  if(request.headers.get('origin')!==await getSiteOrigin())throw new ServiceDenied();
   const scope=new URL(request.url).searchParams.get('scope');if(scope!=='owner'&&scope!=='client')throw new ServiceDenied();
   const context=await serviceScope(scope==='owner');await rateLimit('managed-services',context.actor,20,60);
   const command=serviceCommand.parse(JSON.parse(await readBackupBody(request)));

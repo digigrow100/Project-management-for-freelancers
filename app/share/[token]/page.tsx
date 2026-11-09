@@ -4,7 +4,8 @@ import { ClientShareBoard } from "@/components/ClientShareBoard";
 
 export const dynamic = "force-dynamic";
 
-export default async function ShareTokenPage({ params }: { params: { token: string } }) {
+export default async function ShareTokenPage({ params: routeParams }: { params: Promise<{ token: string }> }) {
+  const params = await routeParams;
   const project = await getProjectByShareToken(params.token);
 
   if (!project) {
@@ -23,6 +24,12 @@ export default async function ShareTokenPage({ params }: { params: { token: stri
     getBusinessProfile(),
   ]);
 
+  const sharedTasks = tasks.map(({ id, stageId, title, status, priority, notes, checklist, files }) => ({
+    id, stageId, title, status, priority, notes, checklist,
+    files: files.map((file) => file.url.startsWith("/api/attachments/")
+      ? { ...file, url: `${file.url}?share=${encodeURIComponent(params.token)}` }
+      : file),
+  }));
   const theme = PROJECT_THEME[project.type];
   const Icon = theme.icon;
 
@@ -43,7 +50,7 @@ export default async function ShareTokenPage({ params }: { params: { token: stri
 
         {project.description && <p className="mb-6 text-sm text-neutral-400">{project.description}</p>}
 
-        <ClientShareBoard project={project} tasks={tasks} shareToken={params.token} />
+        <ClientShareBoard stages={project.stages} tasks={sharedTasks} shareToken={params.token} />
       </div>
     </div>
   );

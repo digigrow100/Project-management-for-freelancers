@@ -14,7 +14,8 @@ import { ClientDetailPanel } from "@/components/ClientDetailPanel";
 
 export const dynamic = "force-dynamic";
 
-export default async function ClientDetailPage({ params }: { params: { id: string } }) {
+export default async function ClientDetailPage({ params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (profile?.role !== "admin") notFound();
 
