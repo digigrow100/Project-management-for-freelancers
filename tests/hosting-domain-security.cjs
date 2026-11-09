@@ -42,8 +42,8 @@ test('hosting protected pages still require auth; machine protocol and legacy ho
 });
 test('only exact hosting host selects its origin; service requests reject foreign origins',async()=>{
  const {getSiteOrigin}=await load('lib/site.ts');
- for(const host of ['web.housemysite.com','WEB.HOUSEMYSITE.COM','web.housemysite.com:443']){state.host=host;assert.equal(getSiteOrigin(),'https://web.housemysite.com');}
- for(const host of ['hqproject.com','web.housemysite.com.attacker.invalid','attacker.invalid','web.housemysite.com:8443']){state.host=host;assert.equal(getSiteOrigin(),'https://hqproject.com');}
+ for(const host of ['web.housemysite.com','WEB.HOUSEMYSITE.COM','web.housemysite.com:443']){state.host=host;assert.equal(await getSiteOrigin(),'https://web.housemysite.com');}
+ for(const host of ['hqproject.com','web.housemysite.com.attacker.invalid','attacker.invalid','web.housemysite.com:8443']){state.host=host;assert.equal(await getSiteOrigin(),'https://hqproject.com');}
  state.host='web.housemysite.com';const {POST}=await load('app/api/hosting-services/route.ts');state.requests=0;
  const make=origin=>new Request('https://web.housemysite.com/api/hosting-services?scope=owner',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({action:'forms.list'})});
  assert.equal((await POST(make('https://hqproject.com'))).status,403);assert.equal(state.requests,0);
