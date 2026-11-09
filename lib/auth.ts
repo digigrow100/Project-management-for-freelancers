@@ -1,10 +1,8 @@
 import {requireAdminNetworkForRole} from "./security/adminNetwork";
-import { requireEnrolledMfa, requireHostingSession } from "./security/mfa";
+import { requireHostingSession } from "./security/mfa";
 import { createAuthClient } from "./supabase/server";
 import * as store from "./store";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolveMemberView, MEMBER_VIEW_COOKIE } from "./memberView";
 import type { Profile } from "./types";
 import { hostingIdentity } from "./hosting/identity";
 
@@ -15,20 +13,14 @@ export async function getAuthenticatedProfile(): Promise<Profile | null> {
   if (await hostingIdentity(user.id, user.email)) redirect("/client");
 
   const profile = await store.getProfile(user.id);
-  if (!profile) return null;
+  if (profile?.role !== "admin") return null;
   await requireAdminNetworkForRole(profile.role);
-  if (profile.role === "admin") {
-    await requireHostingSession(true);
-  } else {
-    await requireEnrolledMfa();
-  }
+  await requireHostingSession(true);
   return profile;
 }
 
-/** The real signed-in admin remains the actor; only app-level member access changes. */
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const actor = await getAuthenticatedProfile();
-  return resolveMemberView(actor, (await cookies()).get(MEMBER_VIEW_COOKIE)?.value, store.getProfile);
+  return getAuthenticatedProfile();
 }
 
 export async function requireAuthenticatedAdmin(): Promise<Profile> {
@@ -44,9 +36,7 @@ export async function requireProfile(): Promise<Profile> {
 }
 
 export async function requireAdmin(): Promise<Profile> {
-  const profile = await requireProfile();
-  if (profile.role !== "admin") throw new Error("Admin access required.");
-  return profile;
+  return requireAuthenticatedAdmin();
 }
 
 export async function requireRenewalsAccess(): Promise<Profile> {

@@ -25,7 +25,7 @@ import {
 import { getEmployeeActivitySummaries } from "@/lib/employeeActivity";
 import { getWhatsAppBridgeHealth } from "@/lib/whatsappBridge";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
-import { AdminTeamPanel } from "@/components/AdminTeamPanel";
+import Link from "next/link";
 import { EmployeeActivityOverview } from "@/components/EmployeeActivityOverview";
 import { AdminMyWorkTime } from "@/components/AdminMyWorkTime";
 import { WhatsAppBridgeAdminCard } from "@/components/WhatsAppBridgeAdminCard";
@@ -137,19 +137,14 @@ export default async function AdminPage() {
         <div className="mb-3 flex items-center gap-2">
           <Users size={15} className="text-neutral-500" />
           <div>
-            <h2 className="text-sm font-semibold text-neutral-200">Team & Project Access</h2>
+            <h2 className="text-sm font-semibold text-neutral-200">SEO Bot Workspace</h2>
             <p className="mt-0.5 text-xs text-neutral-600">
-              Invite members, set job roles and control project access.
+              Assign daily SEO tasks and review bot results.
             </p>
           </div>
         </div>
 
-        <AdminTeamPanel
-          currentUserId={currentProfile.id}
-          members={members}
-          projects={projects}
-          assignmentsByMember={Object.fromEntries(assignmentsByMember)}
-        />
+        <Link href="/team" className="inline-block rounded-md border border-base-600 px-3 py-2 text-sm text-neutral-200 hover:bg-base-800">Manage SEO bots</Link>
       </section>
     </div>
   );

@@ -28,7 +28,6 @@ import type {
   DnsRecordType,
   DomainStatus,
   InvoiceStatus,
-  JobRole,
   KeywordGroupColor,
   KeywordRole,
   KeywordStatus,
@@ -48,7 +47,6 @@ import type {
   ReportPeriodType,
   ResaleDomainStatus,
   RichContent,
-  Role,
   SearchIntent,
   SeoModule,
   SeoAssignableModule,
@@ -906,127 +904,6 @@ export async function disableSharingAction(projectId: string) {
   await requireAdmin();
   await store.disableSharing(projectId);
   refresh(projectId);
-}
-
-/**
- * Admin-only team management. Team members are real Supabase Auth accounts
- * (created via the service-role admin API) with a role + optional per-project
- * assignments — see lib/auth.ts for how access is enforced.
- */
-function inviteTeamMemberErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : "";
-  if (message.toLowerCase().includes("already") || message.toLowerCase().includes("registered")) {
-    return "A team member with that email already exists.";
-  }
-  if (message.toLowerCase().includes("password")) {
-    return message;
-  }
-  return message || "Something went wrong inviting this team member. Please try again.";
-}
-
-export async function inviteTeamMemberAction(
-  formData: FormData,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireAdmin();
-
-  const email = str(formData, "email");
-  const password = str(formData, "password");
-  const name = str(formData, "name");
-  const role = (str(formData, "role") || "member") as Role;
-  const jobRole = (str(formData, "jobRole") || "general") as JobRole;
-  if (!email || email.length > 254 || password.length < 12 || password.length > 128) {
-    return { ok: false, error: "Enter a valid email and a password between 12 and 128 characters." };
-  }
-  if (!["admin", "member"].includes(role) || !["general", "seo_expert", "web_developer"].includes(jobRole)) {
-    return { ok: false, error: "Invalid team role." };
-  }
-
-  try {
-    await store.inviteTeamMember({ email, password, name, role, jobRole });
-    revalidatePath("/admin");
-    revalidatePath("/team");
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: inviteTeamMemberErrorMessage(error) };
-  }
-}
-
-export async function updateMemberRoleAction(userId: string, role: Role) {
-  const actor = await requireAdmin();
-  if (actor.id === userId || !["admin", "member"].includes(role)) throw new Error("Invalid role change.");
-  await store.updateMemberRole(userId, role);
-  revalidatePath("/admin");
-  revalidatePath("/team");
-}
-
-export async function updateMemberJobRoleAction(userId: string, jobRole: JobRole) {
-  await requireAdmin();
-  await store.updateMemberJobRole(userId, jobRole);
-  revalidatePath("/admin");
-  revalidatePath("/team");
-}
-
-export async function setMemberRenewalsAccessAction(userId: string, allowed: boolean) {
-  await requireAdmin();
-  await store.setMemberRenewalsAccess(userId, allowed);
-  revalidatePath("/admin");
-  revalidatePath("/team");
-}
-
-export async function setMemberBacklinkCredentialAccessAction(userId: string, allowed: boolean) {
-  await requireAdmin();
-  await store.setMemberBacklinkCredentialAccess(userId, allowed);
-  revalidatePath("/admin");
-  revalidatePath("/team");
-}
-
-export async function setMemberFinanceAccessAction(userId: string, allowed: boolean) {
-  await requireAdmin();
-  await store.setMemberFinanceAccess(userId, allowed);
-  revalidatePath("/admin");
-  revalidatePath("/team");
-}
-
-export async function assignProjectsAction(formData: FormData) {
-  await requireAdmin();
-
-  const userId = str(formData, "userId");
-  if (!userId) return;
-
-  const projectIds = formData.getAll("projectIds").map(String);
-  await store.setMemberAssignments(userId, projectIds);
-  revalidatePath("/admin");
-  revalidatePath("/team");
-}
-
-export async function setMemberTemporaryPasswordAction(
-  userId: string,
-  password: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireAdmin();
-
-  if (!userId) return { ok: false, error: "User is required." };
-  if (typeof password !== "string" || password.length < 12 || password.length > 128) {
-    return { ok: false, error: "Temporary password must be between 12 and 128 characters." };
-  }
-
-  try {
-    await store.setMemberTemporaryPassword(userId, password);
-    revalidatePath("/admin");
-    revalidatePath("/team");
-    return { ok: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    return { ok: false, error: message || "Could not update the password." };
-  }
-}
-
-export async function removeMemberAction(userId: string) {
-  const actor = await requireAdmin();
-  if (actor.id === userId) throw new Error("You cannot remove your own account.");
-  await store.removeMember(userId);
-  revalidatePath("/admin");
-  revalidatePath("/team");
 }
 
 /**

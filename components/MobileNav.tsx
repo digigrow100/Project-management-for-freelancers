@@ -27,7 +27,7 @@ const COMMON_MORE_NAV = [
 
 const MORE_NAV = [
   { href: "/admin/employee-activity", label: "Browser Activity", icon: Activity },
-  { href: "/team", label: "Team", icon: Users },
+  { href: "/team", label: "SEO Bots", icon: Users },
   { href: "/projects/new", label: "New Project", icon: Plus },
   { href: "/clients", label: "Clients", icon: Building2 },
   { href: "/finance", label: "Finance", icon: Wallet },

@@ -60,6 +60,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // SEO bots have an independent credential boundary in their pages and API.
+  if (pathname === "/seo-bots" || pathname === "/seo-bots/login"
+    || pathname === "/api/seo-bots/tasks" || pathname.startsWith("/api/seo-bots/tasks/")) {
+    const result = NextResponse.next({ request });
+    result.headers.set("Cache-Control", "private, no-store, max-age=0");
+    result.headers.set("X-Robots-Tag", HOSTING_ROBOTS_TAG);
+    return finish(result);
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 

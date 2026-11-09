@@ -33,7 +33,7 @@ await assert.rejects(team.getAuthenticatedProfile(),/missing table/);
 missing=false;
 assert.equal(await team.getAuthenticatedProfile(),null);
 profile={id:user.id,role:'member'};
-assert.equal((await team.getAuthenticatedProfile()).role,'member');
+assert.equal(await team.getAuthenticatedProfile(),null);
 assert.equal(adminChecks,0);
 profile={id:user.id,role:'admin'};
 assert.equal((await team.getAuthenticatedProfile()).role,'admin');

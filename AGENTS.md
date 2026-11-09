@@ -562,6 +562,20 @@ Hosting now provides server/package/client/service records, separate billing (in
 
 # Roles and Access
 
+The human member workspace is retired. Its accounts, assignments, work records
+and historical reporting are retained. Admin login still uses Supabase Auth, the
+approved network and MFA. Old member-view cookies cannot change the active role.
+Hosting customer access stays on its own authorization path.
+
+Admins manage SEO bot keys, assignments and results at /team. Bots sign in at
+/seo-bots/login or use an Authorization bearer key on GET /api/seo-bots/tasks
+and POST /api/seo-bots/tasks/{id}. The write body contains work_date from the
+queue, status (completed or blocked), summary, and optional evidence_url. Keys
+are shown once on creation or rotation and stored as digests only. Do not log
+or commit credentials. The Asia/Karachi work date is calculated at request
+time. Daily assignments roll over without a cron or external integration.
+
+
 Admin-only `/team` reuses AdminTeamPanel for roles, job roles, project grants, finance/renewals/credential access, invites and account management. Each member has a one-click POST “Open as member” control and an admin-gated `/team/view/[id]` access link (GET only shows the launch form). Member view keeps the original verified Supabase session; getCurrentProfile applies the selected member’s permissions only while the actor still has database-backed admin access. The HTTP-only Strict SameSite cookie is actor-bound and expires in one hour. A persistent banner returns to admin; member presence heartbeats are suppressed during admin inspection. Real member actions affect real records. No member passwords or login tokens are put in links. Logout clears the view cookie.
 
 Primary roles:
@@ -1550,3 +1564,15 @@ The lockfile updates development packages only. Runtime package resolutions stay
 at the verified security release. The remaining TypeScript ESLint advisories
 come from its declared minimatch 10 range, so this update avoids an out-of-range
 major override.
+
+
+## 2026-11-10 — SEO bot workspaces
+
+The Team area now manages isolated bot accounts and scheduled assignments.
+The human workspace and impersonation controls are retired and historical
+records remain available to admins. SEO bots get their own browser sign-in
+and scoped API. One-time tasks carry over until complete. Daily assignments
+get one result per work date, with a blocker-to-complete transition and
+idempotent retries. The queue includes templates for on-page, technical,
+local, content and reporting work. Bot tables have default-deny RLS and
+server-only access. This release does not publish changes to external sites.

@@ -122,6 +122,13 @@ function parsePairingCode(code: string): { origin: string; rawToken: string } | 
   }
 }
 
+async function assertActiveExtensionOwner(userId: string) {
+  const { data, error } = await getSupabase().from("freelance_hq_profiles")
+    .select("role").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  if (data?.role !== "admin") throw new Error("Unauthorized.");
+}
+
 export async function createExtensionPairingCode(userId: string, origin: string) {
   const supabase = getSupabase();
   const recentSince = new Date(Date.now() - PAIR_RATE_WINDOW_MS).toISOString();
@@ -206,6 +213,7 @@ export async function pairExtension(input: {
     .maybeSingle();
   if (consumeError) throw consumeError;
   if (!consumed?.user_id) throw new Error("Pairing code expired or already used.");
+  await assertActiveExtensionOwner(String(consumed.user_id));
 
   const rawDeviceToken = randomBytes(32).toString("base64url");
   const tokenHash = sha256(rawDeviceToken);
@@ -280,6 +288,7 @@ export async function authenticateExtensionRequest(request: Request): Promise<Au
     throw error;
   }
   if (!data) throw new Error("Unauthorized.");
+  await assertActiveExtensionOwner(String(data.employee_id));
 
   return {
     id: String(data.id),
