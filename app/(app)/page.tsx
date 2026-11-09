@@ -9,7 +9,7 @@ import { ensureIdleSeoTaskForMember, getMyTasks, listMemberSeoModuleAssignments,
 export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const profile = await getCurrentProfile();
-  if (profile?.role === "admin" && isHostingPortalHost(headers().get("host"))) {
+  if (profile?.role === "admin" && isHostingPortalHost((await headers()).get("host"))) {
     redirect("/hosting");
   }
   if (!profile) redirect("/client");

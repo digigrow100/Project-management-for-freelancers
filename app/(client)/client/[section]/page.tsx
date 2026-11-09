@@ -7,7 +7,9 @@ import type { HostingService } from "@/lib/hosting/types";
 import { RecordsTable } from "@/components/hosting/RecordsTable";
 import { PageTitle,Notice,Pagination,HostingForm,Field,Select,Area,cardClass,choices } from "@/components/hosting/ui";
 const titles={services:'Your hosting',domains:'Your domains',invoices:'Billing',payments:'Payments',tickets:'How can we help?'};
-export default async function ClientSectionPage({params,searchParams}:{params:{section:string};searchParams:{page?:string;error?:string;saved?:string}}) {
+export default async function ClientSectionPage({params: routeParams,searchParams: queryParams}:{params:Promise<{section:string}>;searchParams:Promise<{page?:string;error?:string;saved?:string}>}) {
+  const params = await routeParams;
+  const searchParams = await queryParams;
  if(!Object.prototype.hasOwnProperty.call(titles,params.section))notFound();
  const session=await requireHostingClient();
  const section=params.section as ClientSection,data=await clientRecords(section,Number(searchParams.page)||1);

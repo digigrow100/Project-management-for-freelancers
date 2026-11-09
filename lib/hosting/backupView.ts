@@ -14,7 +14,7 @@ const policy=z.object({id,name:z.string().max(200),copies:count,defaultPoint:id.
  recommended:z.object({intervalDays:count,coversDays:count,rotatingSlots:count,raisedByLock:z.boolean()}).strict(),
  conflicts:z.array(z.object({code:z.string().regex(/^[a-z_]{1,40}$/),detail:z.string().max(400)}).strict()).max(10),explanation:z.string().max(1200),objectLockDays:count.nullable(),
  points:z.array(z.object({id,captured:count,default:z.boolean(),components:z.array(kind).min(1).max(4)}).strict()).max(1000)}).strict();
-const plan=z.object({job:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),plan:z.record(z.unknown()),
+const plan=z.object({job:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),plan:z.record(z.string(), z.unknown()),
  sites:z.array(z.object({site:id,point:id,captured:count,components:z.array(kind).max(4),missing:z.array(kind).max(4),skipped:z.array(shared).max(50),accepted:z.array(shared).max(50),
   covered:z.array(z.object({component:kind,resource:id}).strict()).max(50)}).strict()).min(1).max(100)}).strict();
 export function policiesView(raw:unknown):BackupPolicy[]{const p=z.array(policy).max(100).safeParse(raw);if(!p.success)throw new BackupViewDenied();return p.data as BackupPolicy[];}

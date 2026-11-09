@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getSupabase } from "./supabaseClient";
 import type { TaskFile } from "./types";
 
@@ -21,14 +22,14 @@ async function uploadToBucket(
     throw new Error(`File is too large (max ${Math.round(maxBytes / (1024 * 1024))}MB).`);
   }
 
-  const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
-  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const extension = /\.([a-z0-9]{1,10})$/i.exec(file.name)?.[1]?.toLowerCase() ?? "bin";
+  const unique = randomUUID();
   const path = `${pathPrefix}/${unique}.${extension}`;
 
   const arrayBuffer = await file.arrayBuffer();
   const { error } = await getSupabase()
     .storage.from(bucket)
-    .upload(path, arrayBuffer, { contentType: file.type || "application/octet-stream", upsert: true });
+    .upload(path, arrayBuffer, { contentType: file.type || "application/octet-stream", upsert: false });
   if (error) throw error;
 
   const { data } = getSupabase().storage.from(bucket).getPublicUrl(path);

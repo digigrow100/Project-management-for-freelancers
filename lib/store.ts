@@ -1,3 +1,5 @@
+import { attachmentPath } from "./attachmentAccess";
+import { requireProjectResources } from "./projectScope";
 import { seoAssignmentGroup, seoItemOwner } from "./seoAssignmentRouting";
 import { randomBytes, randomUUID } from "node:crypto";
 import { businessDateKey, businessTomorrowMorningIso } from "./date";
@@ -205,7 +207,7 @@ function toTask(row: TaskRow, nameById?: Map<string, string>): Task {
     dueDate: row.due_date,
     scheduledFor: row.scheduled_for,
     checklist: row.checklist ?? [],
-    files: normalizeFiles(row.files),
+    files: normalizeFiles(row.files).map((file) => ({ ...file, url: attachmentPath(file.url) })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -1172,12 +1174,19 @@ export async function getRecentCompletedTasks(limit = 50): Promise<Task[]> {
  * assigned to (an admin can hand anyone a task from the full team list).
  */
 export async function getMyTasks(userId: string): Promise<Task[]> {
-  const [{ data, error }, nameById] = await Promise.all([
+  const [{ data, error }, nameById, profile, assignedProjects] = await Promise.all([
     getSupabase().from("freelance_hq_tasks").select("*").eq("assigned_to", userId),
     taskNameLookup(),
+    getProfile(userId),
+    getAssignedProjectIds(userId),
   ]);
   if (error) throw error;
-  return ((data ?? []) as TaskRow[]).filter(row => !row.fallback_template_key?.startsWith("retired:")).map((row) => toTask(row, nameById));
+  if (!profile) return [];
+  const allowed = new Set(assignedProjects);
+  return ((data ?? []) as TaskRow[])
+    .filter((row) => (profile.role === "admin" || allowed.has(row.project_id))
+      && !row.fallback_template_key?.startsWith("retired:"))
+    .map((row) => toTask(row, nameById));
 }
 
 interface IdleTaskTemplateRow {
@@ -1881,6 +1890,10 @@ async function requireAssignedTask(taskId: string, userId: string): Promise<{
     waiting_for_admin: boolean;
   };
   if (row.assigned_to !== userId) throw new Error("This task is not assigned to you.");
+  const profile = await getProfile(userId);
+  if (!profile || (profile.role !== "admin" && !await isProjectAssignedToUser(row.project_id, userId))) {
+    throw new Error("You don't have access to this project.");
+  }
 
   return {
     projectId: row.project_id,
@@ -2444,6 +2457,10 @@ export async function toggleChecklistItem(taskId: string, itemId: string): Promi
   if (!data) return;
 
   const row = data as { checklist: ChecklistItem[]; project_id: string; status: TaskStatus; assigned_to: string | null };
+  if (!row.checklist.some((item) => item.id === itemId)) throw new Error("Checklist item not found.");
+  if (itemId.startsWith("pageaudit:")) {
+    await requireProjectResources(row.project_id, "project_pages", itemId.split(":")[1]);
+  }
   const nextChecklist = row.checklist.map((item) =>
     item.id === itemId ? { ...item, done: !item.done } : item,
   );
@@ -2511,7 +2528,7 @@ export async function removeTaskFile(taskId: string, url: string): Promise<void>
   const row = data as { files: (TaskFile | string)[]; project_id: string };
   const { error: updateError } = await getSupabase()
     .from("freelance_hq_tasks")
-    .update({ files: normalizeFiles(row.files).filter((f) => f.url !== url), updated_at: nowIso() })
+    .update({ files: normalizeFiles(row.files).filter((f) => attachmentPath(f.url) !== url && f.url !== url), updated_at: nowIso() })
     .eq("id", taskId);
   if (updateError) throw updateError;
 
@@ -3371,7 +3388,10 @@ export async function setPageChecklistStatusFromAssignedTask(
   const task = await requireAssignedTask(taskId, userId);
   if (!itemId.startsWith("pageaudit:")) throw new Error("This checklist item does not support this status.");
   const [, pageId, periodMonth, checkKey] = itemId.split(":");
-  if (!pageId || !periodMonth || !checkKey) throw new Error("Invalid page checklist item.");
+  if (!pageId || !periodMonth || !checkKey || !task.checklist.some((item) => item.id === itemId)) {
+    throw new Error("Invalid page checklist item.");
+  }
+  await requireProjectResources(task.projectId, "project_pages", pageId);
 
   await updatePageAuditCheck(pageId, periodMonth, checkKey, status, userId);
   const done = status === "done" || status === "not_applicable";
@@ -3617,12 +3637,16 @@ export async function inviteTeamMember(input: {
 }
 
 export async function removeMember(userId: string): Promise<void> {
+  const profile = await getProfile(userId);
+  if (profile?.role !== "member") throw new Error("Team member not found.");
   const { error } = await getSupabase().auth.admin.deleteUser(userId);
   if (error) throw error;
 }
 
 
 export async function setMemberTemporaryPassword(userId: string, password: string): Promise<void> {
+  const profile = await getProfile(userId);
+  if (profile?.role !== "member") throw new Error("Team member not found.");
   const { error } = await getSupabase().auth.admin.updateUserById(userId, { password });
   if (error) throw error;
 }
@@ -3688,6 +3712,7 @@ export function redactProjectClientData(project: Project): Project {
   return {
     ...project,
     client: "",
+    shareToken: null,
     clientDetails: {
       ...project.clientDetails,
       name: "",
@@ -5588,7 +5613,7 @@ function toProjectAttachment(row: ProjectAttachmentRow): ProjectAttachment {
   return {
     id: row.id,
     projectId: row.project_id,
-    url: row.url,
+    url: attachmentPath(row.url),
     name: row.name,
     type: row.type,
     size: row.size,
@@ -5756,7 +5781,7 @@ function toBacklinkEntry(row: BacklinkEntryRow): BacklinkEntry {
     keywordId: row.keyword_id,
     indexed: row.indexed,
     listedOn: row.listed_on,
-    files: normalizeFiles(row.files),
+    files: normalizeFiles(row.files).map((file) => ({ ...file, url: attachmentPath(file.url) })),
     notes: row.notes,
     links: row.links ?? [],
     createdAt: row.created_at,
@@ -5925,6 +5950,7 @@ export async function setVaultPassword(
 /** Verifies the user's security password and decrypts the entry's saved password. Throws typed errors the caller maps to a message. */
 export async function revealBacklinkPassword(
   entryId: string,
+  projectId: string,
   userId: string,
   vaultPassword: string,
 ): Promise<string> {
@@ -5943,6 +5969,7 @@ export async function revealBacklinkPassword(
     .from("freelance_hq_backlink_entries")
     .select("password_encrypted")
     .eq("id", entryId)
+    .eq("project_id", projectId)
     .maybeSingle();
   if (error) throw error;
 
@@ -7057,6 +7084,7 @@ export async function setReportPreferences(
 }
 
 export async function getProjectByShareToken(token: string): Promise<Project | null> {
+  if (!/^[a-f0-9]{32}$/i.test(token)) return null;
   const { data, error } = await getSupabase()
     .from("freelance_hq_projects")
     .select("*")

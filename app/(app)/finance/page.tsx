@@ -62,7 +62,8 @@ function rangeStart(range: RangeKey): string {
   return `${year}-01-01`;
 }
 
-export default async function FinancePage({ searchParams }: { searchParams: { range?: string; currency?: string } }) {
+export default async function FinancePage({ searchParams: queryParams }: { searchParams: Promise<{ range?: string; currency?: string }> }) {
+  const searchParams = await queryParams;
   const profile = await getCurrentProfile();
   if (!profile || (profile.role !== "admin" && !profile.canAccessFinance)) notFound();
 

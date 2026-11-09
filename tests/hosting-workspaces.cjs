@@ -22,6 +22,7 @@ function load(filename) {
   const localRequire = (name) => {
     if (name === 'next/navigation') return {
       usePathname: () => pathname,
+      unstable_rethrow: () => {},
       notFound: () => { throw blocked; },
     };
     if (name === 'next/link') return ({ href, prefetch, children, ...props }) =>

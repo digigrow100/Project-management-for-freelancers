@@ -3,7 +3,8 @@ import {requireAdmin} from "@/lib/auth";
 import {getProfile} from "@/lib/store";
 import {startMemberViewAction} from "@/lib/memberViewActions";
 export const dynamic="force-dynamic";
-export default async function MemberAccessPage({params}:{params:{id:string}}) {
+export default async function MemberAccessPage({params: routeParams}:{params:Promise<{id:string}>}) {
+  const params = await routeParams;
   await requireAdmin();
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.id)) notFound();
   const member=await getProfile(params.id);

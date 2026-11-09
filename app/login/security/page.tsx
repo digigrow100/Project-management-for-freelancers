@@ -7,8 +7,9 @@ import { logoutAction } from "../actions";
 import { SecurityForm } from "./SecurityForm";
 import './security.css';
 export const dynamic='force-dynamic';
-export default async function SecurityPage({searchParams}:{searchParams:{expired?:string;manage?:string;removed?:string;saved?:string}}){
- const auth=createAuthClient();const {data:{user},error}=await auth.auth.getUser();if(error||!user)redirect('/login');
+export default async function SecurityPage({searchParams: queryParams}:{searchParams:Promise<{expired?:string;manage?:string;removed?:string;saved?:string}>}){
+  const searchParams = await queryParams;
+ const auth=await createAuthClient();const {data:{user},error}=await auth.auth.getUser();if(error||!user)redirect('/login');
  await requireAdminNetworkForUser(user.id);
  const manage=searchParams.manage==='1';
  if(manage)await requireEnrolledMfa();

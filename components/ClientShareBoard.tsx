@@ -2,7 +2,7 @@
 
 import { useRef, useTransition } from "react";
 import { Paperclip, Download, FileText } from "lucide-react";
-import type { Project, Stage, Task } from "@/lib/types";
+import type { Stage, Task } from "@/lib/types";
 import { addClientTaskFileAction, createClientTaskAction } from "@/lib/actions";
 import { PriorityBadge } from "./Badges";
 import { cn, formatFileSize } from "@/lib/utils";
@@ -19,18 +19,20 @@ const STATUS_LABELS: Record<Task["status"], string> = {
   done: "Done",
 };
 
+type SharedTask = Pick<Task, "id" | "stageId" | "title" | "status" | "priority" | "notes" | "checklist" | "files">;
+
 export function ClientShareBoard({
-  project,
+  stages: projectStages,
   tasks,
   shareToken,
 }: {
-  project: Project;
-  tasks: Task[];
+  stages: Stage[];
+  tasks: SharedTask[];
   shareToken: string;
 }) {
-  const stages = [...project.stages].sort((a, b) => a.order - b.order);
-  const byStage = new Map<string, Task[]>();
-  const unstaged: Task[] = [];
+  const stages = [...projectStages].sort((a, b) => a.order - b.order);
+  const byStage = new Map<string, SharedTask[]>();
+  const unstaged: SharedTask[] = [];
   for (const task of tasks) {
     if (!task.stageId) {
       unstaged.push(task);
@@ -77,7 +79,7 @@ export function ClientShareBoard({
   );
 }
 
-function ClientTaskCard({ task, shareToken }: { task: Task; shareToken: string }) {
+function ClientTaskCard({ task, shareToken }: { task: SharedTask; shareToken: string }) {
   const [isPending, startTransition] = useTransition();
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {

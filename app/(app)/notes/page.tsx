@@ -6,10 +6,11 @@ import { NotesPanel } from "@/components/NotesPanel";
 export const dynamic = "force-dynamic";
 
 export default async function NotesPage({
-  searchParams,
+  searchParams: queryParams,
 }: {
-  searchParams: { project?: string; folder?: string };
+  searchParams: Promise<{ project?: string; folder?: string }>;
 }) {
+  const searchParams = await queryParams;
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 

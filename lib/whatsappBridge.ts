@@ -205,6 +205,7 @@ export async function authenticateWhatsAppBridge(request: Request): Promise<Auth
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Unauthorized.");
+  await requireAdminProfile(String(data.owner_user_id));
 
   return {
     id: String(data.id),

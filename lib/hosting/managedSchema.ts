@@ -27,7 +27,7 @@ export const managedInventory=z.object({service:uuid,kind:z.enum(['email','datab
 export const managedRequestResult=z.object({id:treeId,digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(MANAGED_STATES)}).strict();
 // Owner approval of a mailbox/database/mail-domain request. The signed packet carries no plan: the job digest already covers the whole request.
 export const managedApproval=z.object({job:treeId,digest:z.string().regex(/^[a-f0-9]{64}$/),nonce:z.string().regex(/^[a-f0-9]{32}$/),issued:z.number().int().positive(),expires:z.number().int().positive(),signature:z.string().regex(/^[A-Za-z0-9+/]{86}==$/)}).strict();
-export const managedApprovalView=z.object({job:managedJob.omit({approval_received:true}).extend({digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),intent:z.record(z.unknown()),digest:z.string().regex(/^[a-f0-9]{64}$/),approval_received:z.boolean(),approvable:z.boolean()}).strict()
+export const managedApprovalView=z.object({job:managedJob.omit({approval_received:true}).extend({digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),intent:z.record(z.string(), z.unknown()),digest:z.string().regex(/^[a-f0-9]{64}$/),approval_received:z.boolean(),approvable:z.boolean()}).strict()
  .refine(v=>v.digest===v.job.digest&&(!v.approvable||v.job.state==='queued'),'managed approval view');
 export const managedApprovalsPending=z.object({service:uuid,kind:z.enum(['email','database']),pending:z.array(managedApprovalView).max(5)}).strict();
 // Owner-signed documents are produced by the owner's local signer and only relayed here; the private service verifies the signature and every bound field.
@@ -88,7 +88,7 @@ export type ManagedInventory=z.infer<typeof managedInventory>;
 
 const sourceRepository=z.object({installation_id:z.number().int().positive(),repository_id:z.number().int().positive(),full_name:z.string().regex(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/).max(140),branch:z.string().min(1).max(200),write:z.boolean()}).strict();
 const sourceHealth=z.object({ok:z.literal(true),checked:z.number().int().nonnegative(),status:z.number().int().nullable(),root_status:z.number().int().nullable(),tls:z.boolean()}).strict();
-const sourceResult=z.record(z.union([z.string().max(200),z.number(),z.boolean(),z.null(),z.array(z.string().max(1024)).max(50),sourceHealth]));   // a completed publication reports its health evidence
+const sourceResult=z.record(z.string(), z.union([z.string().max(200),z.number(),z.boolean(),z.null(),z.array(z.string().max(1024)).max(50),sourceHealth]));   // a completed publication reports its health evidence
 export const sourceJob=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest:z.string().regex(/^[a-f0-9]{64}$/),state:z.enum(['queued','applying','done','failed','uncertain','cancelled']),operation:z.enum(['deploy','export','publish','rollback','recover','build']),source:z.enum(['github','tree','release','job']),tree:treeId.nullable(),created:z.number().int().nonnegative(),result:sourceResult.nullable(),live_verified:z.boolean()}).strict()
  .refine(j=>j.live_verified===(['publish','rollback'].includes(j.operation)&&j.state==='done'),'live');
 export const sourceTree=z.object({id:treeId,kind:z.enum(['zip','github']),state:z.enum(['staged','released']),files:z.number().int().nonnegative(),bytes:z.number().int().nonnegative(),created:z.number().int().nonnegative(),manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/),runtime:z.enum(['static','php','nextjs','node','unknown']),publishable:z.boolean(),buildable:z.boolean()}).strict()
@@ -128,7 +128,7 @@ export const githubStatus=z.object({service:uuid,installations:z.array(githubIns
 export const githubLinkCommand=z.object({action:z.literal('source.github_link'),service:uuid,installation_id:sourceNumber,github_user_id:sourceNumber,github_login:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/),
  repositories:z.array(z.object({id:sourceNumber,full_name:z.string().regex(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/).max(140)}).strict()).max(300)}).strict();
 // Approval inbox views. Intent and plan detail are relayed to the owner's signer, which recomputes the job digest itself; the portal never trusts or alters them.
-const jsonRecord=z.record(z.unknown());
+const jsonRecord=z.record(z.string(), z.unknown());
 export const approvalView=z.object({job:sourceJob,intent:jsonRecord.nullable(),digest:z.string().regex(/^[a-f0-9]{64}$/),needs_plan:z.boolean(),
  plan:z.object({digest:z.string().regex(/^[a-f0-9]{64}$/).nullable(),detail:jsonRecord.nullable(),error:z.string().max(200).nullable()}).strict().nullable(),
  approval_received:z.boolean(),approvable:z.boolean(),summary:jsonRecord}).strict()

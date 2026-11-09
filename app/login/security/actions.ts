@@ -6,7 +6,7 @@ import { rateLimit } from "@/lib/security/rateLimit";
 export type SecurityState={qr?:string;factorId?:string;error?:string};
 export async function securityAction(previous:SecurityState,form:FormData):Promise<SecurityState>{
  let removed=false;
- const auth=createAuthClient();const {data:{user},error}=await auth.auth.getUser();
+ const auth=await createAuthClient();const {data:{user},error}=await auth.auth.getUser();
  if(error||!user)redirect('/login');
  await requireHostingSession(false,true);
  try{

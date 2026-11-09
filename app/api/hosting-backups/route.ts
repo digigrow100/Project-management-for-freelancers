@@ -8,7 +8,7 @@ export const dynamic="force-dynamic";
 export async function POST(request:Request){
  const headers={"Cache-Control":"no-store"};
  try{
-  if(request.headers.get("origin")!==getSiteOrigin())throw new BackupDenied();
+  if(request.headers.get("origin")!==await getSiteOrigin())throw new BackupDenied();
   const scope=new URL(request.url).searchParams.get("scope");if(scope!=="owner"&&scope!=="client")throw new BackupDenied();
   const context=await backupContext(scope==="owner");
   if(scope==='client'&&!clientFeatureEnabled('backups',process.env))return Response.json({error:'Service unavailable.'},{status:404,headers});

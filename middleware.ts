@@ -4,7 +4,13 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { HOSTING_ROBOTS_TAG, isHostingPortalHost, isHostingProbePath } from "./lib/hosting/portalHost";
 
-const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/extension", "/api/whatsapp-bridge", "/auth"];
+const CRON_PATHS = new Set([
+  "/api/cron/activity-retention",
+  "/api/cron/monthly-invoices",
+  "/api/cron/hosting-renewals",
+]);
+
+const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/attachments", "/api/extension", "/api/whatsapp-bridge", "/auth"];
 
 export async function middleware(request: NextRequest) {
   const hosting = isHostingPortalHost(request.headers.get("host"));
@@ -38,6 +44,20 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/auth/confirm";
     url.searchParams.set("next", "/login/reset-password");
     return finish(NextResponse.redirect(url));
+  }
+
+  // These machine routes authenticate independently, before any work.
+  if (CRON_PATHS.has(request.nextUrl.pathname)) return finish(NextResponse.next({ request }));
+
+  const { pathname, origin } = request.nextUrl;
+  const browserMutation = pathname.startsWith("/api/")
+    && !["GET", "HEAD", "OPTIONS"].includes(request.method)
+    && !/^\/api\/(?:extension\/(?:activity|health|pair|prompts|screen-share\/(?:session|signal))|whatsapp-bridge\/(?:ack|config|heartbeat|inbound|outbox|pair|requests)|hosting-operator)$/.test(pathname);
+  if (browserMutation) {
+    const suppliedOrigin = request.headers.get("origin");
+    if ((suppliedOrigin && suppliedOrigin !== origin) || request.headers.get("sec-fetch-site") === "cross-site") {
+      return finish(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+    }
   }
 
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -81,7 +101,7 @@ export async function middleware(request: NextRequest) {
     return finish(target);
   }
 
-  const isPublic = request.nextUrl.pathname === "/api/hosting-operator" || request.nextUrl.pathname === "/api/cron/hosting-renewals" || PUBLIC_PATHS.some((path) => request.nextUrl.pathname===path || request.nextUrl.pathname.startsWith(path+"/"));
+  const isPublic = request.nextUrl.pathname === "/api/hosting-operator" || PUBLIC_PATHS.some((path) => request.nextUrl.pathname===path || request.nextUrl.pathname.startsWith(path+"/"));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

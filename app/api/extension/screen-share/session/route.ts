@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       await touchScreenShare(device, body.sessionId);
       return NextResponse.json({ ok: true });
     }
+    if (body.action !== "start") return NextResponse.json({ error: "Invalid session action." }, { status: 400 });
     const sessionId = await startScreenShare(device, body.microphoneEnabled === true);
     return NextResponse.json({ ok: true, sessionId });
   } catch (error) {

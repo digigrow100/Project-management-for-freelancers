@@ -8,13 +8,13 @@ export const LIMIT_KEYS=RESOURCE_FIELDS.map(f=>f[0]) as readonly string[];
 export const ACCOUNT_STATES=['requested','provisioning','uncertain','provider_confirmed','enforced','suspended'] as const;
 export const appJob=z.object({id:z.string().regex(/^[a-f0-9]{32}$/),digest,state:z.enum(['queued','applying','uncertain','provider_confirmed','verified','failed']),live_verified:z.literal(false)}).strict();
 export const appStatus=z.object({account:uuid,client:uuid,state:z.enum(ACCOUNT_STATES),enforced:z.boolean(),limits_digest:digest,assignment:uuid,package:uuid,package_version:z.number().int().positive(),
- plan_digest:digest,capabilities:z.record(z.boolean()),blocked_features:z.array(z.string().max(40)).max(20),
+ plan_digest:digest,capabilities:z.record(z.string(), z.boolean()),blocked_features:z.array(z.string().max(40)).max(20),
  sites:z.array(z.object({site:uuid,domain:z.string().max(253),state:z.enum(['reserved','provider_confirmed','verified']),primary:z.boolean()}).strict()).max(100),
  jobs:z.array(z.object({id:z.string().regex(/^[a-f0-9]{32}$/),kind:z.enum(['provision','add-site']),state:z.enum(['queued','applying','uncertain','provider_confirmed','verified','failed']),site:uuid}).strict()).max(200),
  receipt_digest:digest.nullable(),live_verified:z.literal(false)}).strict();
 export const usageEntry=z.object({limit:z.number().int().nonnegative(),effective:z.number().int().nonnegative(),used:z.number().int().nonnegative().nullable(),percent:z.number().nonnegative().nullable(),
  level:z.enum(['unknown','disabled','ok','warn80','warn90','exceeded']),basis:z.string().max(60),measured:z.number().int().positive().optional(),allocated:z.number().int().nonnegative().optional()}).strict();
-export const appUsage=z.object({account:uuid,usage:z.record(usageEntry).refine(u=>Object.keys(u).every(k=>LIMIT_KEYS.includes(k))&&Object.keys(u).length===LIMIT_KEYS.length,'usage'),live_verified:z.literal(false)}).strict();
+export const appUsage=z.object({account:uuid,usage:z.record(z.string(), usageEntry).refine(u=>Object.keys(u).every(k=>LIMIT_KEYS.includes(k))&&Object.keys(u).length===LIMIT_KEYS.length,'usage'),live_verified:z.literal(false)}).strict();
 export type AppStatus=z.infer<typeof appStatus>;
 export type Rows={service:{id:string;client_id:string;server_id:string|null;package_id:string;status:string;assignment_key:string|null;package_snapshot:unknown};
  account:{id:string;service_id:string;client_id:string;server_id:string;package_id:string;package_version:number;assignment_key:string;limits_digest:string;status:string};

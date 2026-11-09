@@ -7,10 +7,11 @@ import { ThemeSettings } from "@/components/ThemeSettings";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage({
-  searchParams,
+  searchParams: queryParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: Promise<{ tab?: string }>;
 }) {
+  const searchParams = await queryParams;
   const currentProfile = await getCurrentProfile();
   if (!currentProfile) return null;
 

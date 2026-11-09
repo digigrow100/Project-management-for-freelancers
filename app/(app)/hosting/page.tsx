@@ -5,7 +5,8 @@ import type {HostingService} from '@/lib/hosting/types';
 import {RecordTableView,type TableRowView} from '@/components/hosting/RecordTableView';
 import {PageTitle,Notice,HostingForm,StatusBadge,Pagination} from '@/components/hosting/ui';
 
-export default async function HostingOverviewPage({searchParams}:{searchParams:{page?:string;error?:string;saved?:string}}){
+export default async function HostingOverviewPage({searchParams: queryParams}:{searchParams:Promise<{page?:string;error?:string;saved?:string}>}){
+  const searchParams = await queryParams;
  const [data,page,lookups]=await Promise.all([adminOverview(),adminRecords('services',Number(searchParams.page)||1),adminLookups()]);
  const rows:TableRowView[]=(page.records as HostingService[]).map(service=>{
   const client=lookups.clients.find(c=>c.id===service.client_id),plan=lookups.packages.find(p=>p.id===service.package_id);

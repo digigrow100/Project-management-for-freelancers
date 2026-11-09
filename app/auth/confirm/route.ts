@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const next = sanitizeNextPath(searchParams.get("next"));
 
   try {
-    const supabase = createAuthClient();
+    const supabase = await createAuthClient();
 
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);

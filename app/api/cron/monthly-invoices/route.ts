@@ -5,11 +5,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authorization = request.headers.get("authorization");
-    if (authorization !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ ok: false, error: "Scheduler is not configured." }, { status: 503 });
+  }
+  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("monthly invoice cron failed", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Invoice generation failed" },
+      { ok: false, error: "Invoice generation failed" },
       { status: 500 },
     );
   }

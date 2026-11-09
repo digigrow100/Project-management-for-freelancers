@@ -22,8 +22,8 @@ export function VaultPasswordModal({
     const next = String(formData.get("next") ?? "");
     const confirm = String(formData.get("confirm") ?? "");
 
-    if (next.length < 6) {
-      setError("New password must be at least 6 characters.");
+    if (next.length < 12) {
+      setError("New password must be at least 12 characters.");
       return;
     }
     if (next !== confirm) {
@@ -38,7 +38,7 @@ export function VaultPasswordModal({
         return;
       }
       if (result.reason === "wrong_current_password") setError("Current security password is incorrect.");
-      else if (result.reason === "too_short") setError("New password must be at least 6 characters.");
+      else if (result.reason === "too_short") setError("New password must be at least 12 characters.");
       else setError("Something went wrong. Please try again.");
     });
   }
@@ -87,7 +87,8 @@ export function VaultPasswordModal({
               name="next"
               type="password"
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
               className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
             />
           </div>
@@ -97,7 +98,8 @@ export function VaultPasswordModal({
               name="confirm"
               type="password"
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
               className="w-full rounded-md border border-base-600 bg-base-950 px-2.5 py-1.5 text-sm text-neutral-100 focus:border-accent-500 focus:outline-none"
             />
           </div>

@@ -5,7 +5,8 @@ import { DomainDetailPanel } from "@/components/DomainDetailPanel";
 
 export const dynamic = "force-dynamic";
 
-export default async function DomainDetailPage({ params }: { params: { id: string } }) {
+export default async function DomainDetailPage({ params: routeParams }: { params: Promise<{ id: string }> }) {
+  const params = await routeParams;
   const profile = await getCurrentProfile();
   if (profile?.role !== "admin") notFound();
 
