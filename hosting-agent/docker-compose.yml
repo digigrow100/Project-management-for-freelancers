@@ -1,0 +1,68 @@
+# House My Site hosting agent.
+# The socket proxy is the only process with the Docker socket. The agent talks
+# to it over the internal network. App containers are never given the socket.
+
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      INFO: 1
+      PING: 1
+      POST: 1
+      BUILD: 1
+      DELETE: 1
+      EXEC: 0
+      SWARM: 0
+      SECRETS: 0
+      VOLUMES: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SYSTEM: 0
+      COMMIT: 0
+      AUTH: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      SITES_DIR: /opt/stacks/sites
+      DATA_DIR: /var/lib/hms-agent
+      HOST_PROC: /host/proc
+      PORT: 8787
+    volumes:
+      - /opt/stacks/sites:/opt/stacks/sites
+      - agent-data:/var/lib/hms-agent
+      - /proc:/host/proc:ro
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.hms-agent.rule=Host(`${AGENT_HOST:-agent.example.com}`)
+      - traefik.http.routers.hms-agent.entrypoints=websecure
+      - traefik.http.routers.hms-agent.tls.certresolver=le
+      - traefik.http.services.hms-agent.loadbalancer.server.port=8787
+      - traefik.http.services.hms-verify.loadbalancer.server.port=8787
+
+networks:
+  proxy:
+    external: true
+  internal:
+    internal: true
+
+volumes:
+  agent-data:

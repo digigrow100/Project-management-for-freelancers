@@ -77,7 +77,7 @@ export function MobileNav({
         ...(canAccessRenewals && domainsItem ? [domainsItem] : []),
         ...(canAccessFinance && invoicesItem ? [invoicesItem] : []),
       ];
-  const primaryHosting=['/hosting','/hosting/services','/hosting/clients'];
+  const primaryHosting = ["/hosting", "/hosting/apps", "/hosting/security"];
   const sheetItems = hosting ? HOSTING_NAV.filter(item=>!primaryHosting.includes(item.href)) : [...COMMON_MORE_NAV, ...extraItems];
   const primaryItems = hosting ? HOSTING_NAV.filter(item=>primaryHosting.includes(item.href)) : PRIMARY_NAV;
   const linkActive = hosting ? hostingLinkActive : isActive;

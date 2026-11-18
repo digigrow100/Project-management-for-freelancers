@@ -1,10 +1,27 @@
-import Link from "next/link";
-import { clientOverview,clientRecords } from "@/lib/hosting/store";
-import type { HostingService } from "@/lib/hosting/types";
+import { requireHostingClient } from "@/lib/hosting/auth";
+import { hostingMessage } from "@/lib/hosting/apps/messages";
+import { listApps, recentDeployments } from "@/lib/hosting/apps/store";
+import { clientOverview } from "@/lib/hosting/store";
 import { money } from "@/lib/hosting/validation";
-import { PageTitle } from "@/components/hosting/ui";
-import { ClientServices } from "@/components/hosting/ClientServices";
+import type { HostingApp, HostingDeployment } from "@/lib/hosting/apps/types";
+import { Overview } from "@/components/hosting/dashboard/present";
+import Link from "next/link";
+
+export const dynamic = "force-dynamic";
+
 export default async function ClientHome() {
- const [d,services]=await Promise.all([clientOverview(),clientRecords("services")]);
- return <div><PageTitle title="Your space." description="Your hosting, billing and support in one place."/><ClientServices services={services.records as HostingService[]}/>{services.total>25&&<Link href="/client/services" className="client-link inline-block mt-5">View all hosting →</Link>}<div className="client-summary-footer"><section><h2>Outstanding balance</h2>{d.outstanding.length?d.outstanding.map(({currency,outstanding_minor})=><p key={currency} className="text-2xl mb-3">{money(outstanding_minor,currency)}</p>):<p className="mb-3">Nothing due</p>}<Link href="/client/invoices">View invoices →</Link></section><section><h2>Need a hand?</h2><p className="mb-3 text-sm text-neutral-400">{d.tickets?`${d.tickets} open support tickets`:"We’re here to help with your hosting."}</p><Link href="/client/tickets">Contact support →</Link></section></div>{d.config.payment_instructions&&<section className="mt-14 border-t border-base-700 pt-6"><h2 className="text-sm font-medium">Payment instructions</h2><p className="mt-3 whitespace-pre-line text-sm text-neutral-400">{d.config.payment_instructions}</p></section>}</div>;
+  const session = await requireHostingClient();
+  let apps: HostingApp[] = [];
+  let deployments: HostingDeployment[] = [];
+  let note = "";
+  try {
+    apps = await listApps(session.clientId);
+    deployments = await recentDeployments(session.clientId);
+  } catch (error) { note = hostingMessage(error instanceof Error ? error.message : "storage_unavailable"); }
+  let billing = "";
+  try {
+    const summary = await clientOverview();
+    billing = summary.outstanding.length ? summary.outstanding.map((row) => money(row.outstanding_minor, row.currency)).join(", ") : "Nothing due";
+  } catch { billing = ""; }
+  return <div>{note ? <p className="hms-banner">{note}</p> : null}<Overview base="/client/apps" apps={apps} deployments={deployments} />{billing ? <section className="hms-panel hms-secondary"><h2>Billing</h2><p>{billing}</p><Link href="/client/invoices">View invoices</Link></section> : null}</div>;
 }
