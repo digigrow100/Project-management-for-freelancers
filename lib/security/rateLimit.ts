@@ -3,7 +3,20 @@ import { createHmac } from "node:crypto";
 import { headers } from "next/headers";
 import { getSupabase } from "@/lib/supabaseClient";
 export class SecurityCheckUnavailable extends Error {
- constructor() { super('Security checks are unavailable. Try again later.'); }
+ readonly code='security_check_unavailable';
+ constructor() {
+  super('Security checks are unavailable. Try again later.');
+  this.name='SecurityCheckUnavailable';
+ }
+}
+export class RateLimitExceeded extends Error {
+ readonly code='rate_limited';
+ readonly retryAfterSeconds:number;
+ constructor(seconds:number) {
+  super('Too many attempts. Please wait and try again.');
+  this.name='RateLimitExceeded';
+  this.retryAfterSeconds=seconds;
+ }
 }
 export async function rateLimit(scope:string,identity:string,limit:number,seconds:number) {
  const secret=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,7 +24,7 @@ export async function rateLimit(scope:string,identity:string,limit:number,second
  const key=createHmac('sha256',secret).update(`hosting-rate-v1:${scope}:${identity}`).digest('hex');
  const {data,error}=await getSupabase().rpc('freelance_hq_hosting_rate_limit',{p_key:key,p_limit:limit,p_seconds:seconds});
  if(error)throw new SecurityCheckUnavailable();
- if(data!==true)throw new Error('Too many attempts. Please wait and try again.');
+ if(data!==true)throw new RateLimitExceeded(seconds);
 }
 export async function limitSignIn(scope:string,email:string) {
  // Do not trust arbitrary forwarded headers on self-hosted development servers.

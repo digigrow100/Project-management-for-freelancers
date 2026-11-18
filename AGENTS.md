@@ -1007,6 +1007,25 @@ Relevant migration:
 
 ---
 
+# Password reset
+
+`/login/forgot-password` asks Supabase to email a recovery link. The submit
+button stays disabled and reads **Sending reset link…** until the request
+finishes, so a second click cannot spend another attempt. It then shows an
+inbox confirmation or an inline error. A missing or invalid email is explained
+on the form before a request is sent. Reset requests stay limited to 3 per
+email per 15 minutes (and 40 per address per 15 minutes on Vercel). Hitting
+that limit says **You can try again in 15 minutes.** A failed security check,
+including when the limiter itself is unavailable, says **Password reset is
+temporarily unavailable. Please try again later.**
+The link target is `{site origin}/auth/confirm?next=/login/reset-password`.
+`/auth/confirm` exchanges the code or token hash and opens
+`/login/reset-password`, where the new password is saved before any
+authenticator check. An account that already has an authenticator is then
+sent to `/login/security`; the authenticator is not removed. `/sw.js` and
+`/manifest.json` are served without a login redirect, and the service worker
+does not intercept form posts.
+
 # Security Rules
 
 1. Never commit environment secrets.
@@ -1141,6 +1160,10 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Password reset keeps the 3-per-email, 15-minute limit. The limit message now says when to retry, a limiter outage has its own unavailable message, and the sending button stays disabled so a repeat click cannot burn another attempt.
+
+- Password reset now shows a sending state and an inline error, saves the new password before the authenticator step, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. The recovery link still lands on `/auth/confirm` and then `/login/reset-password`.
 
 - Added owner Dynadot REST v2 connection, paginated registrar inventory, guarded domain changes, renewal review, durable audit and uncertain-result reconciliation. Legacy inventory and customer assignment stay separate. Provider acceptance awaits credentials.
 

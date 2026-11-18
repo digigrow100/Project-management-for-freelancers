@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Leaf } from "lucide-react";
-import { requestPasswordResetAction } from "../actions";
+import { PasswordResetRequestForm, PasswordResetSent } from "../auth-forms";
 
 export default async function ForgotPasswordPage({
   searchParams: queryParams,
@@ -24,36 +24,9 @@ export default async function ForgotPasswordPage({
         </p>
 
         {searchParams.sent ? (
-          <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-            If that email has an account, a reset link is on its way. Check your inbox.
-          </p>
+          <PasswordResetSent />
         ) : (
-          <form action={requestPasswordResetAction} className="flex flex-col gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-neutral-400">Email</label>
-              <input
-                name="email"
-                type="email"
-                required
-                autoFocus
-                placeholder="you@example.com"
-                className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
-              />
-            </div>
-
-            {searchParams.error && (
-              <p className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
-                {searchParams.error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="mt-2 rounded-lg bg-accent-500 py-2.5 text-sm font-semibold text-base-950 hover:bg-accent-400 shadow-glow"
-            >
-              Send reset link
-            </button>
-          </form>
+          <PasswordResetRequestForm serverError={searchParams.error} />
         )}
 
         <Link

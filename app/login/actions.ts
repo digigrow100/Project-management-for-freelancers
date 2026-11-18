@@ -1,11 +1,11 @@
 "use server";
-import {assertAdminNetworkForUser,AdminNetworkDenied} from "@/lib/security/adminNetwork";
+import {assertAdminNetworkForUser,AdminNetworkDenied,requireAdminNetworkForUser} from "@/lib/security/adminNetwork";
 import { limitSignIn, rateLimit, SecurityCheckUnavailable } from "@/lib/security/rateLimit";
-import { requireEnrolledMfa } from "@/lib/security/mfa";
+import { passwordResetLimiterMessage } from "@/lib/security/passwordResetLimit";
 import {cookies} from "next/headers";
 import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
 
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
 import { getSiteOrigin } from "@/lib/site";
 
@@ -66,72 +66,94 @@ export async function logoutAction() {
 }
 
 export async function requestPasswordResetAction(formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim();
-
-  if (!email || email.length>254) {
-    redirect(`/login/forgot-password?error=${encodeURIComponent("Email is required.")}`);
-  }
-
-  try {await limitSignIn("reset",email);} catch {redirect("/login/forgot-password?error="+encodeURIComponent("Please wait before requesting another reset link."));}
-
-  let supabase;
   try {
-    supabase = await createAuthClient();
-  } catch {
-    redirect(`/login/forgot-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
-  }
+    const email = String(formData.get("email") ?? "").trim();
 
-  const redirectTo = `${await getSiteOrigin()}/auth/confirm?next=${encodeURIComponent("/login/reset-password")}`;
-  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (!email || email.length>254) {
+      redirect(`/login/forgot-password?error=${encodeURIComponent("Email is required.")}`);
+    }
 
-  // Supabase doesn't error for an unknown email (to avoid leaking which
-  // addresses have accounts), so a generic "check your inbox" message here is
-  // accurate for both the real and the no-such-account case. Only a genuine
-  // failure (bad email format, rate limit, misconfiguration) surfaces below.
-  if (error) {
+    try {
+      await limitSignIn("reset", email);
+    } catch (error) {
+      redirect("/login/forgot-password?error=" + encodeURIComponent(passwordResetLimiterMessage(error)));
+    }
+
+    let supabase;
+    try {
+      supabase = await createAuthClient();
+    } catch {
+      redirect(`/login/forgot-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
+    }
+
+    const redirectTo = `${await getSiteOrigin()}/auth/confirm?next=${encodeURIComponent("/login/reset-password")}`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+    // Supabase doesn't error for an unknown email (to avoid leaking which
+    // addresses have accounts), so a generic "check your inbox" message here is
+    // accurate for both the real and the no-such-account case. Only a genuine
+    // provider failure surfaces below. The attempt limit is handled above.
+    if (error) {
+      redirect(`/login/forgot-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
+    }
+
+    redirect("/login/forgot-password?sent=1");
+  } catch (error) {
+    unstable_rethrow(error);
     redirect(`/login/forgot-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
   }
-
-  redirect("/login/forgot-password?sent=1");
 }
 
 export async function updatePasswordAction(formData: FormData) {
-  const password = String(formData.get("password") ?? "");
-  const confirmPassword = String(formData.get("confirmPassword") ?? "");
-
-  if (!password || password.length < 12 || password.length > 128) {
-    redirect(
-      `/login/reset-password?error=${encodeURIComponent("Password must be between 12 and 128 characters.")}`,
-    );
-  }
-  if (password !== confirmPassword) {
-    redirect(`/login/reset-password?error=${encodeURIComponent("Passwords don't match.")}`);
-  }
-
-  let supabase;
   try {
-    supabase = await createAuthClient();
-  } catch {
-    redirect(`/login/reset-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
-  }
+    const password = String(formData.get("password") ?? "");
+    const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-  const {data:{user}}=await supabase.auth.getUser();
-  if(!user)redirect("/login");
-  await requireEnrolledMfa();
-  try {await rateLimit("password",user.id,5,900);} catch {redirect("/login/reset-password?error="+encodeURIComponent("Please wait before changing your password again."));}
+    if (!password || password.length < 12 || password.length > 128) {
+      redirect(
+        `/login/reset-password?error=${encodeURIComponent("Password must be between 12 and 128 characters.")}`,
+      );
+    }
+    if (password !== confirmPassword) {
+      redirect(`/login/reset-password?error=${encodeURIComponent("Passwords don't match.")}`);
+    }
 
-  const { error } = await supabase.auth.updateUser({ password });
+    let supabase;
+    try {
+      supabase = await createAuthClient();
+    } catch {
+      redirect(`/login/reset-password?error=${encodeURIComponent(AUTH_NOT_CONFIGURED_MESSAGE)}`);
+    }
 
-  if (error) {
-    // Keep them on this form — the recovery session is usually still valid
-    // (this is often just a password-policy rejection), so bouncing to
-    // "request a new link" would throw away a perfectly good session along
-    // with whatever they'd already typed.
+    const {data:{user}}=await supabase.auth.getUser();
+    if(!user)redirect(`/login/reset-password?error=${encodeURIComponent("Open the reset link from your email, then choose a new password.")}`);
+    await requireAdminNetworkForUser(user.id);
+    try {await rateLimit("password",user.id,5,900);} catch {redirect("/login/reset-password?error="+encodeURIComponent("Please wait before changing your password again."));}
+
+    const { error } = await supabase.auth.updateUser({ password });
+
+    if (error) {
+      // Keep them on this form — the recovery session is usually still valid
+      // (this is often just a password-policy rejection), so bouncing to
+      // "request a new link" would throw away a perfectly good session along
+      // with whatever they'd already typed.
+      redirect(`/login/reset-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
+    }
+
+    // The recovery link signs the user in at the first assurance level. Save
+    // the password before asking for an authenticator, then send them to
+    // verify it. The authenticator itself is left in place.
+    if(user.factors?.some(factor=>factor.status==="verified")){
+      const level=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if(level.error||level.data?.currentLevel!=="aal2")redirect("/login/security");
+    }
+
+    // verifyOtp already signed them in via the recovery link, so they're
+    // authenticated now — middleware would bounce a plain "/login" redirect
+    // straight to "/" anyway, silently dropping any message set here.
+    redirect("/");
+  } catch (error) {
+    unstable_rethrow(error);
     redirect(`/login/reset-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
   }
-
-  // verifyOtp already signed them in via the recovery link, so they're
-  // authenticated now — middleware would bounce a plain "/login" redirect
-  // straight to "/" anyway, silently dropping any message set here.
-  redirect("/");
 }

@@ -70,8 +70,15 @@ edge middleware only.
 
 Click **Forgot password?** on `/login` to email a reset link
 (`/login/forgot-password` → `/auth/confirm` → `/login/reset-password`).
+The button changes to **Sending reset link…** and stays disabled while the
+request runs, then shows either the inbox confirmation or an inline error. A
+rate limit says to try again in 15 minutes. If the security check itself is
+down, the page says password reset is temporarily unavailable. An email the
+browser rejects is explained on the form instead of failing with no message.
 The confirmation route supports both Supabase's default PKCE recovery links
-and custom `token_hash` templates.
+and custom `token_hash` templates. Choosing a new password is saved before
+the authenticator step. An account that already has an authenticator is then
+asked to verify it; the authenticator is not removed.
 
 For production, set **Authentication > URL Configuration > Site URL** in
 Supabase to the production app URL and allow the production

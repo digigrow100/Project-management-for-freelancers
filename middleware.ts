@@ -11,6 +11,7 @@ const CRON_PATHS = new Set([
 ]);
 
 const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/attachments", "/api/extension", "/api/whatsapp-bridge", "/auth"];
+const PUBLIC_ASSETS = new Set(["/sw.js", "/manifest.json", "/favicon-32.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"]);
 
 export async function middleware(request: NextRequest) {
   const hosting = isHostingPortalHost(request.headers.get("host"));
@@ -28,6 +29,10 @@ export async function middleware(request: NextRequest) {
   if (hosting && (request.nextUrl.pathname === "/sitemap.xml" || isHostingProbePath(request.nextUrl.pathname))) {
     return finish(new NextResponse("Not found", {status:404}));
   }
+  // These files live in /public. A login redirect makes the browser reject
+  // sw.js ("script resource is behind a redirect") and the web manifest, so a
+  // previously installed worker can never be replaced.
+  if (PUBLIC_ASSETS.has(request.nextUrl.pathname)) return finish(NextResponse.next({ request }));
   if(request.nextUrl.pathname === "/login/network-check") {
     const env={VERCEL:process.env.VERCEL,ADMIN_ALLOWED_IPS:process.env.ADMIN_ALLOWED_IPS};
     return finish(NextResponse.json({clientIp:env.VERCEL==='1'?request.headers.get('x-forwarded-for'):null,trustedRuntime:env.VERCEL==='1',policyConfigured:!!env.ADMIN_ALLOWED_IPS,allowed:adminNetworkAllowed(request.headers,env)},{headers:{"Cache-Control":"private, no-store","X-Robots-Tag":HOSTING_ROBOTS_TAG}}));
