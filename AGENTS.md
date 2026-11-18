@@ -1017,7 +1017,15 @@ on the form before a request is sent. Reset requests stay limited to 3 per
 email per 15 minutes (and 40 per address per 15 minutes on Vercel). Hitting
 that limit says **You can try again in 15 minutes.** A failed security check,
 including when the limiter itself is unavailable, says **Password reset is
-temporarily unavailable. Please try again later.**
+temporarily unavailable. Please try again later.** A Supabase Auth rejection
+is logged as `password_reset_auth_failed` with only the error name, HTTP
+status, and code. The address, tokens, and the provider message are not
+logged. Auth status 429 (`over_email_send_rate_limit`) says how many seconds
+to wait. Auth status 500 or 504, including `unexpected_failure` and
+`request_timeout`, says the reset email could not be sent. Other Auth
+failures stay on the generic completion message. The recovery link is
+`https://web.housemysite.com/auth/confirm?next=%2Flogin%2Freset-password`
+on the hosting host.
 The link target is `{site origin}/auth/confirm?next=/login/reset-password`.
 `/auth/confirm` exchanges the code or token hash and opens
 `/login/reset-password`, where the new password is saved before any
@@ -1161,7 +1169,7 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
-- Password reset keeps the 3-per-email, 15-minute limit. The limit message now says when to retry, a limiter outage has its own unavailable message, and the sending button stays disabled so a repeat click cannot burn another attempt.
+- Password reset now records the Supabase Auth failure as name, status, and code only, and tells the person to wait when Auth rate-limits the email or that the email could not be sent when Auth returns 500 or 504. The address is not logged. Sending still depends on the Supabase Auth mail settings.
 
 - Password reset now shows a sending state and an inline error, saves the new password before the authenticator step, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. The recovery link still lands on `/auth/confirm` and then `/login/reset-password`.
 
