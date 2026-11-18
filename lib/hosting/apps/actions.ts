@@ -141,7 +141,7 @@ export async function createHostingApp(form: FormData) {
       await agentDeploy({
         name, framework, source: sourceBody({ source_kind: sourceKind, source_url: sourceUrl, git_ref: gitRef || null } as HostingApp, gitToken || undefined),
         dockerfile: dockerfile || undefined, port, cpu, memoryMb: memory, env, redirect: redirectMode,
-        domains: domain ? [{ host: domain, token }] : [],
+        domains: [],
       });
     } catch (error) {
       unstable_rethrow(error);
@@ -156,12 +156,36 @@ export async function createHostingApp(form: FormData) {
   redirect(`${actor.base}/${id}?tab=deployments${errorCode ? `&error=${encodeURIComponent(errorCode)}` : ""}`);
 }
 
-async function syncDomains(app: HostingApp, domains: HostingAppDomain[]) {
+const routedStatuses = new Set(["verifying", "issuing_ssl", "active"]);
+
+function routedDomains(domains: HostingAppDomain[], provenHost?: string) {
+  return domains.filter((domain) => domain.hostname === provenHost || routedStatuses.has(domain.status));
+}
+
+async function syncDomains(app: HostingApp, domains: HostingAppDomain[], provenHost?: string) {
   const env = await runtimeEnv(app.id);
   await agentDomains(app.name, {
-    domains: domains.map((domain) => ({ host: domain.hostname, token: domain.verification_token })),
+    domains: routedDomains(domains, provenHost).map((domain) => ({ host: domain.hostname, token: domain.verification_token })),
     redirect: app.www_redirect,
     ...(env ? { env } : {}),
+  });
+}
+
+async function deploySaved(app: HostingApp) {
+  const env = await runtimeEnv(app.id);
+  const token = app.source_kind === "git" ? await loadGitToken(app.id).catch(() => undefined) : undefined;
+  const domains = routedDomains(await listDomains(app.id));
+  await agentDeploy({
+    name: app.name,
+    framework: app.framework,
+    source: sourceBody(app, token),
+    dockerfile: app.dockerfile_path || undefined,
+    port: Number(app.port),
+    cpu: Number(app.cpu),
+    memoryMb: Number(app.memory_mb),
+    env: env ?? [],
+    redirect: app.www_redirect,
+    domains: domains.map((domain) => ({ host: domain.hostname, token: domain.verification_token })),
   });
 }
 
@@ -182,7 +206,7 @@ export async function verifyHostingDomain(form: FormData) {
   let detail = assessment.detail;
   if (assessment.proven && agentConfigured()) {
     try {
-      await syncDomains(app, domains);
+      await syncDomains(app, domains, hostname);
       const certificate = await certificateReady(hostname);
       status = domainStatusAfterProof(true, true, certificate.ok);
       if (certificate.ok && certificate.issuer) detail = `${assessment.detail} Certificate: ${certificate.issuer}.`;
@@ -303,16 +327,33 @@ export async function controlHostingApp(form: FormData) {
   }
   if (action !== "start" && action !== "stop" && action !== "restart" && action !== "redeploy") bail(back, "forbidden");
   if (!agentConfigured()) bail(back, "agent_not_configured");
+  const recordBuild = async () => {
+    await getSupabase().from("freelance_hq_hosting_deployments").insert({ app_id: app.id, status: "building", trigger: action, image_ref: app.source_kind === "image" ? app.source_url : `hms/${app.name}:latest` });
+    await getSupabase().from("freelance_hq_hosting_apps").update({ status: "building", last_error: null, updated_at: new Date().toISOString() }).eq("id", app.id);
+  };
   try {
-    if (action === "redeploy") {
-      const token = app.source_kind === "git" ? await loadGitToken(app.id).catch(() => undefined) : undefined;
-      const env = await runtimeEnv(app.id);
-      await agentLifecycle(app.name, "redeploy", { ...(token ? { token } : {}), ...(env ? { env } : {}), ...(app.dockerfile_path ? { dockerfile: app.dockerfile_path } : {}) });
-      await getSupabase().from("freelance_hq_hosting_deployments").insert({ app_id: app.id, status: "building", trigger: "redeploy", image_ref: app.source_kind === "image" ? app.source_url : `hms/${app.name}:latest` });
-      await getSupabase().from("freelance_hq_hosting_apps").update({ status: "building", last_error: null, updated_at: new Date().toISOString() }).eq("id", app.id);
+    if (action === "stop") {
+      try { await agentLifecycle(app.name, "stop"); }
+      catch (error) {
+        unstable_rethrow(error);
+        if (!(error instanceof AgentError) || error.code !== "not_found") throw error;
+      }
+      await getSupabase().from("freelance_hq_hosting_apps").update({ status: "stopped", last_error: null, updated_at: new Date().toISOString() }).eq("id", app.id);
     } else {
-      await agentLifecycle(app.name, action);
-      await getSupabase().from("freelance_hq_hosting_apps").update({ status: action === "stop" ? "stopped" : "running", last_error: null, updated_at: new Date().toISOString() }).eq("id", app.id);
+      try {
+        if (action === "redeploy") {
+          const token = app.source_kind === "git" ? await loadGitToken(app.id).catch(() => undefined) : undefined;
+          const env = await runtimeEnv(app.id);
+          await agentLifecycle(app.name, "redeploy", { ...(token ? { token } : {}), ...(env ? { env } : {}), ...(app.dockerfile_path ? { dockerfile: app.dockerfile_path } : {}) });
+        } else await agentLifecycle(app.name, action);
+        if (action === "redeploy") await recordBuild();
+        else await getSupabase().from("freelance_hq_hosting_apps").update({ status: "running", last_error: null, updated_at: new Date().toISOString() }).eq("id", app.id);
+      } catch (error) {
+        unstable_rethrow(error);
+        if (!(error instanceof AgentError) || error.code !== "not_found") throw error;
+        await deploySaved(app);
+        await recordBuild();
+      }
     }
   } catch (error) {
     unstable_rethrow(error);
@@ -360,7 +401,11 @@ export async function removeHostingDomain(form: FormData) {
   await getSupabase().from("freelance_hq_hosting_app_domains").delete().eq("app_id", app.id).eq("hostname", hostname);
   const remaining = await listDomains(app.id);
   if (agentConfigured() && app.status !== "pending") {
-    try { await syncDomains({ ...app }, remaining); } catch (error) { unstable_rethrow(error); bail(back, codeOf(error)); }
+    try { await syncDomains({ ...app }, remaining); }
+    catch (error) {
+      unstable_rethrow(error);
+      if (!(error instanceof AgentError) || error.code !== "not_found") bail(back, codeOf(error));
+    }
   }
   redirect(back);
 }

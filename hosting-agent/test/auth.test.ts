@@ -52,6 +52,14 @@ function headers(method: string, path: string, body = "", extra: Record<string, 
   };
 }
 
+test("a malformed verification URL returns 404 and leaves the server up", async () => {
+  await withServer(async (base) => {
+    assert.equal((await fetch(base + "/.well-known/hms-verify/%")).status, 404);
+    assert.equal((await fetch(base + "/.well-known/hms-verify/not-a-token")).status, 404);
+    assert.equal((await fetch(base + "/health")).status, 200);
+  });
+});
+
 test("health is public and unsigned mutations are refused", async () => {
   await withServer(async (base) => {
     assert.equal((await fetch(base + "/health")).status, 200);

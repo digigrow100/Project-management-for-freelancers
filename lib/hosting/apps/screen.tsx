@@ -24,6 +24,14 @@ export async function renderApp(base: "/hosting/apps" | "/client/apps", id: stri
         app = { ...app, status: remote.status, last_error: remote.error ?? null };
         await getSupabase().from("freelance_hq_hosting_apps").update({ status: app.status, last_error: app.last_error, updated_at: new Date().toISOString() }).eq("id", app.id);
       }
+      const finished = remote.status === "failed" ? "failed" : remote.status === "running" || remote.status === "stopped" ? "succeeded" : null;
+      if (finished) {
+        await getSupabase().from("freelance_hq_hosting_deployments").update({
+          status: finished,
+          error: finished === "failed" ? remote.error ?? "failed" : null,
+          finished_at: new Date().toISOString(),
+        }).eq("app_id", app.id).in("status", ["queued", "building"]);
+      }
     } catch { /* the saved status stays on screen */ }
   }
   const current = TABS.has(tab) ? tab : "overview";

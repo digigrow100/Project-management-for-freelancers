@@ -52,6 +52,8 @@ docker compose ps
 curl -fsS https://agent.housemysite.com/health
 ```
 
+The container starts as root only to create `/var/lib/hms-agent`, `/var/log/hms-agent` and `/opt/stacks/sites` and give them to the `node` user, then the process drops privileges. A fresh Docker volume is root-owned until that entrypoint runs.
+
 `/health` returns `{"ok":true}` and nothing else. Every other route requires the bearer token and a fresh Ed25519 signature.
 
 CrowdSec is optional. Leave `CROWDSEC_LAPI_URL` and `CROWDSEC_LAPI_KEY` empty until a bouncer key exists; the security page then shows that decisions are not configured. The key only needs to read decisions and alerts and to delete a decision. Create it on the VPS with `cscli bouncers add hms-agent` and put that key in `.env`, then `docker compose up -d`.

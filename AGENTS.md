@@ -165,7 +165,7 @@ The live server is the Contabo VPS at 62.171.130.156 (Ubuntu 24.04, Docker, Trae
 
 Admin Apps and the client Apps pages are the working product. Email Server, Databases and WordPress are visible coming-soon pages and do not create records. Plan assignments, registrar, billing, tickets and the older provider queues stay in the Records and Billing navigation. The agent does not use ISPConfig, the GitHub issue bridge, Windows installers, or operator Intake payloads.
 
-A domain is verified from the portal: an A record of 62.171.130.156, a TXT `_hms-verify` token when the answer is a Cloudflare address, or the HTTP token once the router answers. Status moves pending DNS, verifying, issuing SSL, active. Dynadot one-click DNS runs only when the saved registrar inventory contains the domain. Cloudflare DNS automation runs only when `CLOUDFLARE_API_TOKEN` is set. Nothing here means the agent is installed or that a certificate has been issued on the VPS.
+A domain is verified from the portal: an A record of 62.171.130.156, a TXT `_hms-verify` token when the answer is a Cloudflare address, or the HTTP token once a router for that exact name already answers. The agent receives a hostname only after that proof, so an unverified alias is not given a public Traefik router. Status moves pending DNS, verifying, issuing SSL, active. Dynadot one-click DNS runs only when the saved registrar inventory contains the domain. Cloudflare DNS automation runs only when `CLOUDFLARE_API_TOKEN` is set. Nothing here means the agent is installed or that a certificate has been issued on the VPS.
 
 ### App Hosting plan contracts
 
@@ -1149,6 +1149,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- The hosting agent drops to the node user only after its data and audit directories are writable, ignores malformed verification URLs, and publishes a domain router only after DNS proof. A missing remote app is created again from the saved source. Deployment rows are marked finished when the agent reports a terminal state.
 
 - Added the Contabo hosting dashboard for admin and client Apps, with a signed VPS agent, domain verification and coming-soon Email, Database and WordPress pages. The agent is not installed and the migration is not applied by this change. Team workspace screens are unchanged.
 

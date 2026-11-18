@@ -153,7 +153,13 @@ export function createAgentServer(deps: AgentDeps) {
     }
   }
 
-  return createServer(async (req, res) => {
+  return createServer((req, res) => {
+    void handleRequest(req, res).catch(() => {
+      if (!res.headersSent) send(res, 400, { error: "bad_request" });
+    });
+  });
+
+  async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     const method = req.method ?? "GET";
     const path = req.url ?? "/";
     const remote = req.socket.remoteAddress ?? "unknown";
@@ -161,7 +167,8 @@ export function createAgentServer(deps: AgentDeps) {
     if (!limiter.allow(remote, 120, 60_000, started)) { send(res, 429, { error: "rate_limited" }); return; }
     if (method === "GET" && path.startsWith("/.well-known/hms-verify/")) {
       const host = String(req.headers.host ?? "").split(":")[0]?.toLowerCase() ?? "";
-      const token = decodeURIComponent(path.split("/").pop() ?? "");
+      const token = path.split("?")[0]?.split("/").pop() ?? "";
+      if (!/^[a-f0-9]{32,64}$/.test(token)) { send(res, 404, { error: "not_found" }); return; }
       const expected = verifyToken(host, deps.dataDir);
       if (!expected || expected !== token) { send(res, 404, { error: "not_found" }); return; }
       res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
@@ -191,7 +198,7 @@ export function createAgentServer(deps: AgentDeps) {
       writeAudit(deps.auditFile, { method, path: path.split("?")[0] ?? path, ok: false, code, ip: remote });
       send(res, status, { error: code === "failed" ? "failed" : code });
     }
-  });
+  }
 }
 
 async function routeRequest(input: {
