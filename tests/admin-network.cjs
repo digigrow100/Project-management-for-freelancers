@@ -3,18 +3,21 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 const {build}=require('esbuild');
 const {NextRequest}=require('next/server');
-const s={role:'admin',ip:'192.0.2.10',signedIn:true,dbError:false,inspect:false,calls:[],writes:0,signedOut:0};
+const s={role:'admin',ip:'192.0.2.10',signedIn:true,dbError:false,inspect:false,calls:[],writes:0,signedOut:0,aal:'aal2',updated:null,reset:null,resetError:false,updateError:false};
 global.__adminNetworkFixture=s;
 const fixture=`const s=globalThis.__adminNetworkFixture;
 export const headers=()=>new Headers({'x-forwarded-for':s.ip,'x-real-ip':'192.0.2.10','host':'web.housemysite.com'});
 export const cookies=()=>({get:()=>s.inspect?{value:'fixture-inspection'}:undefined});
 export const redirect=(path)=>{throw new Error('redirect:'+path)};
+export const unstable_rethrow=(error)=>{if(error instanceof Error && error.message.startsWith('redirect:'))throw error;};
 export const createAuthClient=()=>({auth:{
  getUser:async()=>({data:{user:s.signedIn?{id:'fixture-actor',email:'owner@fixture.invalid',email_confirmed_at:'fixture',factors:[{status:'verified'}]}:null},error:null}),
  getSession:async()=>({data:{session:{user:{id:'fixture-actor'},access_token:'x.'+Buffer.from(JSON.stringify({session_id:'11111111-1111-4111-8111-111111111111'})).toString('base64url')+'.x'}},error:null}),
  signInWithPassword:async()=>{s.signedIn=true;return {data:{user:{id:'fixture-actor'}},error:null}},
  signOut:async()=>{s.signedOut++;s.signedIn=false;return {error:null}},
- mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:'aal2'},error:null})}
+ resetPasswordForEmail:async(email,options)=>{s.reset={email,redirectTo:options&&options.redirectTo};return {error:s.resetError?{message:'rejected'}:null}},
+ updateUser:async(body)=>{s.updated=body;return {error:s.updateError?{message:'rejected'}:null}},
+ mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:s.aal||'aal2'},error:null})}
 }});
 export const createServerClient=createAuthClient;
 export const getSupabase=()=>({from:(table)=>({select:(fields)=>({eq:(key,value)=>({maybeSingle:async()=>{s.calls.push({table,fields,key,value});return {data:s.role?{role:s.role}:null,error:s.dbError?{}:null}}})})}),rpc:async()=>({data:true,error:null})});
@@ -37,7 +40,7 @@ async function load(file){
  b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:fixture,loader:'ts'}));
  }}]});const mod={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,mod,mod.exports);return mod.exports;
 }
-function configure(){process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10,198.51.100.20,203.0.113.30';s.role='admin';s.ip='192.0.2.10';s.signedIn=true;s.dbError=false;s.inspect=false;s.calls=[];s.writes=0;}
+function configure(){process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10,198.51.100.20,203.0.113.30';s.role='admin';s.ip='192.0.2.10';s.signedIn=true;s.dbError=false;s.inspect=false;s.calls=[];s.writes=0;s.aal='aal2';s.updated=null;s.reset=null;s.resetError=false;s.updateError=false;}
 test('exact allowlist rejects spoofed, ambiguous, absent, malformed and untrusted addresses',async()=>{
  const {adminNetworkAllowed:allowed}=await load('lib/security/adminNetworkPolicy.ts');
  const env={VERCEL:'1',ADMIN_ALLOWED_IPS:'192.0.2.10,198.51.100.20,203.0.113.30'};
@@ -54,7 +57,7 @@ test('actual actor authorization, MFA/session guards and APIs deny existing admi
  assert.equal((await api.GET()).status,403);assert.equal(s.writes,0);
  const security=await load('app/login/security/actions.ts');
  for(const action of ['enroll','verify','remove']){const f=new FormData();f.set('action',action);await assert.rejects(security.securityAction({},f),/network-restricted/);}
- const passwords=await load('app/login/actions.ts');const pf=new FormData();pf.set('password','long-fixture-password');pf.set('confirmPassword','long-fixture-password');await assert.rejects(passwords.updatePasswordAction(pf),/network-restricted/);
+ const passwords=await load('app/login/actions.ts');const pf=new FormData();pf.set('password','long-fixture-password');pf.set('confirmPassword','long-fixture-password');s.updated=null;await assert.rejects(passwords.updatePasswordAction(pf),/network-restricted/);assert.equal(s.updated,null);
  s.inspect=true;await assert.rejects(auth.getCurrentProfile(),/network-restricted/);s.inspect=false;
  s.role='member';assert.equal(await auth.getCurrentProfile(),null);await mfa.requireHostingSession(false,true);await assert.rejects(auth.requireAdmin(),/Admin access/);
  s.role=null;await mfa.requireEnrolledMfa(); // hosting customer has no staff profile
@@ -73,7 +76,36 @@ test('middleware blocks admin paths before Auth while keeping team, customer and
  const {middleware}=await load('middleware.ts');
  const req=(p,ip='192.0.2.99')=>new NextRequest('https://web.housemysite.com'+p,{headers:{host:'web.housemysite.com','x-forwarded-for':ip,'x-real-ip':'192.0.2.10'}});
  for(const p of ['/admin','/admin/settings','/hosting','/team','/api/admin/activity-settings','/api/hosting-operator/context','/api/hosting-operator/dispatch']){const r=await middleware(req(p));assert.equal(r.status,403,p);assert.match(r.headers.get('cache-control'),/no-store/);}
- for(const p of ['/login','/login/forgot-password','/login/network-restricted','/api/hosting-operator','/api/cron/hosting-renewals','/api/extension/devices','/api/whatsapp-bridge/poll'])assert.equal((await middleware(req(p))).status,200,p);
+ for(const p of ['/login','/login/forgot-password','/login/network-restricted','/api/hosting-operator','/api/cron/hosting-renewals','/api/extension/devices','/api/whatsapp-bridge/poll','/sw.js','/manifest.json','/icon-192.png']){const response=await middleware(req(p));assert.equal(response.status,200,p);assert.equal(response.headers.get('location'),null,p);}
  assert.equal((await middleware(req('/hosting','192.0.2.10'))).status,307); // IP is not authentication
  s.signedIn=true;for(const p of ['/','/today','/settings','/client'])assert.equal((await middleware(req(p))).status,200,p);
+});
+test('password reset emails the confirm link and saves a new password before the authenticator step',async()=>{
+ configure();
+ const fs=require('node:fs');
+ const form=fs.readFileSync(path.join(__dirname,'../app/login/auth-forms.tsx'),'utf8');
+ assert.match(form,/Sending reset link/);
+ assert.match(form,/useFormStatus/);
+ assert.match(form,/Enter a valid email address/);
+ assert.match(form,/Updating password/);
+ const worker=fs.readFileSync(path.join(__dirname,'../public/sw.js'),'utf8');
+ assert.match(worker,/method !== "GET"/);
+ const passwords=await load('app/login/actions.ts');
+ const request=new FormData();request.set('email',' Owner@Example.com ');
+ await assert.rejects(passwords.requestPasswordResetAction(request),{message:'redirect:/login/forgot-password?sent=1'});
+ assert.equal(s.reset.email,'Owner@Example.com');
+ assert.equal(s.reset.redirectTo,'https://web.housemysite.com/auth/confirm?next=%2Flogin%2Freset-password');
+ s.resetError=true;
+ await assert.rejects(passwords.requestPasswordResetAction(request),/forgot-password\?error=/);
+ const blank=new FormData();
+ await assert.rejects(passwords.requestPasswordResetAction(blank),/Email%20is%20required/);
+ const update=new FormData();update.set('password','long-fixture-password');update.set('confirmPassword','long-fixture-password');
+ s.aal='aal1';s.updated=null;
+ await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/login/security'});
+ assert.deepEqual(s.updated,{password:'long-fixture-password'});
+ s.aal='aal2';s.updated=null;
+ await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/'});
+ assert.deepEqual(s.updated,{password:'long-fixture-password'});
+ s.signedIn=false;
+ await assert.rejects(passwords.updatePasswordAction(update),/Open%20the%20reset%20link/);
 });
