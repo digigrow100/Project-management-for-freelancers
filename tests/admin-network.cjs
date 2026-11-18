@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 const {build}=require('esbuild');
 const {NextRequest}=require('next/server');
-const s={role:'admin',ip:'192.0.2.10',signedIn:true,dbError:false,inspect:false,calls:[],writes:0,signedOut:0,aal:'aal2',updated:null,reset:null,resetError:false,updateError:false};
+const s={role:'admin',ip:'192.0.2.10',signedIn:true,dbError:false,inspect:false,calls:[],writes:0,signedOut:0,aal:'aal2',updated:null,reset:null,resetError:false,updateError:false,resetLimit:null};
 global.__adminNetworkFixture=s;
 const fixture=`const s=globalThis.__adminNetworkFixture;
 export const headers=()=>new Headers({'x-forwarded-for':s.ip,'x-real-ip':'192.0.2.10','host':'web.housemysite.com'});
@@ -28,7 +28,11 @@ export const hostingIdentity=async()=>null;
 export const MEMBER_VIEW_COOKIE='fixture-member-view';
 export const resolveMemberView=(actor)=>s.inspect?{id:'fixture-member',role:'member'}:actor;
 export const rateLimit=async()=>{};
-export const limitSignIn=async()=>{};
+export const limitSignIn=async()=>{
+ if(s.resetLimit==='limited'){const error=new Error('Too many attempts. Please wait and try again.');error.name='RateLimitExceeded';error.code='rate_limited';error.retryAfterSeconds=900;throw error;}
+ if(s.resetLimit==='down'){const error=new Error('Security checks are unavailable. Try again later.');error.name='SecurityCheckUnavailable';error.code='security_check_unavailable';throw error;}
+ if(s.resetLimit==='boom')throw new Error('database timeout');
+};
 export class SecurityCheckUnavailable extends Error{};
 export const getSiteOrigin=()=> 'https://web.housemysite.com';
 export const getActivitySettings=async()=>{s.writes++;return {}};
@@ -40,7 +44,7 @@ async function load(file){
  b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:fixture,loader:'ts'}));
  }}]});const mod={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,mod,mod.exports);return mod.exports;
 }
-function configure(){process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10,198.51.100.20,203.0.113.30';s.role='admin';s.ip='192.0.2.10';s.signedIn=true;s.dbError=false;s.inspect=false;s.calls=[];s.writes=0;s.aal='aal2';s.updated=null;s.reset=null;s.resetError=false;s.updateError=false;}
+function configure(){process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10,198.51.100.20,203.0.113.30';s.role='admin';s.ip='192.0.2.10';s.signedIn=true;s.dbError=false;s.inspect=false;s.calls=[];s.writes=0;s.aal='aal2';s.updated=null;s.reset=null;s.resetError=false;s.updateError=false;s.resetLimit=null;}
 test('exact allowlist rejects spoofed, ambiguous, absent, malformed and untrusted addresses',async()=>{
  const {adminNetworkAllowed:allowed}=await load('lib/security/adminNetworkPolicy.ts');
  const env={VERCEL:'1',ADMIN_ALLOWED_IPS:'192.0.2.10,198.51.100.20,203.0.113.30'};
@@ -86,12 +90,25 @@ test('password reset emails the confirm link and saves a new password before the
  const form=fs.readFileSync(path.join(__dirname,'../app/login/auth-forms.tsx'),'utf8');
  assert.match(form,/Sending reset link/);
  assert.match(form,/useFormStatus/);
+ assert.match(form,/held\.current/);
+ assert.doesNotMatch(fs.readFileSync(path.join(__dirname,'../app/login/actions.ts'),'utf8'),/Please wait before requesting another reset link/);
  assert.match(form,/Enter a valid email address/);
  assert.match(form,/Updating password/);
  const worker=fs.readFileSync(path.join(__dirname,'../public/sw.js'),'utf8');
  assert.match(worker,/method !== "GET"/);
  const passwords=await load('app/login/actions.ts');
  const request=new FormData();request.set('email',' Owner@Example.com ');
+ s.resetLimit='limited';
+ await assert.rejects(passwords.requestPasswordResetAction(request),/You%20can%20try%20again%20in%2015%20minutes/);
+ assert.equal(s.reset,null);
+ s.resetLimit='down';
+ await assert.rejects(passwords.requestPasswordResetAction(request),/Password%20reset%20is%20temporarily%20unavailable/);
+ assert.equal(s.reset,null);
+ s.resetLimit='boom';
+ await assert.rejects(passwords.requestPasswordResetAction(request),/Password%20reset%20is%20temporarily%20unavailable/);
+ assert.doesNotMatch(String((await passwords.requestPasswordResetAction(request).catch(error=>error)).message),/Please%20wait%20before%20requesting/);
+ assert.equal(s.reset,null);
+ s.resetLimit=null;
  await assert.rejects(passwords.requestPasswordResetAction(request),{message:'redirect:/login/forgot-password?sent=1'});
  assert.equal(s.reset.email,'Owner@Example.com');
  assert.equal(s.reset.redirectTo,'https://web.housemysite.com/auth/confirm?next=%2Flogin%2Freset-password');

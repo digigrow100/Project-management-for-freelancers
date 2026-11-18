@@ -1,6 +1,7 @@
 "use server";
 import {assertAdminNetworkForUser,AdminNetworkDenied,requireAdminNetworkForUser} from "@/lib/security/adminNetwork";
 import { limitSignIn, rateLimit, SecurityCheckUnavailable } from "@/lib/security/rateLimit";
+import { passwordResetLimiterMessage } from "@/lib/security/passwordResetLimit";
 import {cookies} from "next/headers";
 import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
 
@@ -75,10 +76,7 @@ export async function requestPasswordResetAction(formData: FormData) {
     try {
       await limitSignIn("reset", email);
     } catch (error) {
-      const message = error instanceof SecurityCheckUnavailable
-        ? "Password reset is temporarily unavailable. Please try again later."
-        : "Please wait before requesting another reset link.";
-      redirect("/login/forgot-password?error=" + encodeURIComponent(message));
+      redirect("/login/forgot-password?error=" + encodeURIComponent(passwordResetLimiterMessage(error)));
     }
 
     let supabase;
@@ -94,7 +92,7 @@ export async function requestPasswordResetAction(formData: FormData) {
     // Supabase doesn't error for an unknown email (to avoid leaking which
     // addresses have accounts), so a generic "check your inbox" message here is
     // accurate for both the real and the no-such-account case. Only a genuine
-    // failure (bad email format, rate limit, misconfiguration) surfaces below.
+    // provider failure surfaces below. The attempt limit is handled above.
     if (error) {
       redirect(`/login/forgot-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
     }

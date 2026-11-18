@@ -1,23 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { requestPasswordResetAction, updatePasswordAction } from "./actions";
 
-function PendingButton({ idle, busy }: { idle: string; busy: string }) {
+function PendingButton({ idle, busy, locked = false }: { idle: string; busy: string; locked?: boolean }) {
   const { pending } = useFormStatus();
+  const waiting = pending || locked;
   return (
     <button
       type="submit"
-      disabled={pending}
-      aria-busy={pending}
+      disabled={waiting}
+      aria-busy={waiting}
       // Keep the click on the button when a focused field blurs and the
       // on-screen keyboard closes. Without this, the first tap can land
       // nowhere and the control looks dead.
       onMouseDown={(event) => event.preventDefault()}
       className="mt-2 cursor-pointer rounded-lg bg-accent-500 py-2.5 text-sm font-semibold text-base-950 shadow-glow hover:bg-accent-400 disabled:cursor-wait disabled:opacity-70"
     >
-      {pending ? busy : idle}
+      {waiting ? busy : idle}
     </button>
   );
 }
@@ -50,12 +51,18 @@ function emailProblem(value: string): string | null {
 
 export function PasswordResetRequestForm({ serverError }: { serverError?: string }) {
   const [localError, setLocalError] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+  const held = useRef(false);
   return (
     <form
       action={requestPasswordResetAction}
       noValidate
       className="flex flex-col gap-3"
       onSubmit={(event) => {
+        if (held.current) {
+          event.preventDefault();
+          return;
+        }
         const input = event.currentTarget.elements.namedItem("email");
         const email = input instanceof HTMLInputElement ? input.value.trim() : "";
         if (input instanceof HTMLInputElement) input.value = email;
@@ -66,6 +73,16 @@ export function PasswordResetRequestForm({ serverError }: { serverError?: string
           return;
         }
         setLocalError(null);
+        // Disable before the server action's pending flag flips, so a second
+        // click or Enter cannot send another reset and spend a rate-limit slot.
+        held.current = true;
+        setLocked(true);
+        const button = event.currentTarget.querySelector("button[type=submit]");
+        if (button instanceof HTMLButtonElement) {
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
+          button.textContent = "Sending reset link…";
+        }
       }}
     >
       <div>
@@ -88,7 +105,7 @@ export function PasswordResetRequestForm({ serverError }: { serverError?: string
         />
       </div>
       <FormMessage message={localError || serverError} tone="error" />
-      <PendingButton idle="Send reset link" busy="Sending reset link…" />
+      <PendingButton idle="Send reset link" busy="Sending reset link…" locked={locked} />
     </form>
   );
 }
