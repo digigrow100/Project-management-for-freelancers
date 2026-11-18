@@ -1,7 +1,7 @@
 "use server";
 import {assertAdminNetworkForUser,AdminNetworkDenied,requireAdminNetworkForUser} from "@/lib/security/adminNetwork";
 import { limitSignIn, rateLimit, SecurityCheckUnavailable } from "@/lib/security/rateLimit";
-import { passwordResetLimiterMessage } from "@/lib/security/passwordResetLimit";
+import { passwordResetAuthLog, passwordResetLimiterMessage, passwordResetProviderMessage } from "@/lib/security/passwordResetLimit";
 import {cookies} from "next/headers";
 import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
 
@@ -94,13 +94,15 @@ export async function requestPasswordResetAction(formData: FormData) {
     // accurate for both the real and the no-such-account case. Only a genuine
     // provider failure surfaces below. The attempt limit is handled above.
     if (error) {
-      redirect(`/login/forgot-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
+      console.error("password_reset_auth_failed", passwordResetAuthLog(error));
+      redirect(`/login/forgot-password?error=${encodeURIComponent(passwordResetProviderMessage(error))}`);
     }
 
     redirect("/login/forgot-password?sent=1");
   } catch (error) {
     unstable_rethrow(error);
-    redirect(`/login/forgot-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
+    console.error("password_reset_auth_failed", passwordResetAuthLog(error));
+    redirect(`/login/forgot-password?error=${encodeURIComponent(passwordResetProviderMessage(error))}`);
   }
 }
 

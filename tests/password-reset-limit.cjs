@@ -46,4 +46,14 @@ test('password reset errors name the wait and keep outages separate',async()=>{
  for(const error of [new Error('database timeout'),null,undefined,'Please wait before requesting another reset link.',{code:'rate_limited',retryAfterSeconds:0},{code:'rate_limited',retryAfterSeconds:900.5},{name:'RateLimitExceeded'}]){
   assert.equal(messages.passwordResetLimiterMessage(error),UNAVAILABLE);
  }
+ const leaked={name:'AuthApiError',status:429,code:'over_email_send_rate_limit',message:'For security purposes, you can only request this after 12 seconds. owner@gmail.com'};
+ assert.equal(messages.passwordResetProviderMessage(leaked),'You can try again in 12 seconds.');
+ assert.equal(messages.passwordResetAuthLog(leaked).name,'AuthApiError');
+ assert.equal(messages.passwordResetAuthLog(leaked).status,429);
+ assert.equal(messages.passwordResetAuthLog(leaked).code,'over_email_send_rate_limit');
+ assert.equal(JSON.stringify(messages.passwordResetAuthLog(leaked)).includes('@'),false);
+ assert.equal(messages.passwordResetProviderMessage({name:'AuthRetryableFetchError',status:500,code:undefined,message:'Error sending recovery email'}), "We couldn't send the reset email. Please try again in a few minutes.");
+ assert.equal(messages.passwordResetProviderMessage({name:'AuthRetryableFetchError',status:504,code:'request_timeout'}),"We couldn't send the reset email. Please try again in a few minutes.");
+ assert.equal(messages.passwordResetProviderMessage({name:'AuthApiError',status:400,code:'validation_failed',message:'Email address owner@gmail.com is invalid'}),'Could not complete this request. Please try again later.');
+ assert.equal(messages.passwordResetAuthLog({name:'AuthApiError',status:400,code:'owner@gmail.com'}).code,null);
 });

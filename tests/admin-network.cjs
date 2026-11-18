@@ -15,7 +15,7 @@ export const createAuthClient=()=>({auth:{
  getSession:async()=>({data:{session:{user:{id:'fixture-actor'},access_token:'x.'+Buffer.from(JSON.stringify({session_id:'11111111-1111-4111-8111-111111111111'})).toString('base64url')+'.x'}},error:null}),
  signInWithPassword:async()=>{s.signedIn=true;return {data:{user:{id:'fixture-actor'}},error:null}},
  signOut:async()=>{s.signedOut++;s.signedIn=false;return {error:null}},
- resetPasswordForEmail:async(email,options)=>{s.reset={email,redirectTo:options&&options.redirectTo};return {error:s.resetError?{message:'rejected'}:null}},
+ resetPasswordForEmail:async(email,options)=>{s.reset={email,redirectTo:options&&options.redirectTo};const failure=s.resetError===true?{name:'AuthApiError',message:'rejected'}:s.resetError;return {error:failure||null}},
  updateUser:async(body)=>{s.updated=body;return {error:s.updateError?{message:'rejected'}:null}},
  mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:s.aal||'aal2'},error:null})}
 }});
@@ -113,7 +113,23 @@ test('password reset emails the confirm link and saves a new password before the
  assert.equal(s.reset.email,'Owner@Example.com');
  assert.equal(s.reset.redirectTo,'https://web.housemysite.com/auth/confirm?next=%2Flogin%2Freset-password');
  s.resetError=true;
- await assert.rejects(passwords.requestPasswordResetAction(request),/forgot-password\?error=/);
+ await assert.rejects(passwords.requestPasswordResetAction(request),/Could%20not%20complete%20this%20request/);
+ const logged=[];const originalError=console.error;console.error=(...args)=>{logged.push(args);};
+ try {
+  s.reset=null;s.resetError={name:'AuthApiError',status:429,code:'over_email_send_rate_limit',message:'For security purposes, you can only request this after 60 seconds. owner@gmail.com'};
+  await assert.rejects(passwords.requestPasswordResetAction(request),/You%20can%20try%20again%20in%2060%20seconds/);
+  s.resetError={name:'AuthRetryableFetchError',status:500,message:'Error sending recovery email to owner@gmail.com'};
+  await assert.rejects(passwords.requestPasswordResetAction(request),/send%20the%20reset%20email/);
+  s.resetError={name:'AuthRetryableFetchError',status:504,code:'request_timeout',message:'Processing this request timed out, please retry after a moment.'};
+  await assert.rejects(passwords.requestPasswordResetAction(request),/send%20the%20reset%20email/);
+ } finally {console.error=originalError;}
+ const printed=JSON.stringify(logged);
+ assert.match(printed,/password_reset_auth_failed/);
+ assert.match(printed,/over_email_send_rate_limit/);
+ assert.match(printed,/request_timeout/);
+ assert.equal(printed.includes('gmail'),false);
+ assert.equal(printed.includes('Error sending'),false);
+ s.resetError=false;
  const blank=new FormData();
  await assert.rejects(passwords.requestPasswordResetAction(blank),/Email%20is%20required/);
  const update=new FormData();update.set('password','long-fixture-password');update.set('confirmPassword','long-fixture-password');

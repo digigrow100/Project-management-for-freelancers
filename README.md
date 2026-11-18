@@ -73,7 +73,10 @@ Click **Forgot password?** on `/login` to email a reset link
 The button changes to **Sending reset link…** and stays disabled while the
 request runs, then shows either the inbox confirmation or an inline error. A
 rate limit says to try again in 15 minutes. If the security check itself is
-down, the page says password reset is temporarily unavailable. An email the
+down, the page says password reset is temporarily unavailable. If Supabase
+Auth is sending too many emails, the page says how many seconds to wait. If
+Auth cannot hand the message to its mail provider, the page says the reset
+email could not be sent. An email the
 browser rejects is explained on the form instead of failing with no message.
 The confirmation route supports both Supabase's default PKCE recovery links
 and custom `token_hash` templates. Choosing a new password is saved before
