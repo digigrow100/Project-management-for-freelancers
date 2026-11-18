@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Leaf } from "lucide-react";
-import { updatePasswordAction } from "../actions";
+import { NewPasswordForm } from "../auth-forms";
 
 export default async function ResetPasswordPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string }> }) {
   const searchParams = await queryParams;
@@ -19,46 +19,7 @@ export default async function ResetPasswordPage({ searchParams: queryParams }: {
           You followed a password reset link. Set a new password below to finish.
         </p>
 
-        <form action={updatePasswordAction} className="flex flex-col gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-400">New password</label>
-            <input
-              name="password"
-              type="password"
-              required
-              minLength={12}
-              maxLength={128}
-              autoFocus
-              placeholder="••••••••"
-              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-400">Confirm password</label>
-            <input
-              name="confirmPassword"
-              type="password"
-              required
-              minLength={12}
-              maxLength={128}
-              placeholder="••••••••"
-              className="w-full rounded-md border border-base-600 bg-base-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-accent-500 focus:outline-none"
-            />
-          </div>
-
-          {searchParams.error && (
-            <p className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
-              {searchParams.error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="mt-2 rounded-lg bg-accent-500 py-2.5 text-sm font-semibold text-base-950 hover:bg-accent-400 shadow-glow"
-          >
-            Update password
-          </button>
-        </form>
+        <NewPasswordForm serverError={searchParams.error} />
 
         <Link
           href="/login/forgot-password"

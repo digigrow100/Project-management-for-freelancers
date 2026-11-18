@@ -1007,6 +1007,19 @@ Relevant migration:
 
 ---
 
+# Password reset
+
+`/login/forgot-password` asks Supabase to email a recovery link and shows
+**Sending reset link…** until the request finishes, then an inbox confirmation
+or an inline error. A missing or invalid email is explained on the form.
+The link target is `{site origin}/auth/confirm?next=/login/reset-password`.
+`/auth/confirm` exchanges the code or token hash and opens
+`/login/reset-password`, where the new password is saved before any
+authenticator check. An account that already has an authenticator is then
+sent to `/login/security`; the authenticator is not removed. `/sw.js` and
+`/manifest.json` are served without a login redirect, and the service worker
+does not intercept form posts.
+
 # Security Rules
 
 1. Never commit environment secrets.
@@ -1141,6 +1154,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- Password reset now shows a sending state and an inline error, saves the new password before the authenticator step, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. The recovery link still lands on `/auth/confirm` and then `/login/reset-password`.
 
 - Added owner Dynadot REST v2 connection, paginated registrar inventory, guarded domain changes, renewal review, durable audit and uncertain-result reconciliation. Legacy inventory and customer assignment stay separate. Provider acceptance awaits credentials.
 
