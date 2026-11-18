@@ -1,0 +1,31 @@
+export function hostingMessage(code: string) {
+  const messages: Record<string, string> = {
+    agent_not_configured: "The hosting agent is not connected. Add HOSTING_AGENT_URL, HOSTING_AGENT_TOKEN and HOSTING_AGENT_SIGNING_KEY, then try again.",
+    agent_unreachable: "The hosting agent did not respond. The app record was kept. Check the agent URL and try the action again.",
+    agent_rejected: "The hosting agent refused the request.",
+    agent_url_invalid: "HOSTING_AGENT_URL must be an https address without a username or password.",
+    migration_required: "The hosting apps tables are not in the database yet. Apply the new Supabase migration, then reload.",
+    name_taken: "That app name is already used. Choose another.",
+    invalid_name: "Use a short lowercase name: letters, numbers and hyphens.",
+    invalid_source: "Enter an https Git URL, or a Docker image name. Do not put a token in the URL.",
+    invalid_env: "Environment lines must look like NAME=value. Names are uppercase. PATH and other system names are blocked.",
+    invalid_domain: "Enter a real hostname such as example.com.",
+    invalid_limits: "CPU must be between 0.1 and 4, and memory between 128 and 8192 MB.",
+    invalid_client: "Choose a hosting client from the list.",
+    read_only: "This admin preview cannot change the client's apps.",
+    forbidden: "You cannot change that app.",
+    confirm_name: "Type the app name to confirm deletion.",
+    secrets_key_missing: "Set HOSTING_APP_SECRETS_KEY before saving environment values or a deploy token.",
+    cloudflare_off: "Cloudflare DNS automation is off until CLOUDFLARE_API_TOKEN is set on the server.",
+    not_in_registrar: "That domain is not in the saved Dynadot inventory, so DNS was not changed.",
+    dns_unchanged: "DNS is not pointing at the server yet. Add the record shown below, then verify again.",
+    storage_unavailable: "The hosting database could not be updated.",
+    too_many: "Too many attempts. Wait a minute and try again.",
+    busy: "The agent is already building several apps. Try again shortly.",
+    unauthorized: "The agent rejected the signature. Check the token and signing key.",
+    stale: "The agent rejected the request clock. Check the server time.",
+    not_found: "The agent does not have this app yet. Redeploy it, then try again.",
+    cloudflare_rejected: "Cloudflare refused the DNS change. No further records were submitted.",
+  };
+  return messages[code] ?? "That did not work. Nothing else was changed.";
+}
