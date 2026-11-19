@@ -1,0 +1,10 @@
+# Persist the extra network when Traefik is next recreated.
+# Replace the service key if preflight reports a different Compose service name.
+services:
+  traefik:
+    networks:
+      hms-runtime:
+        ipv4_address: 172.31.240.2
+networks:
+  hms-runtime:
+    external: true

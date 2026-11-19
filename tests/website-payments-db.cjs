@@ -1,0 +1,54 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const {PGlite}=require('@electric-sql/pglite');
+const id=n=>`${String(n).padStart(8,'0')}-1111-4111-8111-111111111111`;
+async function main(){const db=new PGlite();try{
+ await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
+ create table freelance_hq_profiles(id uuid primary key,role text);create table freelance_hq_hosting_clients(id uuid primary key,status text);
+ create table freelance_hq_hosting_client_access(id uuid default gen_random_uuid(),client_id uuid,auth_user_id uuid,enabled boolean);
+ create table freelance_hq_hosting_audit_logs(id uuid default gen_random_uuid(),actor_id uuid,event text,entity text,entity_id uuid);
+ insert into freelance_hq_profiles values('${id(1)}','admin'),('${id(2)}','member');
+ insert into freelance_hq_hosting_clients values('${id(3)}','active'),('${id(4)}','active');
+ insert into freelance_hq_hosting_client_access(client_id,auth_user_id,enabled) values('${id(3)}','${id(2)}',true),('${id(4)}','${id(5)}',true);`);
+ await db.exec(fs.readFileSync('supabase/migrations/20261118180000_hosting_apps.sql','utf8'));
+ await db.exec(fs.readFileSync('supabase/migrations/20261119142249_website_bank_payments_and_storage.sql','utf8'));
+ console.log('PASS: both website migrations apply to an isolated PostgreSQL engine');
+ await db.exec("update freelance_hq_website_settings set enabled=true,website_price_minor=1500,extra_gb_month_minor=200,bank_details='Fixture bank account, not real payment details'");
+ const request=()=>db.query('select freelance_hq_website_request_payment($1,$2,$3,$4,1,\'fixture\',null) id',[id(2),id(3),id(6),id(7)]);
+ await assert.rejects(db.query('select freelance_hq_website_request_payment($1,$2,$3,$4,1,\'\',null)',[id(5),id(3),id(6),id(7)]),/Active client/);
+ await assert.rejects(db.query("select freelance_hq_website_request_payment($1,$2,$3,$4,null,'',null)",[id(2),id(3),id(20),id(21)]),/Checkout settings/);
+ await request();await request();
+ await db.exec('update freelance_hq_website_settings set extra_gb_month_minor=999');
+ assert.equal((await db.query('select count(*)::int n from freelance_hq_website_payment_requests')).rows[0].n,1);
+ assert.equal((await db.query('select count(*)::int n from freelance_hq_website_credits')).rows[0].n,0);
+ await assert.rejects(db.query("select freelance_hq_website_review_payment($1,$2,true,'')",[id(2),id(6)]),/Admin required/);
+ await db.query("select freelance_hq_website_review_payment($1,$2,true,'Bank verified')",[id(1),id(6)]);
+ await db.query("select freelance_hq_website_review_payment($1,$2,true,'Retry')",[id(1),id(6)]);
+ const creditRow=(await db.query('select id,extra_gb_month_minor from freelance_hq_website_credits')).rows[0];assert.equal(creditRow.extra_gb_month_minor,200);const credit=creditRow.id;
+ const create=(key=id(8),extra=0,consent=false,actor=id(2))=>db.query("select freelance_hq_website_create($1,$2,$3,$4,'Fixture website','static','upload','','',null,$5,$6) id",[actor,id(3),credit,key,extra,consent]);
+ await assert.rejects(create(id(8),1,false),/consent/);
+ await assert.rejects(create(id(8),0,false,id(5)),/Active client/);
+ const site=(await create(id(8),1,true)).rows[0].id;
+ assert.equal((await create(id(8),1,true)).rows[0].id,site);
+ await assert.rejects(create(id(9)),/already used/);
+ assert.equal((await db.query('select count(*)::int n from freelance_hq_hosting_apps')).rows[0].n,1);
+ const begin=key=>db.query('select freelance_hq_website_begin_deploy($1,$2,$3,true) id',[id(2),site,key]);
+ const deploy=(await begin(id(10))).rows[0].id;assert.equal((await begin(id(10))).rows[0].id,deploy);
+ await assert.rejects(begin(id(11)),/pending/);
+ await assert.rejects(db.query("select freelance_hq_website_record_deploy($1,$2,$3,'running',2000000001,now())",[id(2),site,deploy]),/storage receipt/);
+ await db.query("select freelance_hq_website_record_deploy($1,$2,$3,'running',1500000000,now())",[id(2),site,deploy]);
+ await db.query("select freelance_hq_website_record_deploy($1,$2,$3,'running',1500000000,now())",[id(2),site,deploy]);
+ assert.equal((await db.query('select count(*)::int n from freelance_hq_website_usage_intervals')).rows[0].n,1);
+ // Fixture-only chronology: a half-GB of extra content for one completed UTC month.
+ await db.exec("update freelance_hq_website_usage_intervals set starts_at='2026-09-01T00:00:00Z',ends_at='2026-10-01T00:00:00Z'");
+ await db.query("select freelance_hq_website_close_storage_month($1,'2026-09-01')",[id(1)]);
+ await db.query("select freelance_hq_website_close_storage_month($1,'2026-09-01')",[id(1)]);
+ assert.equal((await db.query('select amount_minor from freelance_hq_website_storage_bills')).rows[0].amount_minor,100);
+ assert.equal((await db.query('select count(*)::int n from freelance_hq_website_storage_bills')).rows[0].n,1);
+ await assert.rejects(db.query("select freelance_hq_website_close_storage_month($1,date_trunc('month',now())::date)",[id(1)]),/completed UTC month/);
+ await db.query("select freelance_hq_website_request_payment($1,$2,$3,$4,1,'',null)",[id(5),id(4),id(12),id(13)]);await db.query("select freelance_hq_website_review_payment($1,$2,false,'Not received')",[id(1),id(12)]);await assert.rejects(db.query("select freelance_hq_website_review_payment($1,$2,true,'')",[id(1),id(12)]),/already reviewed/);assert.equal((await db.query('select count(*)::int n from freelance_hq_website_credits')).rows[0].n,1);
+ assert.equal((await db.query("select has_table_privilege('service_role','freelance_hq_website_storage_bills','UPDATE,DELETE') allowed")).rows[0].allowed,false);
+ for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(db.query('select * from freelance_hq_website_credits'),/permission denied/);await assert.rejects(db.query('select freelance_hq_website_review_payment($1,$2,true,\'\')',[id(1),id(6)]),/permission denied/);await db.exec('reset role');}
+ console.log('PASS: own-client claim, bank approval, exactly one credit/site, retry/concurrency guards, quota, consent, exact prorated storage billing and browser-role denials');
+ }finally{await db.close();}}
+main().catch(e=>{console.error(e);process.exitCode=1});

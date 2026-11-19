@@ -159,6 +159,59 @@ Never edit an old migration that may already have run in production. Add a new m
 
 # Team Management / Hosting workspaces
 
+### Client website checkout and Contabo runtime — new PR, not live
+
+New branch `feat/client-website-payments-20261119` adds the neutral client website
+home and Add New Website bank-transfer modal. Routes: `/client/apps/*`,
+`/client/deployments`, `/client/website-domains`, `/client/website-billing`,
+`/hosting/apps/*`, `/hosting/website-payments`. Hosting home/layout show pending
+bank notices; existing services/invoices/gated integrations remain separate.
+Agency admin task UI is not restyled. Start with `docs/client-websites.md`,
+`lib/hosting/websites/*`, `lib/hosting/apps/*`,
+`components/hosting/dashboard/*`, `app/api/hosting-websites/*`, `hosting-agent/`.
+
+This selectively replaces unmerged PR #268, excluding its stale auth/reset changes.
+Do not merge #268 alongside it. PR #274 is independent and not included here.
+A bank notice is a pending claim. Only a live admin with existing IP/MFA/session
+checks can approve/reject. Approval grants exactly one 1-GB website credit;
+creation consumes it transactionally. Optional screenshot: private PNG/JPEG <=2 MB.
+Uploads stream directly to a scoped VPS ticket: combined transport max 1 decimal
+GB; expanded/final content must fit approved quota. Extra storage requires explicit
+consent and uses the saved approval's rate, prorated by actual size/time in UTC
+into unpaid billing records. No automatic debit, refund, renewal or paid scheduler.
+Default optional extra cap is 1 GB; match portal/VPS capacity before raising it.
+
+New migrations NOT APPLIED: `20261118180000_hosting_apps.sql` (unmerged #268
+baseline), then `20261119142249_website_bank_payments_and_storage.sql`. RLS is
+on; browser roles have no table/RPC privileges. Service-only invoker functions
+recheck database actor/client/admin authority, credit ownership, retries and exact
+current-deployment receipts. No live data is deleted. Screenshot bucket stays
+private with no browser upload policy. Existing hosting contracts remain intact.
+
+New private portal env: HOSTING_AGENT_URL, HOSTING_AGENT_TOKEN,
+HOSTING_AGENT_SIGNING_KEY, HOSTING_APP_SECRETS_KEY; optional
+HOSTING_WEBSITE_MAX_EXTRA_GB=1. No env settings have been applied. The agent uses
+separate private control/fetch/build/runtime boundaries, non-root read-only apps,
+quotas and health-gated replacement. GitHub is supported, with an encrypted
+read-only repo token for private repositories. GitLab, arbitrary Dockerfile/image,
+monorepo workspaces, writable app disks, app reassignment/deletion, automatic
+DNS-provider changes and CrowdSec unban are not enabled. Every domain needs its
+own TXT ownership proof. No static Traefik config is overwritten.
+
+`/api/hosting-websites/receipts` is a machine boundary: exact body-bound HMAC and
+timestamp are checked BEFORE DB access. Login middleware permits delivery, not
+unauthenticated DB access. Agent outbox retries receipts if the browser closes.
+Client-preview pages have no provider-backed GET mutations; POST writes recheck
+authority. Secret env/repo tokens are excluded from browser props/logs/chat.
+
+Checks: tests/website-*, tests/hosting-apps.cjs, hosting-agent/test and
+local-checks/website-browser.cjs. Chromium cannot launch in this workspace due
+to its process socket restriction. Do not claim a visual browser pass or live
+Docker acceptance. Grok Bot runs the documented VPS commands. This PR preparation
+does not merge/deploy, apply live SQL, create production credentials or clients,
+or submit a real payment.
+
+
 ### App Hosting plan contracts
 
 ### Recorded service status controls
@@ -1168,6 +1221,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-19: Prepared client website dashboard, bank/admin approval, one-site credits, direct 1-GB uploads/GitHub, opt-in measured storage billing and signed Contabo runtime. Selectively replaces unmerged #268 without its auth regressions. New migrations/env/runbook only; no production merge, SQL apply or VPS change. See docs/client-websites.md.
 
 - Password reset now records the Supabase Auth failure as name, status, and code only, and tells the person to wait when Auth rate-limits the email or that the email could not be sent when Auth returns 500 or 504. The address is not logged. Sending still depends on the Supabase Auth mail settings.
 

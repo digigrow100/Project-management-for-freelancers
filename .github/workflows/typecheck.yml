@@ -21,6 +21,11 @@ jobs:
       - run: node --experimental-strip-types --test tests/operator-controls.test.cjs tests/operator-upload.test.cjs tests/hosting-operator-protocol.cjs tests/backupProtocol.test.mjs tests/manager.test.cjs tests/client-release.test.cjs
       - run: node tests/hosting-operator-database.cjs
       - run: node --test tests/hosting-domain-security.cjs tests/hosting-login-routing.cjs tests/admin-network.cjs tests/password-reset-limit.cjs
+      - run: node --test tests/hosting-apps.cjs tests/website-boundaries.cjs tests/website-ui.cjs
+      - run: node tests/website-payments-db.cjs
+      - run: node node_modules/typescript/bin/tsc -p hosting-agent/tsconfig.json
+      - run: node --experimental-strip-types --test hosting-agent/test/*.test.ts
+      - run: python3 -m unittest discover -s tests -p test_website_archives.py -v
       - run: npm run typecheck
       - run: npm run lint
       - run: node tests/hosting-workspaces.cjs
@@ -56,6 +61,13 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/hms-browser-tools" --no-save --package-lock=false --ignore-scripts playwright@1.62.1
           printf 'NODE_PATH=%s/hms-browser-tools/node_modules\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: node "$RUNNER_TEMP/hms-browser-tools/node_modules/playwright/cli.js" install --with-deps chromium
+      - run: HMS_BROWSER_TOOLS=$RUNNER_TEMP/hms-browser-tools node local-checks/website-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-website-browser
+          path: website-browser-output/
+          retention-days: 3
       - run: node local-checks/domain-workspace-browser.cjs
       - run: node local-checks/email-workspace-browser.cjs
       - run: node local-checks/email-services-browser.cjs

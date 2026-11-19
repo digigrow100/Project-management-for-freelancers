@@ -1,0 +1,5 @@
+import Link from 'next/link';
+import { requireHostingClient } from '@/lib/hosting/auth';
+import { listApps, listDomains } from '@/lib/hosting/apps/store';
+import { Pill } from '@/components/hosting/dashboard/present';
+export default async function Domains() { const session = await requireHostingClient(), apps = await listApps(session.clientId), groups = await Promise.all(apps.map(async (app) => ({ app, domains: await listDomains(app.id) }))); return <div className="hms-dash"><header><h1>Website domains</h1><p className="hms-muted">Each custom domain needs its own TXT ownership check before it can be routed.</p></header>{groups.map(({ app, domains }) => <section key={app.id} className="hms-panel"><h2><Link href={`/client/apps/${app.id}?tab=domains`}>{app.display_name} →</Link></h2><ul className="hms-feed">{domains.map(d => <li key={d.id}><span>{d.hostname}</span><Pill value={d.status}/></li>)}</ul>{!domains.length ? <p className="hms-muted">No custom domain yet. Open this website to add one.</p> : null}</section>)}</div>; }

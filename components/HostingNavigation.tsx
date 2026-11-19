@@ -21,6 +21,8 @@ const icons = {
 
 export const HOSTING_NAV = [
   { href: "/hosting", label: "Overview", icon: LayoutDashboard },
+  { href: "/hosting/apps", label: "Websites", icon: Globe },
+  { href: "/hosting/website-payments", label: "Website payments", icon: CreditCard },
   { href: "/hosting/registrar", label: "Domains", icon: Globe },
   ...HOSTING_SECTIONS.map(({ key, label }) => ({
     href: `/hosting/${key}`, label, icon: icons[key],
@@ -42,6 +44,7 @@ export function HostingNavigation() {
   return (
     <nav aria-label="Hosting navigation" className="flex min-h-0 flex-1 flex-col gap-1 sidebar-scroll overflow-x-hidden overflow-y-auto">
       {renderLink(HOSTING_NAV[0]!)}
+      {HOSTING_NAV.filter(item=>["/hosting/apps","/hosting/website-payments"].includes(item.href)).map(item=>renderLink(item))}
       {groups.map(({label,icon:Icon,keys})=><details key={label} className="hms-nav-group shrink-0" open={keys.some(key=>hostingLinkActive(pathname,`/hosting/${key}`))}><summary className="hms-nav-link"><Icon size={19} aria-hidden="true"/><span className="flex-1">{label}</span><ChevronDown size={15} className="hms-group-chevron" aria-hidden="true"/></summary><div className="space-y-1 pb-2">{HOSTING_NAV.filter(item=>keys.includes(item.href.slice('/hosting/'.length))).map(item=>renderLink(item,true))}</div></details>)}
       {HOSTING_NAV.filter(item=>['tickets','operations','activity','settings'].includes(item.href.slice('/hosting/'.length))).map(item=>renderLink(item))}
     </nav>

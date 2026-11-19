@@ -1,0 +1,77 @@
+# New website runtime only. Existing Traefik/CrowdSec stacks remain managed separately.
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 0
+      INFO: 0
+      PING: 1
+      POST: 1
+      BUILD: 1
+      DELETE: 1
+      EXEC: 0
+      SWARM: 0
+      SECRETS: 0
+      VOLUMES: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SYSTEM: 0
+      COMMIT: 0
+      AUTH: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [control]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/run, /tmp]
+    mem_limit: 128m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: '2'}
+  agent:
+    build: .
+    restart: unless-stopped
+    user: '1000:1000'
+    env_file: [.env]
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      DATA_DIR: /opt/stacks/hms-website-data
+      SITES_DIR: /opt/stacks/hms-website-data
+      AUDIT_FILE: /opt/stacks/hms-website-data/audit.log
+      TRAEFIK_NETWORK: hms-runtime
+      BUILD_NETWORK: hms-build
+      PORT: 8787
+      NETWORK_ENROLLMENT_FILE: /run/hms-enrollment/ready.json
+    volumes:
+      - /opt/stacks/hms-website-data:/opt/stacks/hms-website-data
+      - /opt/stacks/hosting-agent/runtime-enrollment:/run/hms-enrollment:ro
+    networks:
+      control: {}
+      proxy: {}
+      hms-runtime: {ipv4_address: 172.31.240.3}
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: proxy
+      traefik.http.routers.hms-website-agent.rule: Host(`${AGENT_HOST:?Set AGENT_HOST}`)
+      traefik.http.routers.hms-website-agent.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.hms-website-agent.tls.certresolver: ${TRAEFIK_CERT_RESOLVER:-le}
+      traefik.http.services.hms-website-agent.loadbalancer.server.port: '8787'
+      traefik.http.routers.hms-website-agent.middlewares: ${TRAEFIK_MIDDLEWARES:-}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 768m
+    cpus: 1
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: '2'}
+networks:
+  proxy: {external: true}
+  hms-runtime: {external: true}
+  control: {internal: true}
