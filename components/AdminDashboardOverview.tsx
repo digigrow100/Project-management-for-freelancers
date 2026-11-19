@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   Banknote,
   CalendarClock,
   CheckCircle2,
-  Clock3,
   Download,
   FilePenLine,
   FolderKanban,
@@ -17,11 +15,11 @@ import {
   ReceiptText,
   CreditCard,
   Users,
+  Clock3,
   WalletCards,
 } from "lucide-react";
-import type { AdminWorkItem, Domain, DomainClient, EmployeeActivitySummary, Invoice, InvoiceItem, MemberPresence, Payment, PaymentPlan, Profile, Project, ProjectType, Renewal, Task, TaskTimeEntry, TaskTimeSummary, Website } from "@/lib/types";
+import type { AdminWorkItem, Domain, DomainClient, Invoice, InvoiceItem, Payment, PaymentPlan, Project, ProjectType, Renewal, Task, Website } from "@/lib/types";
 import { businessMonthKey } from "@/lib/date";
-import { cn } from "@/lib/utils";
 import { DomainsPanel } from "@/components/DomainsPanel";
 
 type ProgressMap = Record<string, { done: number; total: number; openCount: number; percent?: number }>;
@@ -39,18 +37,6 @@ function daysUntil(date: string | null) {
   const today = new Date();
   const target = new Date(`${date}T00:00:00`);
   return Math.ceil((target.getTime() - today.getTime()) / 86400000);
-}
-
-function duration(seconds: number) {
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-}
-
-function jobRoleLabel(role: Profile["jobRole"]) {
-  if (role === "seo_expert") return "SEO Expert";
-  if (role === "web_developer") return "Web Developer";
-  return "General";
 }
 
 function priorityClass(priority: Task["priority"]) {
@@ -90,46 +76,11 @@ function projectAgeDays(value: string) {
 }
 
 
-function businessDayKey(value: string | number | Date) {
-  const date = value instanceof Date ? value : new Date(value);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Karachi",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${map.year}-${map.month}-${map.day}`;
-}
-
-function timeLabel(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Karachi",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
-
-function liveEntrySeconds(entry: TaskTimeEntry, nowMs: number) {
-  if (entry.endedAt) return Math.max(0, entry.durationSeconds ?? 0);
-  return Math.max(0, Math.floor((nowMs - new Date(entry.startedAt).getTime()) / 1000));
-}
-
 export function AdminDashboardOverview({
   projects,
   progressMap,
   openTasks,
   completedTasks,
-  members,
-  initialPresence,
-  initialEmployeeActivity,
-  timeSummaries,
-  timeEntries,
-  memberProjectIds,
   invoices,
   invoiceItems,
   payments,
@@ -146,12 +97,6 @@ export function AdminDashboardOverview({
   progressMap: ProgressMap;
   openTasks: Task[];
   completedTasks: Task[];
-  members: Profile[];
-  initialPresence: MemberPresence[];
-  initialEmployeeActivity: EmployeeActivitySummary[];
-  timeSummaries: TaskTimeSummary[];
-  timeEntries: TaskTimeEntry[];
-  memberProjectIds: Record<string, string[]>;
   invoices: Invoice[];
   invoiceItems: Record<string, InvoiceItem[]>;
   payments: Payment[];
@@ -165,41 +110,6 @@ export function AdminDashboardOverview({
   hasDynadotApiKey: boolean;
 }) {
   const [dashboardTab, setDashboardTab] = useState<"overview" | "reports" | "accounts" | "domains">("overview");
-  const [presence, setPresence] = useState<MemberPresence[]>(initialPresence);
-  const [presenceNow, setPresenceNow] = useState(() => Date.now());
-  const [employeeActivity, setEmployeeActivity] = useState<EmployeeActivitySummary[]>(initialEmployeeActivity);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function refreshPresence() {
-      try {
-        const [presenceResponse, activityResponse] = await Promise.all([
-          fetch("/api/presence/team", { cache: "no-store" }),
-          fetch("/api/admin/employee-activity?summary=1", { cache: "no-store" }),
-        ]);
-        if (presenceResponse.ok) {
-          const data = (await presenceResponse.json()) as { presence?: MemberPresence[] };
-          if (!cancelled && Array.isArray(data.presence)) setPresence(data.presence);
-        }
-        if (activityResponse.ok) {
-          const data = (await activityResponse.json()) as { summaries?: EmployeeActivitySummary[] };
-          if (!cancelled && Array.isArray(data.summaries)) setEmployeeActivity(data.summaries);
-        }
-        if (!cancelled) setPresenceNow(Date.now());
-      } catch {
-        // Keep the latest known state if polling fails.
-      }
-    }
-
-    const id = window.setInterval(refreshPresence, 30000);
-    const clockId = window.setInterval(() => setPresenceNow(Date.now()), 30000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-      window.clearInterval(clockId);
-    };
-  }, []);
   const activeProjects = projects.filter((project) => !project.archived);
   const availableProjectTypes = PROJECT_TABS.filter((tab) =>
     activeProjects.some((project) => project.type === tab.key),
@@ -254,78 +164,6 @@ export function AdminDashboardOverview({
     .filter((invoice) => invoice.currency === primaryCurrency && invoice.status !== "paid" && invoice.status !== "cancelled")
     .reduce((sum, invoice) => sum + Math.max(0, invoiceTotal(invoice) - (paidByInvoice.get(invoice.id) ?? 0)), 0);
   const openInvoices = invoices.filter((invoice) => !["paid", "cancelled"].includes(invoice.status)).length;
-
-  const taskCountByMember = new Map<string, number>();
-  for (const task of openTasks) {
-    if (task.assignedTo) taskCountByMember.set(task.assignedTo, (taskCountByMember.get(task.assignedTo) ?? 0) + 1);
-  }
-  const timeByMember = new Map<string, number>();
-  for (const row of timeSummaries) timeByMember.set(row.userId, (timeByMember.get(row.userId) ?? 0) + row.totalSeconds);
-  const maxTaskCount = Math.max(1, ...Array.from(taskCountByMember.values()));
-
-  const nowMs = Date.now();
-  const todayKey = businessDayKey(nowMs);
-  const presenceByMember = new Map(presence.map((item) => [item.userId, item]));
-
-  function memberPresenceState(userId: string) {
-    const current = presenceByMember.get(userId);
-    if (!current) {
-      return { status: "offline" as const, label: "Offline", lastSeen: null as string | null };
-    }
-
-    const seenAgeMs = Math.max(0, presenceNow - new Date(current.lastSeenAt).getTime());
-    const activeAgeMs = Math.max(0, presenceNow - new Date(current.lastActiveAt).getTime());
-    if (seenAgeMs > 3 * 60 * 1000) {
-      return { status: "offline" as const, label: "Offline", lastSeen: current.lastSeenAt };
-    }
-    if (activeAgeMs > 10 * 60 * 1000) {
-      return { status: "away" as const, label: "Away", lastSeen: current.lastSeenAt };
-    }
-    return { status: "online" as const, label: "Online", lastSeen: current.lastSeenAt };
-  }
-  const extensionByMember = new Map(employeeActivity.map((item) => [item.employeeId, item]));
-  const memberPerformance = members
-    .filter((member) => member.role !== "admin")
-    .map((member) => {
-      const assignedProjectIds = memberProjectIds[member.id] ?? [];
-      const assignedProjects = activeProjects.filter((project) => assignedProjectIds.includes(project.id));
-      const projectProgress = assignedProjects.map((project) => {
-        const progress = progressMap[project.id] ?? { done: 0, total: 0, openCount: 0, percent: 0 };
-        return {
-          project,
-          percent: progress.percent ?? (progress.total ? Math.round((progress.done / progress.total) * 100) : 0),
-        };
-      });
-      const overallPercent =
-        projectProgress.length > 0
-          ? Math.round(projectProgress.reduce((sum, item) => sum + item.percent, 0) / projectProgress.length)
-          : 0;
-
-      const extension = extensionByMember.get(member.id);
-      const status =
-        extension?.deviceCount
-          ? extension.status === "active"
-            ? { status: "online" as const, label: "Active", lastSeen: extension.lastSeenAt }
-            : extension.status === "idle"
-              ? { status: "away" as const, label: "Idle", lastSeen: extension.lastSeenAt }
-              : { status: "offline" as const, label: "Offline", lastSeen: extension.lastSeenAt }
-          : memberPresenceState(member.id);
-
-      return {
-        member,
-        presence: status,
-        projectProgress,
-        overallPercent,
-        todaySeconds: extension?.todayActiveSeconds ?? 0,
-        monthSeconds: extension?.thisMonthActiveSeconds ?? 0,
-        firstStartedAt: extension?.startedTodayAt ?? null,
-        latestActivityAt: extension?.lastWorkAt ?? null,
-        idleSeconds: extension?.todayIdleSeconds ?? 0,
-        isActive: extension?.status === "active",
-        todayByProject: new Map(Object.entries(extension?.todayByProject ?? {})),
-        monthByProject: new Map(Object.entries(extension?.monthByProject ?? {})),
-      };
-    });
 
   const domainClientById = new Map(domainClients.map((client) => [client.id, client]));
   const expiringDomains = domains
@@ -657,111 +495,7 @@ export function AdminDashboardOverview({
             )}
           </section>
 
-        <section className="overflow-hidden rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-          <SectionHead icon={Activity} title="Team Performance" subtitle="Extension work time, paused time and assigned-project progress" />
-          <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
-            {memberPerformance.map((row) => (
-              <section key={row.member.id} className="rounded-xl border border-base-700/60 bg-base-900/55 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "h-2.5 w-2.5 shrink-0 rounded-full",
-                          row.presence.status === "online"
-                            ? "animate-pulse bg-emerald-400"
-                            : row.presence.status === "away"
-                              ? "bg-amber-400"
-                              : "bg-neutral-600",
-                        )}
-                      />
-                      <p className="truncate text-sm font-semibold text-neutral-100">{row.member.name || row.member.email}</p>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
-                      <span className="text-neutral-600">{jobRoleLabel(row.member.jobRole)}</span>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 font-semibold",
-                          row.presence.status === "online"
-                            ? "bg-emerald-500/10 text-emerald-300"
-                            : row.presence.status === "away"
-                              ? "bg-amber-500/10 text-amber-300"
-                              : "bg-base-700 text-neutral-500",
-                        )}
-                      >
-                        {row.presence.label}
-                      </span>
-                      {row.presence.status === "offline" && row.presence.lastSeen && (
-                        <span className="text-neutral-700">Last seen {timeLabel(row.presence.lastSeen)}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xl font-semibold text-accent-300">{row.overallPercent}%</p>
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">overall</p>
-                  </div>
-                </div>
-
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-base-700">
-                  <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min(100, row.overallPercent)}%` }} />
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Today</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.todaySeconds)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">This Month</p>
-                    <p className="mt-1 text-xs font-semibold text-neutral-200">{duration(row.monthSeconds)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Started today</p>
-                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.firstStartedAt)}</p>
-                  </div>
-                  <div className="rounded-lg border border-base-700/40 bg-base-950/40 p-2">
-                    <p className="text-[9px] uppercase tracking-wide text-neutral-600">Last time today</p>
-                    <p className="mt-1 text-xs font-medium text-neutral-300">{timeLabel(row.latestActivityAt)}</p>
-                  </div>
-                </div>
-
-                <div className="mt-2 flex items-center justify-between rounded-lg border border-amber-500/15 bg-amber-500/5 px-2.5 py-2">
-                  <span className="text-[10px] text-neutral-500">Idle / paused today</span>
-                  <span className="text-[11px] font-semibold text-amber-300">{duration(row.idleSeconds)}</span>
-                </div>
-
-                <div className="mt-3 border-t border-base-700/40 pt-3">
-                  <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">Assigned projects</p>
-                  <div className="space-y-2.5">
-                    {row.projectProgress.map(({ project, percent }) => (
-                      <div key={project.id}>
-                        <div className="flex items-center justify-between gap-2">
-                          <Link href={`/projects/${project.id}`} className="min-w-0 truncate text-[11px] font-medium text-neutral-300 hover:text-accent-300">
-                            {project.name}
-                          </Link>
-                          <span className="shrink-0 text-[10px] font-semibold text-neutral-400">{percent}%</span>
-                        </div>
-                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-base-700">
-                          <div className="h-full rounded-full bg-sky-400" style={{ width: `${Math.min(100, percent)}%` }} />
-                        </div>
-                        <div className="mt-1 flex justify-between text-[9px] text-neutral-700">
-                          <span>Today {duration(row.todayByProject.get(project.id) ?? 0)}</span>
-                          <span>This month {duration(row.monthByProject.get(project.id) ?? 0)}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {row.projectProgress.length === 0 && (
-                      <p className="text-[10px] text-neutral-600">No active project assigned.</p>
-                    )}
-                  </div>
-                </div>
-              </section>
-            ))}
-            {memberPerformance.length === 0 && <Empty text="No team members." />}
-          </div>
-        </section>
-
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-2">
             <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
               <SectionHead title="Task Queue" subtitle="Important work needing attention" href="/" action="View all tasks" />
               <div className="divide-y divide-base-700/50">
@@ -780,46 +514,7 @@ export function AdminDashboardOverview({
               </div>
             </section>
 
-            <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
-              <SectionHead icon={Users} title="Team Workload" subtitle="Tasks and tracked work time" href="/admin/time-tracking" action="View time" />
-              <div className="divide-y divide-base-700/50">
-                {members.filter((member) => member.role !== "admin").slice(0, 6).map((member) => {
-                  const tasks = taskCountByMember.get(member.id) ?? 0;
-                  const pct = Math.round((tasks / maxTaskCount) * 100);
-                  return (
-                    <div key={member.id} className="px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cn(
-                                "h-2 w-2 shrink-0 rounded-full",
-                                memberPresenceState(member.id).status === "online"
-                                  ? "bg-emerald-400"
-                                  : memberPresenceState(member.id).status === "away"
-                                    ? "bg-amber-400"
-                                    : "bg-neutral-600",
-                              )}
-                            />
-                            <p className="truncate text-xs font-semibold text-neutral-200">{member.name || member.email}</p>
-                          </div>
-                          <p className="mt-0.5 text-[10px] text-neutral-600">
-                            {jobRoleLabel(member.jobRole)} · {memberPresenceState(member.id).label}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[11px] text-neutral-300">{tasks} tasks</p>
-                          <p className="text-[10px] text-neutral-600">{duration(timeByMember.get(member.id) ?? 0)} tracked</p>
-                        </div>
-                      </div>
-                      <div className="mt-2 h-1.5 rounded-full bg-base-700">
-                        <div className="h-1.5 rounded-full bg-emerald-400" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+
 
             <section className="rounded-xl2 border border-base-700/60 bg-base-850 shadow-card">
               <SectionHead icon={CheckCircle2} title="My Tasks" subtitle="Personal work, team requests, invoices and renewals" href="/admin/my-tasks" action="Open My Tasks" />

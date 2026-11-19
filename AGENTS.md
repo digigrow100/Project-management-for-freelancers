@@ -54,14 +54,12 @@ Primary use cases:
 - admin personal tasks
 - team task assignment
 - task focus/time tracking
-- employee browser activity tracking
 - finance/payments/invoices
 - clients/services
 - notes
 - domains/renewals/website management
 - SEO workflows, pages, keywords, backlinks, reporting
-- WhatsApp client communication bridge
-- AI assistant and AI-powered message translation
+- AI assistant
 
 The web app is the source of truth. Android/iOS are Capacitor shells that load the production web app.
 
@@ -78,7 +76,6 @@ The web app is the source of truth. Android/iOS are Capacitor shells that load t
 - Vercel deployment
 - OpenAI API for AI features
 - Capacitor for Android/iOS wrappers
-- Chrome extensions for employee activity and WhatsApp bridge
 
 Important root files:
 - `README.md` — broad product/setup documentation; useful but can contain historical details
@@ -102,9 +99,6 @@ Main authenticated routes live under:
 
 Important pages include:
 - `app/(app)/admin/page.tsx`
-- `app/(app)/admin/time-tracking/page.tsx`
-- `app/(app)/admin/employee-activity/page.tsx`
-- `app/(app)/admin/whatsapp-bridge/page.tsx`
 - `app/(app)/admin/my-tasks/page.tsx`
 - `app/(app)/projects/*`
 - `app/(app)/clients/*`
@@ -120,10 +114,6 @@ Important pages include:
 Important API groups:
 - `app/api/ai/*`
 - `app/api/admin/*`
-- `app/api/extension/*`
-- `app/api/presence/*`
-- `app/api/whatsapp-bridge/*`
-- `app/api/client-chat/*`
 - `app/api/site-config/route.ts`
 - `app/api/cron/*`
 
@@ -139,14 +129,10 @@ Important server modules:
 - `lib/auth.ts` — current user/profile/role logic
 - `lib/supabaseClient.ts`
 - `lib/supabase/server.ts`
-- `lib/employeeActivity.ts`
 - `lib/activity.ts`
-- `lib/whatsappBridge.ts`
-- `lib/whatsappBridgeRequests.ts`
-- `lib/whatsappTranslation.ts`
 - `lib/ai/*`
 
-Important note: `lib/store.ts` is the main data layer, but newer specialized modules such as employee activity and WhatsApp also access Supabase directly. Do not assume `lib/store.ts` is literally the only DB-access file.
+Important note: `lib/store.ts` is the main data layer, but specialized modules such as SEO bots and hosting also access Supabase directly. Do not assume `lib/store.ts` is literally the only DB-access file.
 
 ## Database
 - Base schema: `supabase/schema.sql`
@@ -576,7 +562,7 @@ or commit credentials. The Asia/Karachi work date is calculated at request
 time. Daily assignments roll over without a cron or external integration.
 
 
-Admin-only `/team` reuses AdminTeamPanel for roles, job roles, project grants, finance/renewals/credential access, invites and account management. Each member has a one-click POST “Open as member” control and an admin-gated `/team/view/[id]` access link (GET only shows the launch form). Member view keeps the original verified Supabase session; getCurrentProfile applies the selected member’s permissions only while the actor still has database-backed admin access. The HTTP-only Strict SameSite cookie is actor-bound and expires in one hour. A persistent banner returns to admin; member presence heartbeats are suppressed during admin inspection. Real member actions affect real records. No member passwords or login tokens are put in links. Logout clears the view cookie.
+Historical human management (retired; superseded by the SEO bot workspace): `/team` formerly reused AdminTeamPanel for roles, job roles, project grants, finance/renewals/credential access, invites and account management. Each member has a one-click POST “Open as member” control and an admin-gated `/team/view/[id]` access link (GET only shows the launch form). Member view keeps the original verified Supabase session; getCurrentProfile applies the selected member’s permissions only while the actor still has database-backed admin access. The HTTP-only Strict SameSite cookie is actor-bound and expires in one hour. A persistent banner returns to admin; member presence heartbeats are suppressed during admin inspection. Real member actions affect real records. No member passwords or login tokens are put in links. Logout clears the view cookie.
 
 Primary roles:
 - `admin`
@@ -587,15 +573,11 @@ Admin:
 - manages team
 - manages project assignments
 - can access finance/invoices/admin tools
-- manages WhatsApp mappings/history sharing
-- can see employee activity
 - can manage personal admin work/tasks
 
 Members:
 - only see projects explicitly assigned to them
 - must not gain access to admin-only pages/data
-- must not be able to browse all WhatsApp history
-- may receive controlled WhatsApp client context
 - may receive extra feature access through explicit per-profile permissions where supported
 
 Always enforce permissions server-side, not only by hiding UI.
@@ -643,102 +625,24 @@ Do not casually reintroduce a separate legacy flow when the current member focus
 
 ---
 
-# Admin Personal Work Time
+# Retired human extensions (2026-11-19)
 
-Confirmed-time summaries merge overlapping device intervals and retry duplicates, clip to Pakistan day/month boundaries and cap unconfirmed checkpoint gaps at 90 seconds. Original logs remain intact; missed checkpoints cannot establish exact work duration. New activity writes use deterministic event IDs to make retries idempotent.
+The employee browser/work-time extension and WhatsApp Client Bridge are removed.
+This includes My Work Time, Team Performance/Workload, browser activity reports,
+screen sharing, presence heartbeats, pairing, client chat/translation, downloads,
+and their dedicated APIs. Middleware returns 404 before authentication for retired
+paths. Desktop/mobile navigation no longer advertises them. Do not restore them.
+SEO bot admin `/team`, `/seo-bots`, `/api/seo-bots/*`, project/task workflows,
+manual task focus timers and the general AI assistant remain independent.
+No admin visual restyle is part of this removal.
 
-The admin can monitor their own work time.
-
-Primary UI:
-- `components/AdminMyWorkTime.tsx`
-- rendered on `app/(app)/admin/page.tsx`
-
-It shows:
-- Today active time
-- This Month active time
-- Paused Today
-- Started Today
-- Last Activity
-- current status: Working / Paused / Offline
-
-It is driven by the employee activity Chrome extension and refreshes the summary from:
-- `app/api/extension/my-work-summary/route.ts`
-
-Detailed team/task time reporting:
-- `app/(app)/admin/time-tracking/page.tsx`
-- `components/AdminTimeTracking.tsx`
-
-Reports support:
-- Today
-- This Week
-- This Month
-- Custom date range
-- project/member filters
-- task sessions
-- start/end
-- duration
-- pause/skip/switch reasons
-- running sessions
-
-Relevant migrations:
-- `067_task_time_tracking.sql`
-- `084_accurate_time_tracking_reports.sql`
-
----
-
-# Employee Browser Activity Extension
-
-Main extension:
-- `chrome-extension/*`
-
-Server logic:
-- `lib/employeeActivity.ts`
-- `app/api/extension/activity/route.ts`
-- `app/api/extension/health/route.ts`
-- `app/api/extension/status/route.ts`
-- `app/api/extension/pair/*`
-- `app/api/extension/pairing/create/route.ts`
-
-Admin UI:
-- `components/AdminEmployeeActivity.tsx`
-- `components/EmployeeActivityOverview.tsx`
-- `app/(app)/admin/employee-activity/*`
-
-The extension tracks browser work state such as:
-- active
-- idle
-- tab switch
-- session start/end
-- heartbeat/offline
-
-## Multiple Chrome profiles
-
-A single Freelance HQ user/admin may use the employee activity extension in multiple Chrome profiles on the same or different machines.
-
-Current required behavior:
-- each Chrome profile is paired separately
-- each profile gets its own one-time pairing code
-- generating a new profile code must not invalidate other unused, unexpired profile codes
-- each installed profile keeps its own `deviceId` / `extensionInstallId`
-- all activity still belongs to the same signed-in Freelance HQ user
-- product reporting should focus on work time, websites and projects, not on forcing the user to care which Chrome profile produced the activity
-- pairing codes expire in about 10 minutes and work once
-- the extension must handle non-JSON pairing responses with a readable error instead of surfacing a raw JSON parse error
-- Chrome's host-permission Allow dialog may close the extension popup; the pairing code must be persisted before requesting permission and restored/auto-resumed afterward so the user does not paste the same code twice
-
-Relevant UI:
-- `components/ExtensionConnectCard.tsx`
-
-The download button and connection card show the version directly from `chrome-extension/manifest.json`; the download URL includes that version to avoid stale cached ZIP downloads.
-
-Current employee activity extension version:
-- **1.2.4**
-
-Security and retention logic are in the later activity migrations:
-- `087_employee_activity_extension.sql`
-- `088_extension_security_hardening.sql`
-
-Do not weaken URL sanitization, token checks, privacy controls, or retention behavior without explicit instruction.
+Migration `20261119134937_retire_human_extensions.sql` is PREPARED, not applied.
+Deploy the removal code first. Then archive 22 dedicated tables in the private
+`freelance_hq_retired_extensions` schema and revoke application-role access.
+Historical rows/foreign keys and old migration files are retained. Do not drop
+customer/project/profile/task/bot/auth records. Do not expose the archive through
+Supabase API settings. Installed Chrome extensions must be removed by their users.
+Full file manifest, release order and rollback notes: `docs/retired-human-extensions.md`.
 
 ---
 
@@ -887,123 +791,11 @@ AI actions that can change app data should continue to use confirmation/safe too
 
 ---
 
-# WhatsApp Client Bridge
+# WhatsApp bridge and presence — retired
 
-All native manager controls are disabled for the full duration of a manual request, including team-access chips, so clicks cannot change optimistic state while their server action is skipped.
-
-My WhatsApp Chats has its own query state and Enter-key search. Manual actions hold an explicit async lock and pause live conversation polling; outdated peek results are discarded after changing chat or starting a manual action. Server request claiming prioritizes explicit actions over background peeks; new peek requests expire after 30 seconds and direct sends after 90 seconds. Expired processing requests are also closed, avoiding permanent processing states.
-
-Bridge v1.3.6 rejects chat-search rows unless the displayed name/phone matches the submitted query, verifies inserted search text and waits past stale chat-list rows. Chat opening, sending and syncing require an exact header-name match; cached targets and a visible composer alone do not verify recipients. Stable ID/phone targets cannot silently fall back to a different label. Sending is acknowledged only after a new matching outgoing message appears. Visible message/composer text preserves rendered line breaks for multiline confirmation. Fixtures cover these failure paths; actual user-profile behavior remains to be verified after extension reload.
-
-Bridge v1.3.4 locates visible chat search inputs across sidebar/wrapper layouts, skips hidden/compose/dialog inputs and waits for Chats/search UI to open. Download buttons use the standalone versioned WhatsApp ZIP. Exact-chat matching and manual history-sharing rules remain in place. Search fixtures pass; user-profile live testing still requires reloading the installed extension.
-
-There are two related pieces:
-- UI/server functionality in the main app
-- a separate Chrome extension under `whatsapp-bridge-extension/*`
-
-Important app files:
-- `lib/whatsappBridge.ts`
-- `lib/whatsappBridgeRequests.ts`
-- `lib/whatsappTranslation.ts`
-- `components/WhatsAppBridgeAdminCard.tsx`
-- `components/WhatsAppBridgeManager.tsx`
-- `components/WhatsAppChatWidget.tsx`
-- `app/api/admin/whatsapp-bridge/*`
-- `app/api/whatsapp-bridge/*`
-- `app/api/client-chat/*`
-
-## Locked mapping behavior
-
-WhatsApp chats must **not** automatically appear in Client Mapping.
-
-Required behavior:
-- Admin searches WhatsApp by name.
-- Matching results appear.
-- Admin manually chooses the exact chat.
-- Only manually mapped chats appear in Client Mapping.
-- A mapping can be removed without deleting the WhatsApp chat.
-- Admin has separate **My WhatsApp Chats**.
-- My Chats must not auto-list every WhatsApp chat.
-- Admin explicitly searches/adds chats to My Chats.
-- Saved admin chats persist until manually removed.
-- Admin chats do not have to map to a team member/client.
-
-Do not replace this with automatic contact discovery/mapping.
-
-## History and team privacy
-
-Admin:
-- may load selected history/date range
-- may share selected old messages/full-day context to a specific team member
-
-Team/member:
-- must not receive old history by default
-- must never browse all WhatsApp history
-- only sees shared historical context plus allowed new/live context
-
-## Sending/opening behavior
-
-- Clicking an app chat should open the matching WhatsApp Web chat.
-- App sending should use the currently mapped exact WhatsApp conversation.
-- Incoming mapped-client text should sync automatically.
-- Browser notifications are supported for incoming client messages.
-- Avoid duplicate optimistic messages.
-
-## Roman Urdu translation AI
-
-This feature remains enabled.
-
-Relevant files:
-- `lib/whatsappTranslation.ts`
-- `app/api/client-chat/[clientId]/translation/route.ts`
-- `app/api/client-chat/[clientId]/explain/route.ts`
-- `components/WhatsAppChatWidget.tsx`
-
-Behavior:
-- Translation toggle OFF means no translation API calls.
-- Translation ON caches translations.
-- Incoming client text can be shown in Roman Urdu.
-- Outbound Roman Urdu can be translated into the client's latest detected language.
-- The latest inbound language should be the authoritative language source when available.
-
-Relevant migrations:
-- `095_whatsapp_roman_urdu_translation.sql`
-- `096_whatsapp_translation_language_source.sql`
-
-## Voice-note behavior — current rule
-
-**Audio transcription/capture has been removed.**
-
-Current desired behavior:
-- Do not upload voice-note audio.
-- Do not transcribe voice-note audio.
-- Do not show an audio player in the app.
-- Do not call AI for the audio itself.
-- When an inbound mapped-client voice note is detected, insert a normal text chat message:
-
-`Client ny audio bajhi ha. Hamza sy pochy es k about.`
-
-The notice should deduplicate using the WhatsApp message identity so the same voice note does not create repeated notices.
-
-Current WhatsApp bridge extension version after this rollback/notice change:
-- **1.3.6**
-
-The old audio-transcription API/page hook should not be reintroduced unless explicitly requested.
-
----
-
-# Presence and Live Status
-
-Presence APIs:
-- `app/api/presence/route.ts`
-- `app/api/presence/team/route.ts`
-
-UI:
-- `components/PresenceHeartbeat.tsx`
-- admin dashboard presence/activity components
-
-Relevant migration:
-- `086_member_presence.sql`
+The WhatsApp bridge, client chat/translation and presence systems are removed.
+See Retired human extensions above. Retained messages/activity are private archives,
+not active application features. The general AI assistant remains supported.
 
 ---
 
@@ -1091,7 +883,7 @@ Important:
 - A GitHub merge is not proof that production is live.
 - A successful CI run is not proof that Vercel deployment succeeded.
 - Vercel may rate-limit deployments; if that happens, state it clearly.
-- Extension code is not auto-updated on the user's local Chrome installation just because GitHub changed. A local unpacked extension may require manual reload/update.
+- Remove retired Chrome extensions locally; deleting server source cannot uninstall a browser extension.
 - Documentation-only changes do not require a production web deployment to be useful in GitHub.
 
 ---
@@ -1109,25 +901,10 @@ Start with:
 - relevant component/page
 - relevant recent migration
 
-### If about employee/admin work time
-Start with:
-- `components/AdminMyWorkTime.tsx`
-- `components/AdminTimeTracking.tsx`
-- `lib/employeeActivity.ts`
-- `app/api/extension/*`
-- migrations 067, 084, 087, 088
-
-### If about WhatsApp
-Start with:
-- this WhatsApp section
-- `lib/whatsappBridge.ts`
-- `lib/whatsappBridgeRequests.ts`
-- `lib/whatsappTranslation.ts`
-- `whatsapp-bridge-extension/content-whatsapp.js`
-- `whatsapp-bridge-extension/service-worker.js`
-- relevant WhatsApp API route
-
-Do not inspect every historical WhatsApp PR unless current code does not explain the issue.
+### If about the retired human extensions
+Start with `docs/retired-human-extensions.md`, the retirement migration and
+`lib/retiredHumanExtensions.ts`. The source/downloads/routes are intentionally removed.
+Do not reintroduce them or edit previously applied migrations.
 
 ### If about SEO
 Start with:
@@ -1154,12 +931,6 @@ Only expand the search when the direct code path is insufficient.
 
 # Product Decisions That Should Not Be Accidentally Reversed
 
-- Manual WhatsApp chat mapping, not automatic mapping.
-- Team cannot browse all WhatsApp history.
-- Admin can selectively share old WhatsApp context.
-- Roman Urdu translation remains available.
-- Voice-note transcription is currently disabled; voice notes create a text notice instead.
-- Admin personal work time is tracked through the employee activity extension.
 - Role/access enforcement must exist server-side.
 - App web code is the source of truth for Capacitor mobile shells.
 - Keep currencies separate rather than inventing conversions.
@@ -1168,6 +939,10 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-19: Retired both human Chrome extensions, monitoring/presence/screen sharing and WhatsApp client chat. Removed source, ZIPs, UI, routes, polling and retention cron. SEO bot/task/auth flows remain. Prepared owner-only archival migration for 22 tables; no live database or production deployment change in this PR. See docs/retired-human-extensions.md.
+
+Earlier dated entries are historical and may describe removed features.
 
 - Password reset now records the Supabase Auth failure as name, status, and code only, and tells the person to wait when Auth rate-limits the email or that the email could not be sent when Auth returns 500 or 504. The address is not logged. Sending still depends on the Supabase Auth mail settings.
 
@@ -1273,42 +1048,11 @@ If you change how the app works and do not update this file, the task is incompl
 
 - Admin layout polls live screen shares every three seconds and displays an invitation before creating a viewer connection. Approve opens a compact muted viewer; expand/shrink retains the same stream, and close/dismiss affects only the admin view. Ended shares close the peer. Dedicated screen-viewer routes suppress the popup viewer to avoid competing connections. Member browser screen-capture consent remains required.
 
-## Extension management
-
-/extensions is available to signed-in users. Members see monitoring only; admins also see the WhatsApp bridge card and setup link. Monitoring downloads always remain available in this page, including after pairing. The dashboard download hides only while a device is reporting; non-reporting/expired records keep download and reconnect available. A reported offline/disconnect state immediately exposes recovery controls on the next status refresh. Removing a Chrome extension cannot be detected immediately; stale reporting is detected after the heartbeat window. /api/extension/devices lists only safe fields for the signed-in user and disconnects only their own device, preserving activity history. Add another monitoring profile always creates an independent pairing code.
-
-- Added the role-aware Extensions page, persistent downloads, own-device disconnect and another-profile pairing controls. Fixed missing dashboard download for stale paired devices.
-
-## Supabase recovery and request reduction — 2026-10-27 (local preparation)
-
-Owner reports Supabase recharge. Live read-only checks confirm PostgreSQL17.6 and
-all18 hosting tables have RLS enabled with no anon/authenticated/PUBLIC table grants.
-All3 operator transport tables are still absent. The earlier outage retry fix is in
-unmerged draft#230 at21b6e02; current main53c3327 contains the approved#229 popup
-changes, while latest observed READY production uses5a3a4dd. Do not call new fixes live.
-
-Additional LOCAL fixes: employeeActivity loads one lazy matcher snapshot per upload,
-not per event/prompt (100-event batch2 matcher reads instead of up to200). The snapshot
-is never shared across requests or identities; definitions refresh on the next batch.
-Personal-summary queries now filter profiles/devices/prompts/sessions by employee
-before transfer; device fields are explicit. Full monthly activity pagination remains.
-AdminMyWorkTime and EmployeeActivityOverview use60-second visible-only nonoverlapping
-polling with20-second timeout, bounded failure/402/Retry-After cooldown, cancellation,
-late-response discard and stop on401/403. Visibility changes cannot bypass cooldown.
-No authentication identity, success result or revocation cache was added.
-
-Review source at pm-retry (new files/tests) and portal-full-local (current main53c3327
-web snapshot +#230 sources + local hosting overlay). The local snapshot excludes
-public assets/download ZIPs/native shells and MUST NOT be deployed as a complete repo.
-Existing#230 retains its original source-matching1.2.5 ZIP; update/reload unpacked
-extensions after a future approved release. New app edits remain local under the
-previous source-push/deployment hold. No SQL migration, Auth setting or production
-change has been made. Exact new tests10 and prior backoff12/security checks pass;
-full actual dependency TypeScript/lint and fresh optimized build pass (same4 old
-hook warnings). The first build hit stale generated export cleanup; preserved the
-old .next tree and rebuilt cleanly. Source was not deleted to repair build outputs.
-
-- Personal work widget display freshness allows150s for checkpoint/poll lag, while live extrapolation is capped at90s. Verified time rows and reports are unchanged.
+## Retired extension rollout
+See `docs/retired-human-extensions.md`. Earlier extension release notes below/above
+are historical, not current requirements. The removal PR does not merge/deploy or
+apply its archive migration automatically. Supabase/Vercel shared keys stay in place;
+there are no dedicated extension environment variables in the inspected project.
 
 ## Hosting launch authorization — 2026-10-27
 

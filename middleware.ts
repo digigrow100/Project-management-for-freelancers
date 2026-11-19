@@ -1,3 +1,4 @@
+import { isRetiredHumanExtensionPath } from "./lib/retiredHumanExtensions";
 import {adminNetworkAllowed,isAdminOnlyPath} from "./lib/security/adminNetworkPolicy";
 import { secureAuthCookie } from "./lib/security/cookies";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
@@ -5,12 +6,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { HOSTING_ROBOTS_TAG, isHostingPortalHost, isHostingProbePath } from "./lib/hosting/portalHost";
 
 const CRON_PATHS = new Set([
-  "/api/cron/activity-retention",
   "/api/cron/monthly-invoices",
   "/api/cron/hosting-renewals",
 ]);
 
-const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/attachments", "/api/extension", "/api/whatsapp-bridge", "/auth"];
+const PUBLIC_PATHS = ["/login", "/share", "/api/site-config", "/api/attachments", "/auth"];
 const PUBLIC_ASSETS = new Set(["/sw.js", "/manifest.json", "/favicon-32.png", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"]);
 
 export async function middleware(request: NextRequest) {
@@ -21,6 +21,9 @@ export async function middleware(request: NextRequest) {
       result.headers.set("Cache-Control", "private, no-store, max-age=0");
     }
     return result;
+  }
+  if (isRetiredHumanExtensionPath(request.nextUrl.pathname)) {
+    return finish(new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "private, no-store" } }));
   }
   // Crawler/probe responses must not perform Supabase authentication or database reads.
   if (hosting && request.nextUrl.pathname === "/robots.txt") {
@@ -57,7 +60,7 @@ export async function middleware(request: NextRequest) {
   const { pathname, origin } = request.nextUrl;
   const browserMutation = pathname.startsWith("/api/")
     && !["GET", "HEAD", "OPTIONS"].includes(request.method)
-    && !/^\/api\/(?:extension\/(?:activity|health|pair|prompts|screen-share\/(?:session|signal))|whatsapp-bridge\/(?:ack|config|heartbeat|inbound|outbox|pair|requests)|hosting-operator)$/.test(pathname);
+    && pathname !== "/api/hosting-operator";
   if (browserMutation) {
     const suppliedOrigin = request.headers.get("origin");
     if ((suppliedOrigin && suppliedOrigin !== origin) || request.headers.get("sec-fetch-site") === "cross-site") {

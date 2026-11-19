@@ -20,7 +20,7 @@ export function adminNetworkAllowed(requestHeaders:RequestHeaders, env:NetworkEn
   return address!==null && allowed.has(address);
 }
 export function isAdminOnlyPath(path:string):boolean {
-  return ['/admin','/hosting','/team','/api/admin','/api/presence/team',
+  return ['/admin','/hosting','/team','/api/admin',
     '/api/hosting-operator/context','/api/hosting-operator/dispatch']
     .some(prefix=>path===prefix || path.startsWith(prefix+'/'));
 }
