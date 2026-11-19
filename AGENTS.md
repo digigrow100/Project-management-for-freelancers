@@ -600,6 +600,22 @@ Members:
 
 Always enforce permissions server-side, not only by hiding UI.
 
+### Shared Supabase Auth tables
+
+The production database also contains companion-app tables `public.users` and
+`public.usage_logs`. These are separate from `freelance_hq_profiles`; a companion
+`ADMIN` role must never confer HQ admin access. Migration
+`20261119112518_shared_auth_table_boundaries.sql` replaces the legacy recursive
+users admin policy with a private current-user predicate. A private trigger
+protects identity fields and prevents ordinary browser accounts changing their
+role, plan or login email. Normal own-profile edits, default USER/BASIC inserts,
+companion-admin management and trusted Auth/backend provisioning are preserved.
+Usage/quota counters are backend-write-only; authenticated reads require an
+exact non-NULL owner. No existing data or Supabase-managed Auth objects are
+rewritten. HQ's default-deny RLS, service-only grants, admin network and MFA stay
+unchanged. The private schema must not be added to Data API exposed schemas.
+Regression: `node --test tests/shared-auth-table-boundaries.cjs` (isolated PGlite).
+
 ---
 
 # Projects and Task Workflow
@@ -1168,6 +1184,12 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-19: Hardened the shared database's legacy user/profile and usage-log
+  boundaries: removed recursive RLS, guarded role/plan/identity fields, removed
+  anonymous profile access and browser usage-counter writes. Added isolated
+  PostgreSQL tests and CI coverage. Existing users, profiles, projects and bot
+  records are preserved; this change does not modify the admin UI or run billing.
 
 - Password reset now records the Supabase Auth failure as name, status, and code only, and tells the person to wait when Auth rate-limits the email or that the email could not be sent when Auth returns 500 or 504. The address is not logged. Sending still depends on the Supabase Auth mail settings.
 
