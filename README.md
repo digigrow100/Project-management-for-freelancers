@@ -1,3 +1,7 @@
+> Human work-time/browser monitoring and WhatsApp Client Bridge have been retired.
+> Their extensions, pages, APIs and downloads are removed. SEO bot workflows remain.
+> Historical database data is retained. See [retirement and rollout notes](docs/retired-human-extensions.md).
+
 # Freelance HQ — Project Management
 
 A dark, green-accented Next.js app for tracking SEO, web development and digital

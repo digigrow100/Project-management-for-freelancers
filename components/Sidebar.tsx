@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, Clock3, PanelsTopLeft, MessageCircleMore, Users, Activity , Chrome } from "lucide-react";
+import { LayoutDashboard, ListChecks, ListTodo, FolderKanban, Archive, Settings, Plus, LogOut, Shield, Wallet, Building2, Globe, FileText, Receipt, Package, PanelsTopLeft, Users } from "lucide-react";
 import type { Profile } from "@/lib/types";
 import { InstallAppButton } from "./InstallAppButton";
 import { NotificationBadge } from "./NotificationBadge";
@@ -10,7 +10,6 @@ import { HostingNavigation } from "./HostingNavigation";
 import {WorkspaceBrand} from "./hosting/WorkspaceChrome";
 
 const NAV = [
-  { href: "/extensions", label: "Extensions", icon: Chrome },
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/today", label: "Today", icon: ListChecks },
   { href: "/my-tasks", label: "My Tasks", icon: ListTodo },
@@ -120,24 +119,6 @@ export function Sidebar({
             >
               <Package size={17} className="text-neutral-500 group-hover:text-accent-400" />
               Services
-            </Link>
-            <Link
-              href="/admin/whatsapp-bridge"
-              className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
-            >
-              <MessageCircleMore size={17} className="text-neutral-500 group-hover:text-accent-400" />
-              WhatsApp Bridge
-            </Link>
-            <Link href="/admin/employee-activity" className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors">
-              <Activity size={17} className="text-neutral-500 group-hover:text-accent-400" />
-              Browser Activity
-            </Link>
-            <Link
-              href="/admin/time-tracking"
-              className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-neutral-300 hover:bg-base-800 hover:text-accent-300 transition-colors"
-            >
-              <Clock3 size={17} className="text-neutral-500 group-hover:text-accent-400" />
-              Time Tracking
             </Link>
             <Link
               href="/settings"

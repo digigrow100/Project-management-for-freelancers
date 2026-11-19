@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { Users } from "lucide-react";
 import { getCurrentProfile } from "@/lib/auth";
 import {
-  getAdminTaskTimeSummaries,
   getAssignedProjectIds,
   getDomainSettings,
   getOpenTasks,
@@ -10,25 +9,18 @@ import {
   getProjects,
   getRecentCompletedTasks,
   listAllPayments,
-  listTaskTimeEntries,
   listDomainClients,
   listDomains,
   listInvoiceItemsForInvoices,
   listInvoices,
   listPaymentPlans,
-  listMemberPresence,
   listRenewals,
   listTeamMembers,
   listWebsitesByDomainIds,
   listAdminWorkItems,
 } from "@/lib/store";
-import { getEmployeeActivitySummaries } from "@/lib/employeeActivity";
-import { getWhatsAppBridgeHealth } from "@/lib/whatsappBridge";
 import { AdminDashboardOverview } from "@/components/AdminDashboardOverview";
 import Link from "next/link";
-import { EmployeeActivityOverview } from "@/components/EmployeeActivityOverview";
-import { AdminMyWorkTime } from "@/components/AdminMyWorkTime";
-import { WhatsAppBridgeAdminCard } from "@/components/WhatsAppBridgeAdminCard";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +34,6 @@ export default async function AdminPage() {
     openTasks,
     completedTasks,
     progressMap,
-    timeSummaries,
-    timeEntries,
     invoices,
     payments,
     paymentPlans,
@@ -51,17 +41,12 @@ export default async function AdminPage() {
     domainClients,
     renewals,
     adminWorkItems,
-    memberPresence,
-    employeeActivity,
-    whatsappBridgeHealth,
   ] = await Promise.all([
     listTeamMembers(),
     getProjects(),
     getOpenTasks(),
     getRecentCompletedTasks(50),
     getAdminProjectProgressMap(),
-    getAdminTaskTimeSummaries(),
-    listTaskTimeEntries(),
     listInvoices(),
     listAllPayments(),
     listPaymentPlans(),
@@ -69,9 +54,6 @@ export default async function AdminPage() {
     listDomainClients(),
     listRenewals(),
     listAdminWorkItems(currentProfile.id),
-    listMemberPresence(),
-    getEmployeeActivitySummaries(),
-    getWhatsAppBridgeHealth(),
   ]);
 
   const [invoiceItems, domainSettings, websitesByDomainId] = await Promise.all([
@@ -99,25 +81,15 @@ export default async function AdminPage() {
       <div>
         <h1 className="text-2xl font-semibold text-neutral-50">Admin Dashboard</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Projects, payments, team workload, personal tasks, renewals and recent activity in one place.
+          Projects, payments, personal tasks, renewals and recent activity in one place.
         </p>
       </div>
-
-      <AdminMyWorkTime initialSummary={employeeActivity.find((row) => row.employeeId === currentProfile.id) ?? null} />
-
-      <WhatsAppBridgeAdminCard initialHealth={whatsappBridgeHealth} />
 
       <AdminDashboardOverview
         projects={projects}
         progressMap={progressMap}
         openTasks={openTasks}
         completedTasks={completedTasks}
-        members={members}
-        initialPresence={memberPresence}
-        initialEmployeeActivity={employeeActivity}
-        timeSummaries={timeSummaries}
-        timeEntries={timeEntries}
-        memberProjectIds={Object.fromEntries(assignmentsByMember)}
         invoices={invoices}
         invoiceItems={invoiceItems}
         payments={payments}
@@ -130,8 +102,6 @@ export default async function AdminPage() {
         personalTasks={adminWorkItems.filter((task) => task.status !== "done")}
         assigneesByProject={assigneesByProject}
       />
-
-      <EmployeeActivityOverview initialRows={employeeActivity} />
 
       <section id="team-access" className="scroll-mt-6">
         <div className="mb-3 flex items-center gap-2">

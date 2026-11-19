@@ -35,12 +35,13 @@ export const limitSignIn=async()=>{
 };
 export class SecurityCheckUnavailable extends Error{};
 export const getSiteOrigin=()=> 'https://web.housemysite.com';
-export const getActivitySettings=async()=>{s.writes++;return {}};
-export const updateActivityRetention=async()=>{s.writes++;return 60};`;
+export const getOpenTasks=async()=>{s.writes++;return []};
+export const getRecentCompletedTasks=async()=>[];
+export const getAllTaskFocusStates=async()=>[];`;
 async function load(file){
  const result=await build({entryPoints:[path.join(__dirname,'..',file)],bundle:true,platform:'node',format:'cjs',write:false,packages:'external',tsconfig:path.join(__dirname,'../tsconfig.json'),plugins:[{name:'network-fixture',setup(b){
  b.onResolve({filter:/^server-only$/},()=>({path:'empty',namespace:'empty'}));b.onLoad({filter:/.*/,namespace:'empty'},()=>({contents:'',loader:'js'}));
- b.onResolve({filter:/^(next\/headers|next\/navigation|@supabase\/ssr|@\/lib\/supabaseClient|@\/lib\/supabase\/server|\.\/supabase\/server|\.\/store|\.\/hosting\/identity|\.\/memberView|@\/lib\/memberView|@\/lib\/security\/rateLimit|@\/lib\/site|@\/lib\/employeeActivity)$/},()=>({path:'fixture',namespace:'fixture'}));
+ b.onResolve({filter:/^(next\/headers|next\/navigation|@supabase\/ssr|@\/lib\/supabaseClient|@\/lib\/supabase\/server|\.\/supabase\/server|\.\/store|\.\/hosting\/identity|\.\/memberView|@\/lib\/memberView|@\/lib\/security\/rateLimit|@\/lib\/site|@\/lib\/store)$/},()=>({path:'fixture',namespace:'fixture'}));
  b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:fixture,loader:'ts'}));
  }}]});const mod={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,mod,mod.exports);return mod.exports;
 }
@@ -54,11 +55,11 @@ test('exact allowlist rejects spoofed, ambiguous, absent, malformed and untruste
  for(const invalid of [{},{...env,VERCEL:undefined},{...env,ADMIN_ALLOWED_IPS:''},{...env,ADMIN_ALLOWED_IPS:'192.0.2.10,garbage'},{...env,ADMIN_ALLOWED_IPS:'0.0.0.0/0'}])assert(!allowed(new Headers({'x-forwarded-for':'192.0.2.10'}),invalid));
 });
 test('actual actor authorization, MFA/session guards and APIs deny existing admins after network changes',async()=>{
- configure();const auth=await load('lib/auth.ts');const mfa=await load('lib/security/mfa.ts');const api=await load('app/api/admin/activity-settings/route.ts');
+ configure();const auth=await load('lib/auth.ts');const mfa=await load('lib/security/mfa.ts');const api=await load('app/api/admin/task-activity/route.ts');
  assert.equal((await auth.requireAdmin()).role,'admin');assert.equal((await api.GET()).status,200);
  s.ip='192.0.2.99';s.writes=0;
  for(const operation of [()=>auth.getCurrentProfile(),()=>auth.requireAuthenticatedAdmin(),()=>mfa.requireEnrolledMfa(),()=>mfa.requireHostingSession(false,true)])await assert.rejects(operation(),/redirect:\/login\/network-restricted/);
- assert.equal((await api.GET()).status,403);assert.equal(s.writes,0);
+ await assert.rejects(api.GET(),/redirect:\/login\/network-restricted/);assert.equal(s.writes,0);
  const security=await load('app/login/security/actions.ts');
  for(const action of ['enroll','verify','remove']){const f=new FormData();f.set('action',action);await assert.rejects(security.securityAction({},f),/network-restricted/);}
  const passwords=await load('app/login/actions.ts');const pf=new FormData();pf.set('password','long-fixture-password');pf.set('confirmPassword','long-fixture-password');s.updated=null;await assert.rejects(passwords.updatePasswordAction(pf),/network-restricted/);assert.equal(s.updated,null);
@@ -79,8 +80,8 @@ test('middleware blocks admin paths before Auth while keeping team, customer and
  configure();process.env.SUPABASE_URL='https://fixture.invalid';process.env.SUPABASE_ANON_KEY='fixture';s.signedIn=false;
  const {middleware}=await load('middleware.ts');
  const req=(p,ip='192.0.2.99')=>new NextRequest('https://web.housemysite.com'+p,{headers:{host:'web.housemysite.com','x-forwarded-for':ip,'x-real-ip':'192.0.2.10'}});
- for(const p of ['/admin','/admin/settings','/hosting','/team','/api/admin/activity-settings','/api/hosting-operator/context','/api/hosting-operator/dispatch']){const r=await middleware(req(p));assert.equal(r.status,403,p);assert.match(r.headers.get('cache-control'),/no-store/);}
- for(const p of ['/login','/login/forgot-password','/login/network-restricted','/api/hosting-operator','/api/cron/hosting-renewals','/api/extension/devices','/api/whatsapp-bridge/poll','/sw.js','/manifest.json','/icon-192.png']){const response=await middleware(req(p));assert.equal(response.status,200,p);assert.equal(response.headers.get('location'),null,p);}
+ for(const p of ['/admin','/admin/settings','/hosting','/team','/api/admin/task-activity','/api/hosting-operator/context','/api/hosting-operator/dispatch']){const r=await middleware(req(p));assert.equal(r.status,403,p);assert.match(r.headers.get('cache-control'),/no-store/);}
+ for(const p of ['/login','/login/forgot-password','/login/network-restricted','/api/hosting-operator','/api/cron/hosting-renewals','/sw.js','/manifest.json','/icon-192.png']){const response=await middleware(req(p));assert.equal(response.status,200,p);assert.equal(response.headers.get('location'),null,p);}
  assert.equal((await middleware(req('/hosting','192.0.2.10'))).status,307); // IP is not authentication
  s.signedIn=true;for(const p of ['/','/today','/settings','/client'])assert.equal((await middleware(req(p))).status,200,p);
 });

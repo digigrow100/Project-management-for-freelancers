@@ -14,13 +14,12 @@ export const MemberFocusDashboard=()=>null;
 export const ensureIdleSeoTaskForMember=async()=>{s.reads++};
 export const getMyTasks=async()=>[];
 export const getTaskFocusStates=async()=>[];
-export const getEmployeeActivitySummary=async()=>({});
 export const listMemberSeoModuleAssignments=async()=>[];
 export const getProjectsForProfile=async()=>[];
 export const getTaskTimeTotals=async()=>[];`;
 async function load(){
  const result=await build({entryPoints:[path.join(__dirname,'../app/(app)/page.tsx')],bundle:true,platform:'node',format:'cjs',write:false,packages:'external',tsconfig:path.join(__dirname,'../tsconfig.json'),plugins:[{name:'login-fixture',setup(b){
- b.onResolve({filter:/^(next\/headers|next\/navigation|@\/lib\/auth|@\/components\/MemberFocusDashboard|@\/lib\/employeeActivity|@\/lib\/store)$/},()=>({path:'fixture',namespace:'fixture'}));
+ b.onResolve({filter:/^(next\/headers|next\/navigation|@\/lib\/auth|@\/components\/MemberFocusDashboard|@\/lib\/store)$/},()=>({path:'fixture',namespace:'fixture'}));
  b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:fixture,loader:'ts'}));
  }}]});
  const mod={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,mod,mod.exports);return mod.exports.default;

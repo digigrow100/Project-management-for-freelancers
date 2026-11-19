@@ -1,12 +1,8 @@
 import { redirect } from "next/navigation";
-import { AdminScreenSharePopup } from "@/components/AdminScreenSharePopup";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { MobileTopBar } from "@/components/MobileTopBar";
-import { WhatsAppChatWidget } from "@/components/WhatsAppChatWidget";
 import { AdminWorkflowLauncher } from "@/components/AdminWorkflowLauncher";
-import { PresenceHeartbeat } from "@/components/PresenceHeartbeat";
-import { ExtensionHealthBanner } from "@/components/ExtensionHealthBanner";
 import { getCurrentProfile } from "@/lib/auth";
 import {
   countUnseenNotes,
@@ -22,7 +18,6 @@ import {
   listDomains,
   listRenewals,
 } from "@/lib/store";
-import { listAccessibleWhatsAppClients } from "@/lib/whatsappBridge";
 import { WorkspaceProvider, WorkspaceOnly } from "@/components/WorkspaceProvider";
 import {WorkspaceFrame,HostingTopBar} from "@/components/hosting/WorkspaceChrome";
 
@@ -44,7 +39,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     renewals,
     clients,
     adminWorkflowSettings,
-    whatsappClients,
   ] = await Promise.all([
     profile ? getProjectsForProfile(profile) : Promise.resolve([]),
     profile ? countUnseenProjects(profile.id, isAdmin) : Promise.resolve(0),
@@ -55,7 +49,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     isAdmin ? listRenewals() : Promise.resolve([]),
     canSeeClients ? listClients() : Promise.resolve([]),
     isAdmin && profile ? getAdminWorkflowSettings(profile.id) : Promise.resolve(null),
-    profile ? listAccessibleWhatsAppClients(profile) : Promise.resolve([]),
   ]);
 
   if (isAdmin && profile) {
@@ -82,12 +75,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <WorkspaceOnly name="hosting"><HostingTopBar name={profile?.name||profile?.email||'Owner'}/></WorkspaceOnly>
         <main className="theme-main min-h-full pb-24 md:pb-0">
           <div className="mx-auto max-w-6xl px-4 py-5 md:px-8 md:py-8">
-            <WorkspaceOnly name="team">{profile && <ExtensionHealthBanner />}</WorkspaceOnly>
             {children}
           </div>
         </main>
       </div>
-      <WorkspaceOnly name="team">{isAdmin && <AdminScreenSharePopup />}</WorkspaceOnly>
       <MobileNav profile={profile} unseenProjects={unseenProjects} unseenNotes={unseenNotes} unseenTasks={unseenTasks} />
       <WorkspaceOnly name="team">{isAdmin && profile && adminWorkflowSettings && (
         <AdminWorkflowLauncher
@@ -96,8 +87,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           projects={projects}
         />
       )}</WorkspaceOnly>
-      {profile && <PresenceHeartbeat />}
-      <WorkspaceOnly name="team">{profile && <WhatsAppChatWidget initialClients={whatsappClients} isAdmin={isAdmin} />}</WorkspaceOnly>
     </WorkspaceFrame>
     </WorkspaceProvider>
   );

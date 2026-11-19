@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlarmClock,
@@ -74,7 +74,6 @@ export function AdminWorkflowLauncher({
   projects: Project[];
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState(initialItems);
   const [settings, setSettings] = useState(initialSettings);
@@ -134,7 +133,7 @@ export function AdminWorkflowLauncher({
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const dialogVisible = open && pendingCount > 0 && pathname !== "/admin/whatsapp-bridge";
+  const dialogVisible = open && pendingCount > 0;
   useEffect(() => {
     if (!dialogVisible) return;
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -228,7 +227,7 @@ export function AdminWorkflowLauncher({
     });
   }
 
-  if (pathname === "/admin/whatsapp-bridge" || pendingCount === 0) return null;
+  if (pendingCount === 0) return null;
 
   return (
     <>

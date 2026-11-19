@@ -14,7 +14,6 @@ import type {
   AiPendingAction,
   AiPendingActionStatus,
   AiToolCallRecord,
-  AdminTimeTrackingEntry,
   AdminWorkItem,
   AdminWorkflowSettings,
   BacklinkCategory,
@@ -53,7 +52,6 @@ import type {
   KeywordRankHistoryEntry,
   KeywordStatus,
   LoginMethod,
-  MemberPresence,
   Note,
   NoteFolder,
   OnPageStatus,
@@ -102,7 +100,6 @@ import type {
   TaskFocusState,
   TaskTimeEntry,
   TaskTimeStopReason,
-  TaskTimeSummary,
   TaskFile,
   TaskNote,
   TechnicalIssue,
@@ -1545,49 +1542,6 @@ export async function getTaskFocusStates(userId: string): Promise<TaskFocusState
   }
 }
 
-interface MemberPresenceRow {
-  user_id: string;
-  last_seen_at: string;
-  last_active_at: string;
-}
-
-function toMemberPresence(row: MemberPresenceRow): MemberPresence {
-  return {
-    userId: row.user_id,
-    lastSeenAt: row.last_seen_at,
-    lastActiveAt: row.last_active_at,
-  };
-}
-
-export async function upsertMemberPresence(userId: string, active: boolean): Promise<void> {
-  const now = nowIso();
-  const payload: Record<string, string> = {
-    user_id: userId,
-    last_seen_at: now,
-    updated_at: now,
-  };
-  if (active) payload.last_active_at = now;
-
-  const { error } = await getSupabase()
-    .from("freelance_hq_member_presence")
-    .upsert(payload, { onConflict: "user_id" });
-  if (error && !isMissingTableError(error)) throw error;
-}
-
-export async function listMemberPresence(): Promise<MemberPresence[]> {
-  try {
-    const { data, error } = await getSupabase()
-      .from("freelance_hq_member_presence")
-      .select("user_id,last_seen_at,last_active_at")
-      .order("last_seen_at", { ascending: false });
-    if (error) throw error;
-    return ((data ?? []) as MemberPresenceRow[]).map(toMemberPresence);
-  } catch (error) {
-    if (isMissingTableError(error)) return [];
-    throw error;
-  }
-}
-
 interface TaskTimeEntryRow {
   id: string;
   task_id: string;
@@ -1743,125 +1697,6 @@ export async function listTaskTimeEntries(): Promise<TaskTimeEntry[]> {
     if (isMissingTableError(error)) return [];
     throw error;
   }
-}
-
-export async function getAdminTimeTrackingEntries(): Promise<AdminTimeTrackingEntry[]> {
-  const entries = await listTaskTimeEntries();
-  if (entries.length === 0) return [];
-
-  const taskIds = Array.from(new Set(entries.map((entry) => entry.taskId)));
-  const projectIds = Array.from(new Set(entries.map((entry) => entry.projectId)));
-  const userIds = Array.from(new Set(entries.map((entry) => entry.userId)));
-
-  const [{ data: taskRows, error: taskError }, projects, members] = await Promise.all([
-    getSupabase()
-      .from("freelance_hq_tasks")
-      .select("id, title, status, completed_at")
-      .in("id", taskIds),
-    getProjectsByIds(projectIds),
-    listTeamMembers(),
-  ]);
-  if (taskError) throw taskError;
-
-  const tasks = new Map(
-    ((taskRows ?? []) as Array<{ id: string; title: string; status: TaskStatus; completed_at: string | null }>).map((row) => [
-      row.id,
-      row,
-    ]),
-  );
-  const projectById = new Map(projects.map((project) => [project.id, project]));
-  const memberById = new Map(members.filter((member) => userIds.includes(member.id)).map((member) => [member.id, member]));
-
-  return entries
-    .map((entry) => {
-      const task = tasks.get(entry.taskId);
-      if (!task) return null;
-      const project = projectById.get(entry.projectId);
-      const member = memberById.get(entry.userId);
-      const enriched: AdminTimeTrackingEntry = {
-        ...entry,
-        taskTitle: task.title,
-        taskStatus: task.status,
-        projectName: project?.name ?? "Unknown project",
-        userName: member?.name || member?.email || "Unknown member",
-        completedAt: task.completed_at,
-      };
-      return enriched;
-    })
-    .filter((entry): entry is AdminTimeTrackingEntry => entry !== null);
-}
-
-export async function getAdminTaskTimeSummaries(): Promise<TaskTimeSummary[]> {
-  const entries = await listTaskTimeEntries();
-  if (entries.length === 0) return [];
-
-  const taskIds = Array.from(new Set(entries.map((entry) => entry.taskId)));
-  const projectIds = Array.from(new Set(entries.map((entry) => entry.projectId)));
-  const userIds = Array.from(new Set(entries.map((entry) => entry.userId)));
-
-  const [{ data: taskRows, error: taskError }, projects, members] = await Promise.all([
-    getSupabase()
-      .from("freelance_hq_tasks")
-      .select("id, title, status, completed_at")
-      .in("id", taskIds),
-    getProjectsByIds(projectIds),
-    listTeamMembers(),
-  ]);
-  if (taskError) throw taskError;
-
-  const tasks = new Map(
-    ((taskRows ?? []) as Array<{ id: string; title: string; status: TaskStatus; completed_at: string | null }>).map((row) => [
-      row.id,
-      row,
-    ]),
-  );
-  const projectById = new Map(projects.map((project) => [project.id, project]));
-  const memberById = new Map(members.filter((member) => userIds.includes(member.id)).map((member) => [member.id, member]));
-  const now = Date.now();
-  const grouped = new Map<string, TaskTimeSummary>();
-
-  for (const entry of entries) {
-    const task = tasks.get(entry.taskId);
-    if (!task) continue;
-    const project = projectById.get(entry.projectId);
-    const member = memberById.get(entry.userId);
-    const key = `${entry.taskId}:${entry.userId}`;
-    const activeSeconds = entry.endedAt
-      ? 0
-      : Math.max(0, Math.floor((now - new Date(entry.startedAt).getTime()) / 1000));
-    const seconds = (entry.durationSeconds ?? 0) + activeSeconds;
-    const previous = grouped.get(key);
-
-    if (!previous) {
-      grouped.set(key, {
-        taskId: entry.taskId,
-        projectId: entry.projectId,
-        taskTitle: task.title,
-        taskStatus: task.status,
-        userId: entry.userId,
-        userName: member?.name || member?.email || "Unknown member",
-        projectName: project?.name ?? "Unknown project",
-        totalSeconds: seconds,
-        sessionCount: 1,
-        isActive: !entry.endedAt,
-        activeStartedAt: entry.endedAt ? null : entry.startedAt,
-        lastActivityAt: entry.endedAt ?? entry.startedAt,
-        completedAt: task.completed_at,
-      });
-      continue;
-    }
-
-    previous.totalSeconds += seconds;
-    previous.sessionCount += 1;
-    if (!entry.endedAt) {
-      previous.isActive = true;
-      previous.activeStartedAt = entry.startedAt;
-    }
-    const activityAt = entry.endedAt ?? entry.startedAt;
-    if (activityAt > previous.lastActivityAt) previous.lastActivityAt = activityAt;
-  }
-
-  return Array.from(grouped.values()).sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));
 }
 
 async function requireAssignedTask(taskId: string, userId: string): Promise<{

@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { isHostingPortalHost } from "@/lib/hosting/portalHost";
 import { getCurrentProfile } from "@/lib/auth";
 import { MemberFocusDashboard } from "@/components/MemberFocusDashboard";
-import { getEmployeeActivitySummary } from "@/lib/employeeActivity";
 import { ensureIdleSeoTaskForMember, getMyTasks, listMemberSeoModuleAssignments, getProjectsForProfile, getTaskFocusStates, getTaskTimeTotals } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +14,9 @@ export default async function DashboardPage() {
   if (!profile) redirect("/client");
   if (profile.role === "admin") redirect("/admin");
   await ensureIdleSeoTaskForMember(profile.id);
-  const [tasks, focusStates, extensionWork, moduleAssignments] = await Promise.all([
+  const [tasks, focusStates, moduleAssignments] = await Promise.all([
     getMyTasks(profile.id),
     getTaskFocusStates(profile.id),
-    getEmployeeActivitySummary(profile.id),
     listMemberSeoModuleAssignments(profile.id),
   ]);
   const taskProjectIds = new Set(tasks.map((task) => task.projectId));
@@ -32,7 +30,6 @@ export default async function DashboardPage() {
       projects={memberProjects}
       focusStates={focusStates}
       timeTotals={timeTotals}
-      initialExtensionWork={extensionWork}
       moduleAssignments={moduleAssignments}
     />
   );
