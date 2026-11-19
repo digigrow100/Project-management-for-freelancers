@@ -3,6 +3,18 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
 import { getSupabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
+
+// A recovery link grants AAL1. Auth requires AAL2 to change a password when
+// the account already has a verified factor. Check before rendering the
+// password form and again in its action; never store a password across MFA.
+export async function requirePasswordResetMfa(user: User) {
+ if (!user.factors?.some(factor => factor.status === 'verified')) return;
+ const auth = await createAuthClient();
+ const level = await auth.auth.mfa.getAuthenticatorAssuranceLevel();
+ if (level.error) redirect('/login/forgot-password?error=' + encodeURIComponent('Security verification is temporarily unavailable. Please try again later.'));
+ if (level.data?.currentLevel !== 'aal2') redirect('/login/security?next=%2Flogin%2Freset-password');
+}
 // getUser validates the access token with Auth before these session claims are used.
 export async function requireHostingSession(admin=false,verificationFlow=false) {
  const auth=await createAuthClient();

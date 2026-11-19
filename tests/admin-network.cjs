@@ -11,13 +11,13 @@ export const cookies=()=>({get:()=>s.inspect?{value:'fixture-inspection'}:undefi
 export const redirect=(path)=>{throw new Error('redirect:'+path)};
 export const unstable_rethrow=(error)=>{if(error instanceof Error && error.message.startsWith('redirect:'))throw error;};
 export const createAuthClient=()=>({auth:{
- getUser:async()=>({data:{user:s.signedIn?{id:'fixture-actor',email:'owner@fixture.invalid',email_confirmed_at:'fixture',factors:[{status:'verified'}]}:null},error:null}),
+ getUser:async()=>({data:{user:s.signedIn?{id:'fixture-actor',email:'owner@fixture.invalid',email_confirmed_at:'fixture',factors:s.factor===false?[]:[{status:'verified'}]}:null},error:null}),
  getSession:async()=>({data:{session:{user:{id:'fixture-actor'},access_token:'x.'+Buffer.from(JSON.stringify({session_id:'11111111-1111-4111-8111-111111111111'})).toString('base64url')+'.x'}},error:null}),
  signInWithPassword:async()=>{s.signedIn=true;return {data:{user:{id:'fixture-actor'}},error:null}},
  signOut:async()=>{s.signedOut++;s.signedIn=false;return {error:null}},
  resetPasswordForEmail:async(email,options)=>{s.reset={email,redirectTo:options&&options.redirectTo};const failure=s.resetError===true?{name:'AuthApiError',message:'rejected'}:s.resetError;return {error:failure||null}},
- updateUser:async(body)=>{s.updated=body;return {error:s.updateError?{message:'rejected'}:null}},
- mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:s.aal||'aal2'},error:null})}
+ updateUser:async(body)=>{s.updated=body;return {error:s.updateError===true?{message:'rejected'}:s.updateError||null}},
+ mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:s.aal||'aal2'},error:s.aalError?{}:null})}
 }});
 export const createServerClient=createAuthClient;
 export const getSupabase=()=>({from:(table)=>({select:(fields)=>({eq:(key,value)=>({maybeSingle:async()=>{s.calls.push({table,fields,key,value});return {data:s.role?{role:s.role}:null,error:s.dbError?{}:null}}})})}),rpc:async()=>({data:true,error:null})});
@@ -44,7 +44,7 @@ async function load(file){
  b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:fixture,loader:'ts'}));
  }}]});const mod={exports:{}};new Function('require','module','exports',result.outputFiles[0].text)(require,mod,mod.exports);return mod.exports;
 }
-function configure(){process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10,198.51.100.20,203.0.113.30';s.role='admin';s.ip='192.0.2.10';s.signedIn=true;s.dbError=false;s.inspect=false;s.calls=[];s.writes=0;s.aal='aal2';s.updated=null;s.reset=null;s.resetError=false;s.updateError=false;s.resetLimit=null;}
+function configure(){process.env.VERCEL='1';process.env.ADMIN_ALLOWED_IPS='192.0.2.10,198.51.100.20,203.0.113.30';s.role='admin';s.ip='192.0.2.10';s.signedIn=true;s.dbError=false;s.inspect=false;s.calls=[];s.writes=0;s.aal='aal2';s.factor=true;s.aalError=false;s.updated=null;s.reset=null;s.resetError=false;s.updateError=false;s.resetLimit=null;}
 test('exact allowlist rejects spoofed, ambiguous, absent, malformed and untrusted addresses',async()=>{
  const {adminNetworkAllowed:allowed}=await load('lib/security/adminNetworkPolicy.ts');
  const env={VERCEL:'1',ADMIN_ALLOWED_IPS:'192.0.2.10,198.51.100.20,203.0.113.30'};
@@ -84,7 +84,7 @@ test('middleware blocks admin paths before Auth while keeping team, customer and
  assert.equal((await middleware(req('/hosting','192.0.2.10'))).status,307); // IP is not authentication
  s.signedIn=true;for(const p of ['/','/today','/settings','/client'])assert.equal((await middleware(req(p))).status,200,p);
 });
-test('password reset emails the confirm link and saves a new password before the authenticator step',async()=>{
+test('password reset emails the confirm link and requires MFA before changing an MFA account password',async()=>{
  configure();
  const fs=require('node:fs');
  const form=fs.readFileSync(path.join(__dirname,'../app/login/auth-forms.tsx'),'utf8');
@@ -134,11 +134,21 @@ test('password reset emails the confirm link and saves a new password before the
  await assert.rejects(passwords.requestPasswordResetAction(blank),/Email%20is%20required/);
  const update=new FormData();update.set('password','long-fixture-password');update.set('confirmPassword','long-fixture-password');
  s.aal='aal1';s.updated=null;
- await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/login/security'});
- assert.deepEqual(s.updated,{password:'long-fixture-password'});
+ await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/login/security?next=%2Flogin%2Freset-password'});
+ assert.equal(s.updated,null);
+ s.aalError=true;
+ await assert.rejects(passwords.updatePasswordAction(update),/Security%20verification%20is%20temporarily%20unavailable/);
+ assert.equal(s.updated,null);
+ s.aalError=false;
  s.aal='aal2';s.updated=null;
  await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/'});
  assert.deepEqual(s.updated,{password:'long-fixture-password'});
+ s.factor=false;s.aal='aal1';s.updated=null;
+ await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/'});
+ assert.deepEqual(s.updated,{password:'long-fixture-password'});
+ s.updateError={code:'insufficient_aal'};
+ await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/login/security?next=%2Flogin%2Freset-password'});
+ s.updateError=false;
  s.signedIn=false;
  await assert.rejects(passwords.updatePasswordAction(update),/Open%20the%20reset%20link/);
 });

@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { NewPasswordForm } from "../auth-forms";
+import { redirect } from "next/navigation";
+import { createAuthClient } from "@/lib/supabase/server";
+import { requireAdminNetworkForUser } from "@/lib/security/adminNetwork";
+import { requirePasswordResetMfa } from "@/lib/security/mfa";
 
 export default async function ResetPasswordPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string }> }) {
   const searchParams = await queryParams;
+  const auth = await createAuthClient();
+  const { data: { user }, error } = await auth.auth.getUser();
+  if (error || !user) redirect("/login/forgot-password?error=" + encodeURIComponent("Open the reset link from your email, then choose a new password."));
+  await requireAdminNetworkForUser(user.id);
+  await requirePasswordResetMfa(user);
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
       <div className="w-full max-w-sm rounded-xl2 border border-base-700/60 bg-base-850 p-6 shadow-card">

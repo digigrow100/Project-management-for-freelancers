@@ -38,5 +38,7 @@ export async function securityAction(previous:SecurityState,form:FormData):Promi
    if(refreshed.error)await auth.auth.signOut();
   }
  }catch(e){return {factorId:previous.factorId,qr:previous.qr,error:e instanceof Error?e.message:'Security check failed.'};}
- redirect(removed?'/login/security?manage=1&removed=1':form.get('manage')==='yes'?'/login/security?manage=1&saved=1':'/');
+ // Only the fixed password form is an accepted continuation. Never use a
+ // browser-supplied URL as a redirect destination.
+ redirect(removed?'/login/security?manage=1&removed=1':form.get('manage')==='yes'?'/login/security?manage=1&saved=1':form.get('next')==='/login/reset-password'?'/login/reset-password':'/');
 }
