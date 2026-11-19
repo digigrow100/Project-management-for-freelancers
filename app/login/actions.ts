@@ -8,6 +8,7 @@ import {MEMBER_VIEW_COOKIE} from "@/lib/memberView";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/server";
 import { getSiteOrigin } from "@/lib/site";
+import { requirePasswordResetMfa } from "@/lib/security/mfa";
 
 const AUTH_NOT_CONFIGURED_MESSAGE =
   "Sign-in isn't configured yet. Check that SUPABASE_URL and SUPABASE_ANON_KEY are set.";
@@ -130,24 +131,20 @@ export async function updatePasswordAction(formData: FormData) {
     const {data:{user}}=await supabase.auth.getUser();
     if(!user)redirect(`/login/reset-password?error=${encodeURIComponent("Open the reset link from your email, then choose a new password.")}`);
     await requireAdminNetworkForUser(user.id);
+    await requirePasswordResetMfa(user);
     try {await rateLimit("password",user.id,5,900);} catch {redirect("/login/reset-password?error="+encodeURIComponent("Please wait before changing your password again."));}
 
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
+      // A factor may have been enabled after the preflight check. Keep the
+      // recovery destination even in that race; never bypass Auth's MFA gate.
+      if (error.code === "insufficient_aal") redirect("/login/security?next=%2Flogin%2Freset-password");
       // Keep them on this form — the recovery session is usually still valid
       // (this is often just a password-policy rejection), so bouncing to
       // "request a new link" would throw away a perfectly good session along
       // with whatever they'd already typed.
       redirect(`/login/reset-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
-    }
-
-    // The recovery link signs the user in at the first assurance level. Save
-    // the password before asking for an authenticator, then send them to
-    // verify it. The authenticator itself is left in place.
-    if(user.factors?.some(factor=>factor.status==="verified")){
-      const level=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if(level.error||level.data?.currentLevel!=="aal2")redirect("/login/security");
     }
 
     // verifyOtp already signed them in via the recovery link, so they're

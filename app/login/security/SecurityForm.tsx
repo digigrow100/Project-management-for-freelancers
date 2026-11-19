@@ -5,13 +5,14 @@ import { useFormState, useFormStatus } from "react-dom";
 import { securityAction } from "./actions";
 function Fields({children}:{children:React.ReactNode}){const {pending}=useFormStatus();return <fieldset disabled={pending} className="security-fields">{children}</fieldset>;}
 function Submit({children,danger=false}:{children:React.ReactNode;danger?:boolean}){const {pending}=useFormStatus();return <button className={danger?'security-button security-danger':'security-button'} disabled={pending}>{pending?'Please wait…':children}</button>;}
-export function SecurityForm({factors,manage=false}:{factors:{id:string;name:string}[];manage?:boolean}){
+export function SecurityForm({factors,manage=false,resetPassword=false}:{factors:{id:string;name:string}[];manage?:boolean;resetPassword?:boolean}){
  const [state,action]=useFormState(securityAction,{});
  const [removing,setRemoving]=useState(false);
  const enrolling=!!state.qr&&!!state.factorId;
  const enabled=factors.length>0;
  return <form action={action} className="security-form"><Fields>
  {manage&&<input type="hidden" name="manage" value="yes"/>}
+ {!manage&&resetPassword&&<input type="hidden" name="next" value="/login/reset-password"/>}
  {state.error&&<p role="alert" className="security-alert security-error">{state.error}</p>}
  {manage&&enabled&&!removing?<>
  <div className="security-status"><span className="security-dot"/><div><strong>Authenticator enabled</strong><p>Your account has an extra layer of protection.</p></div></div>

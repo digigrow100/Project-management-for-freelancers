@@ -1028,9 +1028,15 @@ failures stay on the generic completion message. The recovery link is
 on the hosting host.
 The link target is `{site origin}/auth/confirm?next=/login/reset-password`.
 `/auth/confirm` exchanges the code or token hash and opens
-`/login/reset-password`, where the new password is saved before any
-authenticator check. An account that already has an authenticator is then
-sent to `/login/security`; the authenticator is not removed. `/sw.js` and
+`/login/reset-password`. An account with a verified authenticator must reach
+AAL2 before the password form opens and before the update action can save.
+Verification uses `/login/security?next=%2Flogin%2Freset-password` and accepts
+only that exact local continuation. Normal sign-in and security management
+keep their existing destinations. Passwords are never stored in URLs, cookies
+or temporary records to carry them through MFA; the authenticator is retained.
+The reset request form releases its duplicate-submit lock in `finally`, even
+when a same-page redirect repeats the same error or a transport request fails.
+Next navigation errors are rethrown so successful redirects still run. `/sw.js` and
 `/manifest.json` are served without a login redirect, and the service worker
 does not intercept form posts.
 
@@ -1169,9 +1175,11 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- 2026-11-19: Password recovery verifies existing MFA before displaying or saving a new password, then returns from verification to the fixed reset form. Reset submissions unlock after completed/error responses and preserve framework redirects. Regression coverage includes AAL1 denial without a password write, AAL2 success, no-MFA recovery, security return-path restrictions, duplicate clicks and repeated errors. Supabase `/recover` timeouts remain a separate provider/configuration issue; this source change does not prove email delivery.
+
 - Password reset now records the Supabase Auth failure as name, status, and code only, and tells the person to wait when Auth rate-limits the email or that the email could not be sent when Auth returns 500 or 504. The address is not logged. Sending still depends on the Supabase Auth mail settings.
 
-- Password reset now shows a sending state and an inline error, saves the new password before the authenticator step, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. The recovery link still lands on `/auth/confirm` and then `/login/reset-password`.
+- Password reset shows a sending state and an inline error, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. Recovery now requires authenticator verification before password changes. The recovery link still lands on `/auth/confirm` and then `/login/reset-password`.
 
 - Added owner Dynadot REST v2 connection, paginated registrar inventory, guarded domain changes, renewal review, durable audit and uncertain-result reconciliation. Legacy inventory and customer assignment stay separate. Provider acceptance awaits credentials.
 
