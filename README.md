@@ -605,3 +605,21 @@ Hosting data uses the additive `20261020202238_hosting_management.sql` migration
 Daily renewal generation is off by default. Enable only after configuring a strong `CRON_SECRET` on Vercel. Manual generation is available on Hosting Overview. Backup setup, permanent storage sizing, automatic VPS execution and payment-provider integration are separate outstanding work.
 
 Hosting administrators can click **Open client portal** in the Clients list for a read-only view. This retains their administrator identity; no customer password or session token is shared. A signed, actor-bound inspection cookie expires after 30 minutes, administrator permissions are rechecked on every request, and launch/return events are audited. The banner's **Return to Hosting** control ends inspection. Client submissions/replies are blocked during inspection; perform administrative changes in Hosting. Apply `20261020211243_hosting_admin_client_summary.sql` before this version.
+
+
+## Client website dashboard — PR preparation
+
+The new website dashboard, bank-transfer approval, one-website credits, direct
+uploads, GitHub and optional measured storage billing are prepared on a new
+branch. They are not live just because the source exists. See the
+[release and VPS runbook](docs/client-websites.md) for migration order, private
+env setup, Grok Bot commands, security boundaries and remaining acceptance checks.
+No real price or bank account is invented. Existing hosting records remain separate.
+
+PR #275 follow-up adds client domain pairs, copyable DNS, pre-deploy verification,
+per-site preview URLs and guarded REST v2 Dynadot additions. Final migration order
+is the two website migrations above followed by
+`20261120202602_website_domains_and_preview.sql`. See the runbook's follow-up
+section for MySecureCloudHost wildcard DNS, unchanged private env requirements,
+VPS installation/update commands and separate integration-test prerequisites.
+These changes remain PR-only until the owner releases them.

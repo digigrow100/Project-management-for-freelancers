@@ -4,8 +4,8 @@ const assert=require('node:assert/strict'),http=require('node:http'),https=requi
 const {generateKeyPairSync,createHash,createHmac}=require('node:crypto');
 const {spawn,spawnSync}=require('node:child_process');
 const {buildSync}=require('esbuild'),{chromium}=require('playwright');
-const servicesExtension=process.env.HMS_SERVICES_BROWSER_TEST==='1'?require('./fixtures/services-browser-extension.cjs'):null;
-const {fixture,IDS,API_KEY,ANON,totp}=require('./fixtures/auth-provider.cjs');
+const servicesExtension=process.env.HMS_SERVICES_BROWSER_TEST==='1'?require('../tests/fixtures/services-browser-extension.cjs'):null;
+const {fixture,IDS,API_KEY,ANON,totp}=require('../tests/fixtures/auth-provider.cjs');
 const root=path.resolve(__dirname,'..'),full=path.resolve(process.env.HMS_PORTAL_APP_ROOT||(fs.existsSync(path.join(root,'app/layout.tsx'))?root:path.resolve(root,'../portal-full-local'))),automation=path.resolve(process.env.HMS_AUTOMATION_SOURCE||path.resolve(root,'../retention-work')),origin='https://127.0.0.1:39549',backend='http://127.0.0.1:39551';
 const {createServerClient}=require(path.join(full,'node_modules/@supabase/ssr'));
 const test=fixture(),host=generateKeyPairSync('x25519'),hostJwk=host.privateKey.export({format:'jwk'});

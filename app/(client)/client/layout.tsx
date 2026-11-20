@@ -5,6 +5,8 @@ import { requireHostingClient } from "@/lib/hosting/auth";
 import { logoutAction } from "@/app/login/actions";
 import { ClientNavigation } from "@/components/hosting/ClientNavigation";
 import "./portal.css";
+import "@/components/hosting/dashboard/dashboard.css";
+import "@/components/hosting/dashboard/website.css";
 export const dynamic="force-dynamic";
 export default async function ClientLayout({children}:{children:React.ReactNode}) {
  const session=await requireHostingClient();

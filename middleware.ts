@@ -51,6 +51,13 @@ export async function middleware(request: NextRequest) {
     return finish(NextResponse.redirect(url));
   }
 
+  // Website deployment receipts verify a separate HMAC before any DB work.
+  if (request.nextUrl.pathname === "/api/hosting-websites/receipts") {
+    const result = NextResponse.next({ request });
+    result.headers.set("Cache-Control", "private, no-store");
+    return finish(result);
+  }
+
   // These machine routes authenticate independently, before any work.
   if (CRON_PATHS.has(request.nextUrl.pathname)) return finish(NextResponse.next({ request }));
 

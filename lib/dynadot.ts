@@ -4,11 +4,10 @@ import { decryptApiKey } from "./dynadotCrypto";
 /**
  * Server-only client for the Dynadot reseller API (https://www.dynadot.com/domain/api-commands).
  *
- * IMPORTANT: this app's sandbox could not reach dynadot.com to verify the current
- * command/parameter names against the live docs, so the command strings below are
- * built from Dynadot's documented v3 API shape but have not been exercised against
- * a real account. Before relying on sync/DNS/lock actions, test each one against a
- * throwaway domain and adjust `DYNADOT_COMMANDS` below if a command name has changed.
+ * New client website DNS uses the guarded REST v2 registrar integration.
+ * This legacy helper appends supported records only; it never replaces a zone.
+ * Append parameters were checked against Dynadot's current published docs.
+ * No live provider write acceptance is claimed by these source changes.
  */
 
 const API_BASE = "https://api.dynadot.com/api3.json";
@@ -110,31 +109,21 @@ export async function setDynadotNameservers(domain: string, nameservers: string[
   await callDynadot(apiKey, DYNADOT_COMMANDS.setNameservers, params);
 }
 
-/**
- * Pushes a full DNS record set to Dynadot. set_dns2 replaces the whole record
- * set rather than adding incrementally, so this always sends every record
- * this app has stored for the domain (main "@" record plus up to 10 subdomain
- * slots — Dynadot's documented limit for this command).
+/** Append records only. Never replace a zone or silently truncate input.
+ * Legacy callers needing remove/edit must use the reviewed REST v2 registrar UI.
  */
 export async function setDynadotDnsRecords(
   domain: string,
   records: { host: string; recordType: string; value: string }[],
 ): Promise<void> {
-  const apiKey = await getApiKey();
-  const params: Record<string, string> = { domain };
-
-  const mainRecord = records.find((r) => r.host === "@" || r.host === "");
-  if (mainRecord) {
-    params.main_record_type0 = mainRecord.recordType;
-    params.main_record0 = mainRecord.value;
-  }
-
-  const subRecords = records.filter((r) => r !== mainRecord).slice(0, 10);
-  subRecords.forEach((record, i) => {
-    params[`subdomain${i}`] = record.host;
-    params[`sub_record_type${i}`] = record.recordType;
-    params[`sub_record${i}`] = record.value;
-  });
-
-  await callDynadot(apiKey, DYNADOT_COMMANDS.setDns, params);
+  if (domain === 'housemysite.com' || domain.endsWith('.housemysite.com') || !/^(?:[a-z0-9-]+\.)+[a-z]{2,63}$/.test(domain) || !records.length) throw Error('Invalid DNS additions.');
+  const main = records.filter(r => r.host === '@' || r.host === '');
+  const sub = records.filter(r => r.host !== '@' && r.host !== '');
+  if (main.length > 20 || sub.length > 100) throw Error('Too many records. Use the REST v2 DNS editor.');
+  // This legacy shape has no priority metadata; do not submit lossy MX/SRV/forward records.
+  if (records.some(r => !['a','aaaa','cname','txt'].includes(r.recordType.toLowerCase()) || !r.value || r.value.length > 4096 || /[\r\n\0]/.test(r.value) || !/^(?:@|[_a-z0-9*-]+(?:\.[_a-z0-9-]+)*|)$/.test(r.host))) throw Error('Use the REST v2 DNS editor for this record.');
+  const params: Record<string, string> = {domain, add_dns_to_current_setting: '1'};
+  main.forEach((r,i) => { params[`main_record_type${i}`]=r.recordType.toLowerCase(); params[`main_record${i}`]=r.value; });
+  sub.forEach((r,i) => { params[`subdomain${i}`]=r.host; params[`sub_record_type${i}`]=r.recordType.toLowerCase(); params[`sub_record${i}`]=r.value; });
+  await callDynadot(await getApiKey(), DYNADOT_COMMANDS.setDns, params);
 }

@@ -1,0 +1,1 @@
+export default function Loading(){return <div className="website-loading" role="status" aria-live="polite"><p>Loading your workspace…</p><div className="website-project-grid" aria-hidden="true">{[1,2,3].map(n=><div key={n} className="website-skeleton"/>)}</div></div>;}

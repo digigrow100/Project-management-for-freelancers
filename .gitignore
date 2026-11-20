@@ -54,3 +54,14 @@ domain-browser-output/
 __pycache__/
 *.pyc
 email-services-browser-output/
+
+# Private website-agent enrollment files (never commit or paste into chat)
+hosting-agent/.env
+hosting-agent/vercel-private.env
+website-browser-output/
+hosting-agent/runtime-enrollment/
+hosting-agent/network-service.env
+hosting-agent/**/__pycache__/
+
+# Generated focused-test declaration fixtures
+/test-runtime/types/

@@ -1,0 +1,10 @@
+{
+  "name": "hms-hosting-agent",
+  "private": true,
+  "type": "module",
+  "description": "House My Site hosting agent. Runs on the VPS and applies an allowlisted set of Docker actions.",
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}

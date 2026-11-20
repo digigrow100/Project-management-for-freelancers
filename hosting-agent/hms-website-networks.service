@@ -1,0 +1,14 @@
+[Unit]
+Description=Enroll isolated HouseMySite website networks after Docker starts
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/stacks/hosting-agent
+EnvironmentFile=/opt/stacks/hosting-agent/network-service.env
+ExecStart=/bin/sh /opt/stacks/hosting-agent/install-networks.sh ${TRAEFIK_CONTAINER}
+
+[Install]
+WantedBy=multi-user.target

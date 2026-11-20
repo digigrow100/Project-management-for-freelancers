@@ -40,15 +40,17 @@ export async function registrarAction(form:FormData){
    const rows=checked(await getSupabase().from(table('operations')).select('id,domain,kind,state,created_at,updated_at').eq('connection_version',c.version).order('created_at',{ascending:false}).limit(100));return {ok:true as const,operations:rows??[]};
   }
   if(action==='apply'||action==='reconcile'){
-   const id=z.string().uuid().parse(form.get('id')),op=await operation(id,actor.id);
+   const id=z.string().uuid().parse(form.get('id'));
+   const op=action==='reconcile'?checked(await getSupabase().from(table('operations')).select('*').eq('id',id).single()) as Awaited<ReturnType<typeof operation>>:await operation(id,actor.id);
+   const finishChecked=async(state:'confirmed'|'uncertain')=>{if(op.website_app_id) checked(await getSupabase().rpc('freelance_hq_website_dns_finish',{p_actor:actor.id,p_id:id,p_state:state,p_admin:true}));else await finish(op,state);};
    if(op.connection_version!==c.version)throw new RegistrarError('review_expired');
    if(action==='reconcile'){
     if(!['executing','uncertain','confirmed'].includes(op.state))throw new RegistrarError('review_expired');
     if(op.state==='executing'&&Date.now()-Date.parse(op.updated_at)<60000)throw new RegistrarError('reconcile_required');
     const after=await provider.info(op.domain);await remember(c.version,[after]);
     if(op.state==='confirmed')return {ok:true as const,message:'This operation was already confirmed.',domain:after};
-    if(observed(op.before_state,after,intent.parse(op.intent))){await finish(op,'confirmed');refresh();return {ok:true as const,message:'The requested result is now visible in Dynadot.',domain:after};}
-    if(op.state==='executing')await finish(op,'uncertain');
+    if(observed(op.before_state,after,intent.parse(op.intent))){await finishChecked('confirmed');refresh();return {ok:true as const,message:'The requested result is now visible in Dynadot.',domain:after};}
+    if(op.state==='executing')await finishChecked('uncertain');
     return {ok:false as const,error:'The result is still unclear. Further changes remain blocked. Check this operation in Dynadot before an operator resolves it.'};
    }
    if(String(form.get('confirmation'))!==op.domain)throw new RegistrarError('stale_review');

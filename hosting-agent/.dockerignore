@@ -1,0 +1,5 @@
+.env
+vercel-private.env
+node_modules
+test
+*.log
