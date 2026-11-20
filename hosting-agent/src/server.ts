@@ -85,6 +85,7 @@ async function body(req: IncomingMessage, limit: number) {
 }
 export function createAgentServer(deps: AgentDeps) {
     const now = deps.now ?? Date.now, docker = deps.docker ?? new DockerClient(), limiter = deps.limiter ?? new RateLimiter(), nonces = deps.nonces ?? new NonceStore(join(deps.dataDir, 'nonces.json'));
+    const siteChanges = new Set<string>();
     const locks = new Set<string>(), origins = deps.portalOrigins ?? (process.env.PORTAL_ORIGINS || 'https://web.housemysite.com').split(',').map(s => s.trim());
     const uploadRoot = join(deps.dataDir, 'uploads'), cancelRoot = join(deps.dataDir, 'cancelled');
     mkdirSync(uploadRoot, { recursive: true, mode: 0o700 });
@@ -453,9 +454,17 @@ export function createAgentServer(deps: AgentDeps) {
             const data = bytes.length ? JSON.parse(bytes.toString()) : {};
             if (!data || typeof data !== 'object' || Array.isArray(data))
                 throw Error('invalid_json');
-            const result = await control(method, path, data);
-            writeAudit(deps.auditFile, { method, path, ok: true });
-            json(res, result.status, result.value);
+            const site = method === 'POST' ? /^\/v1\/apps\/(w-[a-f0-9]{32})(?:\/|$)/.exec(path)?.[1]
+                ?? (['/v1/apps','/v1/uploads'].includes(path) ? String(data.name ?? '') : '') : '';
+            if (site && siteChanges.has(site)) throw Error('website_change_pending');
+            if (site) siteChanges.add(site);
+            try {
+                const result = await control(method, path, data);
+                writeAudit(deps.auditFile, { method, path, ok: true });
+                json(res, result.status, result.value);
+            } finally {
+                if (site) siteChanges.delete(site);
+            }
         })().catch(e => {
             const code = e instanceof Error && /^[a-z_]+$/.test(e.message) ? e.message : 'request_failed';
             if (!res.headersSent && !res.destroyed)

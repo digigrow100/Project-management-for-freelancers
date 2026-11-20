@@ -287,6 +287,14 @@ The operator browser additionally requires a built isolated app, Playwright and 
 - Full `node --test tests/*.cjs`: **119 passed, 0 failed, 0 skipped**.
 - `npm run typecheck`, `npm run lint`, isolated optimized production build: passed. Lint retains the four existing legacy hook warnings.
 - The additive domain migration suite passed on disposable PostgreSQL, including both existing registrar and all three website migrations, client isolation, record/value scope, operation locking, admin reconciliation and browser privilege denial. Existing payment/credit/usage suites also passed in the full test run.
-- Agent TypeScript check and **9** fake-Docker HTTP/routing/security tests passed; **3** Python archive/quota tests passed.
+- Agent TypeScript check and **10** fake-Docker HTTP/routing/security tests passed; **3** Python archive/quota tests passed.
 - Client browser bundle passed. Actual local Chromium remains blocked by the process-socket permission; no screenshot/visual pass is claimed. The separate operator/companion-repository integration scripts were not run.
 - No live SQL/DNS/provider mutation, VPS install, real transfer, renewal or paid scheduler was run. Check current GitHub Actions/Vercel status separately from these local results.
+
+The first follow-up CI run exposed a duplicate hidden-dialog selector in the browser
+fixture. Commit d169ac9 scopes it to the open dialog; the actual GitHub Chromium
+checks then passed and produced desktop/mobile/payment screenshots, reviewed by
+the agent. Mobile tab spacing was tightened after that review. Per-website agent
+control mutations now reject overlapping routing/lifecycle/deploy requests before
+Docker work, with a concurrency regression (10 agent tests total). Local Chromium
+remains restricted; the browser pass refers to GitHub's fixture runner.

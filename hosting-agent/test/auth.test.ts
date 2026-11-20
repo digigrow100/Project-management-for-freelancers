@@ -15,9 +15,9 @@ function signed(method: string, path: string, body = '') {
     const timestamp = String(Date.now()), nonce = randomBytes(16).toString('hex');
     return { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-hms-timestamp': timestamp, 'x-hms-nonce': nonce, 'x-hms-signature': sign(null, Buffer.from(canonicalRequest(method, path, timestamp, nonce, Buffer.from(body))), privateKey).toString('base64') };
 }
-async function fixture(run: (base: string, root: string, calls: string[]) => Promise<void>) {
+async function fixture(run: (base: string, root: string, calls: string[]) => Promise<void>, options: {ready?:()=>Promise<boolean>} = {}) {
     const root = mkdtempSync(join(tmpdir(), 'hms-checkout-agent-')), calls: string[] = [];
-    const docker = { async fetchRepository(_name: string, _source: unknown, dest: string) { calls.push('fetch'); mkdirSync(dest, { recursive: true }); writeFileSync(join(dest, 'index.html'), 'fixture'); }, async build() { calls.push('build'); return 7; }, async run() { calls.push('run'); }, async ready() { return true; }, async remove() { calls.push('remove'); }, async action() { calls.push('action'); }, async logs() { return 'fixture'; } };
+    const docker = { async fetchRepository(_name: string, _source: unknown, dest: string) { calls.push('fetch'); mkdirSync(dest, { recursive: true }); writeFileSync(join(dest, 'index.html'), 'fixture'); }, async build() { calls.push('build'); return 7; }, async run() { calls.push('run'); }, async ready() { return options.ready ? options.ready() : true; }, async remove() { calls.push('remove'); }, async action() { calls.push('action'); }, async logs() { return 'fixture'; } };
     const server = createAgentServer({ token, publicKey, sitesDir: root, dataDir: join(root, 'data'), routeDir: join(root, 'routes'), auditFile: join(root, 'audit'), docker, inline: true, minFreeBytes: 0, portalOrigins: ['https://portal.fixture.invalid'] });
     await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
     const addr = server.address();
@@ -105,4 +105,23 @@ test('the agent rejects another website preview and preserves its own preview wh
   body=JSON.stringify({domains:[{host:foreign,token:'a'.repeat(48)}]});
   assert.equal((await fetch(base+path,{method:'POST',headers:signed('POST',path,body),body})).status,400);
  });
+});
+
+test('overlapping routing and deployment changes cannot overwrite the current website state', {timeout:10000}, async()=>{
+ let pause=false,release:(ok:boolean)=>void=()=>{},entered:()=>void=()=>{};
+ const ready=new Promise<void>(r=>entered=r);
+ await fixture(async(base,root,calls)=>{
+  let body=JSON.stringify({...spec,source:{kind:'git',url:'https://github.com/fixture/site',ref:'main'}});
+  assert.equal((await fetch(base+'/v1/apps',{method:'POST',headers:signed('POST','/v1/apps',body),body})).status,202);
+  pause=true;const path=`/v1/apps/${name}/domains`;
+  body=JSON.stringify({domains:[{host:'first.example.com',token:'a'.repeat(48)}]});
+  const first=fetch(base+path,{method:'POST',headers:signed('POST',path,body),body});await ready;
+  const overlap=await fetch(base+path,{method:'POST',headers:signed('POST',path,body),body});
+  assert.equal(overlap.status,400);assert.equal((await overlap.json()).error,'website_change_pending');
+  const start=JSON.stringify({...spec,deploymentId:'44444444-4444-4444-8444-444444444444',source:{kind:'git',url:'https://github.com/fixture/site',ref:'main'}});
+  assert.equal((await fetch(base+'/v1/apps',{method:'POST',headers:signed('POST','/v1/apps',start),body:start})).status,400);
+  release(true);assert.equal((await first).status,200);
+  assert(readState(join(root,'data'),name)?.domains.some(d=>d.host==='first.example.com'));
+  assert.equal(calls.filter(c=>c==='run').length,2);
+ },{ready:async()=>{if(!pause)return true;entered();return new Promise<boolean>(r=>release=r);}});
 });

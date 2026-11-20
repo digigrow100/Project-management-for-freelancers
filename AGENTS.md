@@ -226,7 +226,9 @@ authority. Secret env/repo tokens are excluded from browser props/logs/chat.
 
 Checks: full `node --test tests/*.cjs`, tests/website-*, tests/hosting-apps.cjs, hosting-agent/test and
 local-checks/website-browser.cjs. Bank dialog selectors must be scoped to the
-open dialog because Overview can render both a header and an empty-state CTA. Chromium cannot launch in this workspace due
+open dialog because Overview can render both a header and an empty-state CTA.
+Per-website agent control mutations are mutually exclusive, preventing concurrent
+DNS routing/lifecycle/deploy requests from overwriting the saved runtime state. Chromium cannot launch in this workspace due
 to its process socket restriction. Do not claim a visual browser pass or live
 Docker acceptance. Grok Bot runs the documented VPS commands. This PR preparation
 does not merge/deploy, apply live SQL, create production credentials or clients,
@@ -1246,6 +1248,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-21: PR #275 CI browser fixture passed desktop/mobile checkout; reviewed its screenshots, tightened mobile tab spacing and serialized per-website agent mutations with an overlap regression.
 
 - 2026-11-21: PR #275 browser CI selectors now scope bank text/reference to the open dialog, avoiding the closed empty-state dialog.
 
