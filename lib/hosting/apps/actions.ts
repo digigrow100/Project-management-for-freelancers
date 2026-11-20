@@ -1,5 +1,5 @@
 'use server';
-import { randomBytes, randomUUID } from 'node:crypto';
+
 import { redirect, unstable_rethrow } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -8,8 +8,8 @@ import { encryptAppSecret } from './secrets';
 import { appNameOk, domainOk, frameworkOk, gitUrlOk, gitRefOk, parseEnvText } from './validate';
 import { listDomains, loadEnvValues, loadGitToken } from './store';
 import { agentConfigured, agentCall, agentDomains, agentLifecycle } from '@/lib/hosting/agent-client';
-import { lookupHostname, certificateReady } from './lookup';
-import { assessDns, domainStatusAfterProof } from './dns';
+import { verifyDomainGroup } from './domain-workflow';
+import { configureWebsiteDns } from '@/lib/hosting/registrar/website-dns';
 import { deploymentSpec, syncWebsite } from '@/lib/hosting/websites/deployments';
 const uuid = (s: string) => /^[0-9a-f-]{36}$/i.test(s);
 function back(base: string, id: string, tab: string) { return `${base}/${id}?tab=${tab}`; }
@@ -98,47 +98,36 @@ export async function deleteHostingEnv(form: FormData) {
     revalidatePath(`${base}/${app.id}`);
 }
 export async function addHostingDomain(form: FormData) {
-    const base = String(form.get('return_base') ?? ''), { app } = await websiteAccess(base, String(form.get('app_id') ?? ''), true), hostname = String(form.get('hostname') ?? '').trim().toLowerCase();
-    if (!domainOk(hostname))
-        throw new Error('Use a custom public hostname. HouseMySite infrastructure names are reserved.');
-    const domains = await listDomains(app.id);
-    if (domains.length >= 10)
-        throw new Error('This website already has 10 domains.');
-    const r = await getSupabase().from('freelance_hq_hosting_app_domains').insert({ app_id: app.id, hostname, verification_token: randomBytes(24).toString('hex'), is_primary: domains.length === 0, status: 'pending_dns' });
-    if (r.error)
-        throw new Error('This domain may already be assigned. Contact support if you own it.');
-    revalidatePath(`${base}/${app.id}`);
+    const base=String(form.get('return_base')??''),{actor,app}=await websiteAccess(base,String(form.get('app_id')??''),true);
+    const hostname=String(form.get('hostname')??'').trim().toLowerCase().replace(/^www[.]/,'');
+    if(!domainOk(hostname)||hostname.endsWith('.housemysite.com')||hostname==='housemysite.com'||!domainOk('www.'+hostname)) throw Error('Use your own public domain. HouseMySite infrastructure names are reserved.');
+    const r=await getSupabase().rpc('freelance_hq_website_domain_pair',{p_actor:actor.actor,p_app:app.id,p_host:hostname,p_admin:actor.admin});
+    if(r.error)throw Error('Domain could not be saved. It may already be assigned or the ten-hostname allowance is full.');
+    const domain=(await listDomains(app.id)).find(d=>d.hostname===hostname)!;
+    let detail:string;
+    try{detail=await configureWebsiteDns(actor,app,domain);}catch{detail='Domain saved. Automatic DNS could not be confirmed. Check the registrar operation history before retrying. You can add the records manually.';}
+    const saved=await getSupabase().from('freelance_hq_hosting_app_domains').update({dns_setup_detail:detail}).eq('app_id',app.id).eq('group_host',hostname);
+    if(saved.error)throw Error('Domain saved. Reload to check its DNS instructions.');
+    await verifyDomainGroup(app,hostname);
+    revalidatePath(`${base}/${app.id}`);revalidatePath('/client/website-domains');
 }
 export async function verifyHostingDomain(form: FormData) {
-    const base = String(form.get('return_base') ?? ''), { app } = await websiteAccess(base, String(form.get('app_id') ?? ''), true), domains = await listDomains(app.id), domain = domains.find(d => d.hostname === String(form.get('hostname') ?? ''));
-    if (!domain || !domainOk(domain.hostname))
-        throw new Error('Domain not found.');
-    const assessment = assessDns({ ...await lookupHostname(domain.hostname), token: domain.verification_token, httpVerified: false });
-    let status = domainStatusAfterProof(assessment.proven, false, false), detail = assessment.detail;
-    if (assessment.proven) {
-        if (app.status !== 'running')
-            throw new Error('Deploy and refresh this website before connecting a domain.');
-        await agentDomains(app.name, { domains: domains.filter(d => d.id === domain.id || d.status === 'active' || d.status === 'issuing_ssl').map(d => ({ host: d.hostname, token: d.verification_token })), redirect: 'none' });
-        const certificate = await certificateReady(domain.hostname);
-        status = domainStatusAfterProof(true, true, certificate.ok);
-        detail = certificate.ok ? 'Ownership verified. DNS and HTTPS certificate checked.' : 'Ownership verified. Waiting for the VPS HTTPS certificate.';
-    }
-    const r = await getSupabase().from('freelance_hq_hosting_app_domains').update({ status, detail, last_checked_at: new Date().toISOString() }).eq('id', domain.id).eq('app_id', app.id);
-    if (r.error)
-        throw new Error('Domain check could not be saved.');
-    revalidatePath(`${base}/${app.id}`);
+    const base=String(form.get('return_base')??''),{app}=await websiteAccess(base,String(form.get('app_id')??''),true);
+    const domain=(await listDomains(app.id)).find(d=>d.hostname===String(form.get('hostname')??''));
+    if(!domain||!domainOk(domain.hostname))throw Error('Domain not found.');
+    await verifyDomainGroup(app,domain.group_host??domain.hostname);
+    revalidatePath(`${base}/${app.id}`);revalidatePath('/client/website-domains');
 }
 export async function removeHostingDomain(form: FormData) {
-    const base = String(form.get('return_base') ?? ''), { app } = await websiteAccess(base, String(form.get('app_id') ?? ''), true), hostname = String(form.get('hostname') ?? ''), domains = await listDomains(app.id);
-    if (app.status === 'building' || app.status === 'uploading')
-        throw new Error('Wait for the deployment to finish.');
-    const remaining = domains.filter(d => d.hostname !== hostname);
-    if (domains.some(d => d.hostname === hostname && ['active', 'issuing_ssl'].includes(d.status)))
-        await agentDomains(app.name, { domains: remaining.filter(d => ['active', 'issuing_ssl'].includes(d.status)).map(d => ({ host: d.hostname, token: d.verification_token })), redirect: 'none' });
-    const r = await getSupabase().from('freelance_hq_hosting_app_domains').delete().eq('app_id', app.id).eq('hostname', hostname);
-    if (r.error)
-        throw new Error('Domain could not be removed.');
-    revalidatePath(`${base}/${app.id}`);
+    const base=String(form.get('return_base')??''),{app}=await websiteAccess(base,String(form.get('app_id')??''),true),domains=await listDomains(app.id);
+    const domain=domains.find(d=>d.hostname===String(form.get('hostname')??''));
+    if(!domain||domain.is_preview)throw Error('The default preview URL stays with this website.');
+    if(['building','uploading','uncertain'].includes(app.status))throw Error('Wait for the deployment to finish.');
+    const group=domain.group_host??domain.hostname,remaining=domains.filter(d=>(d.group_host??d.hostname)!==group);
+    if(app.status==='running')await agentDomains(app.name,{domains:remaining.filter(d=>d.is_preview||d.dns_verified_at||['active','issuing_ssl'].includes(d.status)).map(d=>({host:d.hostname,token:d.verification_token})),redirect:'none'});
+    const r=await getSupabase().from('freelance_hq_hosting_app_domains').delete().eq('app_id',app.id).eq('group_host',group).eq('is_preview',false);
+    if(r.error)throw Error('Domain could not be disconnected.');
+    revalidatePath(`${base}/${app.id}`);revalidatePath('/client/website-domains');
 }
 export async function saveHostingSource(form: FormData) {
     const base = String(form.get('return_base') ?? ''), { app } = await websiteAccess(base, String(form.get('app_id') ?? ''), true);
@@ -152,4 +141,20 @@ export async function saveHostingSource(form: FormData) {
     if (saved.error || saved.data?.length !== 1)
         throw new Error('Source changed or a deployment started. Refresh and try again.');
     revalidatePath(`${base}/${app.id}`);
+}
+
+// Return a safe status to the domain form; do not expose provider/SQL exceptions.
+export async function changeHostingDomain(form:FormData):Promise<{ok:boolean;error?:string}>{
+    try{
+        const action=String(form.get('domain_action')??'');
+        if(action==='add')await addHostingDomain(form);
+        else if(action==='verify')await verifyHostingDomain(form);
+        else if(action==='remove')await removeHostingDomain(form);
+        else return {ok:false,error:'Choose a valid domain action.'};
+        return {ok:true};
+    }catch(error){
+        unstable_rethrow(error);
+        const safe=new Set(['Use your own public domain. HouseMySite infrastructure names are reserved.','Domain could not be saved. It may already be assigned or the ten-hostname allowance is full.','Wait for the deployment to finish.','This account is read only.','This client account is read only.']);
+        return {ok:false,error:error instanceof Error&&safe.has(error.message)?error.message:'This change could not be confirmed. Reload the domain list and check any pending registrar operation before retrying.'};
+    }
 }

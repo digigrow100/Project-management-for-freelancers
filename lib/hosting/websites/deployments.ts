@@ -3,10 +3,11 @@ import { agentCall } from '@/lib/hosting/agent-client';
 import { getSupabase } from '@/lib/supabaseClient';
 import type { HostingApp } from '@/lib/hosting/apps/types';
 import { loadEnvValues, listDomains } from '@/lib/hosting/apps/store';
+import { activateWebsiteDomains } from '@/lib/hosting/apps/domain-workflow';
 import { websiteAccess } from './access';
 export async function deploymentSpec(app: HostingApp, deploymentId: string) {
     const [env, domains] = await Promise.all([loadEnvValues(app.id), listDomains(app.id)]);
-    return { name: app.name, appId: app.id, clientId: app.client_id, deploymentId, framework: app.framework, port: app.port, cpu: 1, memoryMb: 512, storageLimitBytes: Number(app.storage_limit_bytes), env, domains: domains.filter(d => ['active', 'issuing_ssl'].includes(d.status)).map(d => ({ host: d.hostname, token: d.verification_token })), redirect: 'none' };
+    return { name: app.name, appId: app.id, clientId: app.client_id, deploymentId, framework: app.framework, port: app.port, cpu: 1, memoryMb: 512, storageLimitBytes: Number(app.storage_limit_bytes), env, domains: domains.filter(d => d.is_preview || d.dns_verified_at || ['active', 'issuing_ssl'].includes(d.status)).map(d => ({ host: d.hostname, token: d.verification_token })), redirect: 'none' };
 }
 export async function syncWebsite(base: string, id: string) {
     const { actor, app } = await websiteAccess(base, id, true);
@@ -37,5 +38,6 @@ export async function syncWebsite(base: string, id: string) {
     const r = await getSupabase().rpc('freelance_hq_website_record_deploy', { p_actor: actor.actor, p_app: app.id, p_deployment: app.active_deployment_id, p_status: status, p_bytes: status === 'running' ? remote.usedBytes : null, p_reported_at: remote.deployedAt ?? new Date().toISOString(), p_admin: actor.admin });
     if (r.error)
         throw new Error('Deployment receipt could not be recorded. Refresh and try again.');
+    if(status==='running')await activateWebsiteDomains(app.id);
     return { pending: false };
 }

@@ -62,3 +62,6 @@ website-browser-output/
 hosting-agent/runtime-enrollment/
 hosting-agent/network-service.env
 hosting-agent/**/__pycache__/
+
+# Generated focused-test declaration fixtures
+/test-runtime/types/

@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
-import {Home,Globe,GitBranch,CreditCard,CircleHelp,UserRound,Server,Archive,Mail,Database,Send,FolderGit2} from 'lucide-react';
+import {Home,Globe,CreditCard,CircleHelp,UserRound,Server,Archive,Mail,Database,Send,FolderGit2} from 'lucide-react';
 import type {ClientReleaseFeature} from '@/lib/hosting/clientRelease';
-const primary=[{href:'/client',label:'Overview',icon:Home},{href:'/client/apps',label:'Websites',icon:Globe},{href:'/client/deployments',label:'Deployments',icon:GitBranch},{href:'/client/website-domains',label:'Domains',icon:Globe},{href:'/client/website-billing',label:'Website billing',icon:CreditCard}];
+const primary=[{href:'/client',label:'Overview',icon:Home},{href:'/client/apps',label:'Websites',icon:Globe},{href:'/client/deployments',label:'Deployments',icon:FolderGit2},{href:'/client/website-domains',label:'Domains',icon:Globe},{href:'/client/website-billing',label:'Website billing',icon:CreditCard}];
 const existing=[{href:'/client/services',label:'Hosting services',icon:Server},{href:'/client/plans',label:'Plans & limits',icon:Server},{href:'/client/domains',label:'Service domains',icon:Globe},{href:'/client/invoices',label:'Invoices & payments',icon:CreditCard},{href:'/client/email',label:'Email',icon:Mail},{href:'/client/databases',label:'Databases',icon:Database},{href:'/client/forms',label:'Form API',icon:Send},{href:'/client/backups',label:'Backups',icon:Archive},{href:'/client/sources',label:'Website files',icon:FolderGit2}];
 export function ClientNavigation({features=[]}:{features?:ClientReleaseFeature[]}){
  const path=usePathname(),items=existing.filter(i=>{const f=i.href.slice(8);return !['email','databases','forms','backups','sources'].includes(f)||features.includes(f as ClientReleaseFeature);});

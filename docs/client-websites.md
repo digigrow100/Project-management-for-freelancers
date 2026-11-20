@@ -18,7 +18,7 @@ Reviewed unmerged `cursor/hosting-dashboard-agent-eb9c` at `60382ee3015cb3caa8a1
 
 Reused the useful app/deployment/domain presentation, baseline apps migration, AES-GCM app-secret storage, canonical signed-request format and parts of the agent authentication/validation. The client dashboard, checkout, entitlement/billing transactions, upload protocol and runtime execution/routing were replaced or extended for this request.
 
-The broad PR #268 patch was **not merged or cherry-picked**. In particular, none of its stale login/reset, MFA, rate-limit, service-worker or auth-test changes were imported. This branch retains current main's hardening. It also excludes arbitrary Docker images/Dockerfiles, arbitrary Git hosts, app reassignment/deletion, CrowdSec unban controls and automatic provider-DNS writes. The old A-record-only domain check has been replaced with mandatory per-website TXT proof. Client deployment queries now apply ownership before pagination; an admin preview cannot poll-write receipts.
+The broad PR #268 patch was **not merged or cherry-picked**. In particular, none of its stale login/reset, MFA, rate-limit, service-worker or auth-test changes were imported. This branch retains current main's hardening. It also excludes arbitrary Docker images/Dockerfiles, arbitrary Git hosts, app reassignment/deletion, CrowdSec unban controls and unsafe whole-zone DNS changes. The follow-up adds scoped REST v2 DNS additions as described below. The old A-record-only domain check has been replaced with mandatory per-website TXT proof. Client deployment queries now apply ownership before pagination; an admin preview cannot poll-write receipts.
 
 This PR supersedes #268 for the new website experience. Do not merge the old PR alongside it. PR #274 (retired human extensions) remains separate; this branch is based on main and does not merge that PR either.
 
@@ -34,16 +34,17 @@ This PR supersedes #268 for the new website experience. Do not merge the old PR 
 
 ## Database migrations — not applied
 
-Apply only these two reviewed files, in this order, after PR approval and before enabling checkout:
+Apply only these three reviewed files, in this order, after PR approval and before enabling checkout:
 
 1. `supabase/migrations/20261118180000_hosting_apps.sql` — reused from the unmerged PR #268; app, deployment, domain, encrypted-env and agent-config tables.
 2. `supabase/migrations/20261119142249_website_bank_payments_and_storage.sql` — bank settings/requests, one-site credits, usage intervals, storage bills, private proof bucket and service-role-only transactional functions.
+3. `supabase/migrations/20261120202602_website_domains_and_preview.sql` — atomic apex/www groups, preview allocation and scoped registrar operation functions.
 
 The live read-only catalog confirmed the new app tables were absent. Existing hosting clients, services, contracts, invoices, payments, secrets and customer data are retained. The current production client-access table had no enrollments; create/invite real clients later through the existing owner client tools rather than creating staff accounts.
 
 All new public tables have RLS enabled. Browser roles have no table or function privileges. Server-side helpers verify the current Supabase session, hosting identity/client ownership, active status, admin preview restrictions and existing admin IP/MFA/session guards. Transactional RPCs independently recheck the supplied verified actor and client/admin role. No SECURITY DEFINER workaround is added. Proofs use a new private bucket with no browser upload policy. Secret keys and encrypted values are excluded from client payloads.
 
-Use the project's normal migration tooling to register both versions. If SQL Editor is used, paste only these reviewed files and reconcile their history versions through the existing migration process. Do not run a blanket db push that could apply unrelated pending migrations. Do not apply PR #274's archive migration as part of this feature.
+Use the project's normal migration tooling to register these three versions. If SQL Editor is used, paste only these reviewed files and reconcile their history versions through the existing migration process. Do not run a blanket db push that could apply unrelated pending migrations. Do not apply PR #274's archive migration as part of this feature.
 
 Rollback: disabling checkout stops new claims. Preserve all bank notices, credits, bills and app records. Revert the web code only after draining/reviewing new deployments. Do not drop payment/usage tables or erase existing customer records to roll back a UI release.
 
@@ -158,13 +159,13 @@ docker run --rm --network none -v "$PWD:/src:ro" -w /src \
 
 ### 5. Release sequence and acceptance
 
-After human review/approval of the PR: apply the two DB migrations, configure the portal's private env, deploy the app code, then enable real bank settings at `/hosting/website-payments`. Until then, checkout is disabled and no price/account is invented. Enabling checkout also requires a successful signed agent readiness check, matching quota caps and the app-secret key. This check does not deploy a website or trigger a payment. Do not enable a paid scheduler or test renewal paths.
+After human review/approval of the PR: apply the three DB migrations, configure the portal's private env, deploy the app code, then enable real bank settings at `/hosting/website-payments`. Until then, checkout is disabled and no price/account is invented. Enabling checkout also requires a successful signed agent readiness check, matching quota caps and the app-secret key. This check does not deploy a website or trigger a payment. Do not enable a paid scheduler or test renewal paths.
 
 Use an isolated test client/DB first. Check: login → Add New Website → optional screenshot/reference → pending admin notification → Reject leaves zero credits → a separate approved request gives exactly one credit → create one site → Upload/GitHub → signed receipt → domains TXT/DNS/HTTPS → one usage record. A failed new release must leave the previous one available. Check over-1-GB rejection, expanded quota, two-client isolation, disabled accounts, and reboot enrollment before real customers use it.
 
 Existing hosting clients should be invited/enabled through `/hosting/clients`. Do not repurpose retired human team accounts for hosting customers.
 
-## Verification and limits
+## Initial PR verification and limits
 
 Local checks are recorded in the PR. Migrations, credit/payment/usage transactions, duplicate requests, quota/consent and two-client denials are exercised in disposable PGlite. Agent tests use a real local HTTP server with a fake Docker engine; Docker request/extraction policies are checked separately. Existing auth/MFA/client-scope tests remain required.
 
@@ -175,7 +176,7 @@ No real Docker/Traefik/npm-build acceptance was run here, because Docker is not 
 Other explicit boundaries: no GitLab/OAuth/automatic Git push deployment, arbitrary Dockerfile/image, monorepo workspace support, persistent writable app volume, automated storage collection/refunds or automatic cleanup of historical customer data. Private build logs use sanitized status codes; runtime logs remain scoped to the website. Native app dependencies and unusual build/output layouts may need a reviewed preset adjustment. Failed/uncertain deployments block further changes until status is resolved; interrupted builds are never replayed automatically after a worker crash. In an uncertain case an operator must inspect retained containers/metadata; do not delete customer records or force a new deployment to hide the uncertainty.
 
 
-### Recorded local results
+### Initial PR local results
 
 - App typecheck and optimized production build: passed using dummy local endpoints.
 - Lint: passed with four existing hook warnings in unchanged legacy components.
@@ -188,3 +189,104 @@ Other explicit boundaries: no GitLab/OAuth/automatic Git push deployment, arbitr
 - Actual VPS Docker/Traefik deployment and real-client bank flow: not run. No live migrations or env updates were made.
 
 A GitHub Actions billing lock is separate from these local results. Check the PR's current run status; never label CI or production live based on a local pass.
+
+## PR #275 follow-up: client release, domains and previews
+
+This follow-up stays on **feat/client-website-payments-20261119**, with no main merge or production rollout. PR #268/#274 are untouched. The VPS preflight supplied by Hamza passed: `traefik`, `/opt/stacks/traefik`, networks `proxy`/`socket-proxy`, `websecure`, resolver `le`, 7.8 GB RAM and 137 GB free. Build concurrency remains one. Monitor existing workloads before accepting dynamic builds.
+
+### Final migration order
+
+The earlier two-file list is superseded by this **three-file** release list:
+
+1. `20261118180000_hosting_apps.sql`
+2. `20261119142249_website_bank_payments_and_storage.sql`
+3. `20261120202602_website_domains_and_preview.sql`
+
+The existing registrar migrations `20261031083515_hosting_dynadot_registrar.sql` and `20261031123124_hosting_registrar_inventory.sql` are prerequisites for path B and were found in the live schema. The read-only follow-up catalog again found no new app/domain tables. These three feature migrations remain prepared, **not applied**. Register only these reviewed versions through the existing migration process; do not blanket-push unrelated migrations. The new migration adds columns/functions, allocates preview rows and retains all existing customer/project/payment data. RLS and browser privilege denials remain intact. No old migration is modified.
+
+### Custom domains: manual DNS and Dynadot
+
+Add `example.com` (entering `www.example.com` also normalizes to this pair). Apex + www are saved atomically with one group/token, even before the website runs. Each pair counts as two of the ten custom-hostname slots. Copy buttons show full names and values; a DNS panel may need relative names instead:
+
+| Type | Name in example.com zone | Value |
+| --- | --- | --- |
+| A | `@` | `62.171.130.156` |
+| CNAME | `www` | `example.com` |
+| TXT | `_hms-verify` | The website's displayed verification token |
+
+Do not add AAAA. If an old AAAA sends traffic elsewhere, remove that conflicting record at the DNS provider. For Cloudflare, use **DNS only** during initial verification; once HTTPS is active, proxying may be enabled with Full (strict) TLS. The app also recognises current Cloudflare address ranges, but checks the origin certificate directly at the VPS. Do not replace unrelated MX/TXT records.
+
+Verify checks both hostname routes against the group's apex TXT proof. Status proceeds from `pending_dns` to `verifying`, then `issuing_ssl` and `active`. A DNS-verified website without a successful deployment stays `verifying` with an explicit saved message. Its next deployment includes the verified routes. A signed successful receipt, Refresh, or Verify activates/checks routing and the origin certificate. If SSL is still issuing, choose Verify again shortly. Disconnect removes the pair from this app's routing; it does not delete provider DNS records.
+
+For domains in the current production Dynadot inventory with `details.glue.glue_type=dns`, the server reuses `lib/hosting/registrar/api.ts` REST v2. It reads current provider state and appends only the missing A, www CNAME and proof TXT records, one record per request. Identical records are skipped. Conflicting A/AAAA/CNAME records require manual/admin review; the app never overwrites an existing zone or changes nameservers to force setup. Existing MX/TXT and unknown record metadata must survive exact readback. Each mutation is logged in `freelance_hq_hosting_registrar_operations`, linked to its website and client actor, using the existing global operation lock. A timeout, process crash or mismatched readback blocks further registrar writes until the admin uses **Check operation status** in registrar history. No automatic mutation retry occurs.
+
+**Client authority:** finding a name in Hamza's shared account is not enough to grant a client control of it. The apex must also be assigned to that client in the existing owner **Service domains** records (`freelance_hq_hosting_domains.client_id`). An admin attaching a domain has their existing IP/MFA/session guard. An unassigned client gets clear manual/setup instructions. This prevents one client from claiming another client's account-owned domain through automatic TXT creation. A domain in the account with external nameservers falls back to manual DNS with a clear message.
+
+`housemysite.com` is excluded from these provider writes. Its DNS is at **MySecureCloudHost**. The legacy `lib/dynadot.ts` DNS helper now always sets `add_dns_to_current_setting=1`, preserves every supported input record, rejects over-limit input instead of truncating, and rejects record types whose missing priority metadata could cause loss. Use the reviewed REST v2 editor for removal/editing.
+
+### Operator DNS for preview routing
+
+At **MySecureCloudHost**, add these records without changing `web`, existing mail records, or unrelated zones:
+
+| Type | Name in housemysite.com zone | Value |
+| --- | --- | --- |
+| A | `deploy` | `62.171.130.156` |
+| A | `*.deploy` | `62.171.130.156` |
+
+The root `deploy.housemysite.com` is the agent endpoint. Each site gets `w-<32-character-site-id>.deploy.housemysite.com`; the allocated slug is shown on its card and Domains tab. This wildcard is a **DNS record**, not a wildcard certificate request. Traefik creates an individual hostname router/certificate with the existing `websecure` entrypoint and `le` resolver. The agent always preserves its own preview URL, rejects another app's preview, and blocks other HouseMySite infrastructure hostnames. No Dynadot request is used for these DNS records. No new public port or change to existing Traefik security configuration is needed.
+
+### Final environment requirements
+
+No new preview/DNS secret is introduced. Portal: `HOSTING_AGENT_URL=https://deploy.housemysite.com`, `HOSTING_AGENT_TOKEN`, `HOSTING_AGENT_SIGNING_KEY`, `HOSTING_APP_SECRETS_KEY`; optional `HOSTING_WEBSITE_MAX_EXTRA_GB=1`. Set `HOSTING_AGENT_URL` **before building** the release: only `/client/apps/*` and `/hosting/apps/*` receive its exact validated HTTPS origin in `connect-src`, allowing direct streaming uploads. Other pages retain the strict policy.
+
+Agent: `AGENT_HOST=deploy.housemysite.com`, matching `HOSTING_AGENT_TOKEN`, `HOSTING_AGENT_SIGNING_PUBLIC_KEY`, `PORTAL_ORIGINS=https://web.housemysite.com`, `PORTAL_RECEIPT_URL=https://web.housemysite.com/api/hosting-websites/receipts`, `TRAEFIK_ENTRYPOINT=websecure`, `TRAEFIK_CERT_RESOLVER=le`, `MAX_SITE_BYTES=2000000000`, `STAGING_BUDGET_BYTES=6000000000`, `BUILDER_IMAGE=hms-website-builder:1`; preserve any existing `TRAEFIK_MIDDLEWARES` value.
+
+Dynadot: keep the existing server-only `DYNADOT_SECRET` and tested encrypted REST v2 production connection under Hosting Settings → Domains. No browser/API credential field is added. Optional fixed-IP transport still uses the existing `DYNADOT_RELAY_ENABLED=approved`, `HOSTING_SERVICES_ORIGIN`, `HOSTING_SERVICES_PORTAL_KEY`. **Do not enable that flag merely because this code exists**: the old VPS was reinstalled, so any old relay must be separately installed/verified before using it. With the flag absent, existing direct v2 transport is used; provider IP restrictions still need to permit that transport. No renewal/scheduler request is part of setup or acceptance.
+
+### Exact VPS sequence
+
+For a **fresh installation**, run the existing numbered sections 1 → 2 → 3 → 4 above, after adding both DNS records. They include clone, private credential generation, isolated network enrollment, the additive network-only Traefik override, builder image, and agent compose. Keep ports **8787 and 2375 closed**. Apply the three migrations and portal env only at the later approved release; this PR does not merge itself.
+
+If the earlier agent/source directories already exist, use this update sequence instead. It deliberately refuses a dirty source checkout and retains `.env`, `vercel-private.env`, data, networks and existing security settings:
+
+```sh
+sudo -i
+cd /opt/hms-source/client-websites
+test -z "$(git status --porcelain)"
+git fetch origin feat/client-website-payments-20261119
+git switch feat/client-website-payments-20261119
+git merge --ff-only origin/feat/client-website-payments-20261119
+# Review this PR's commit SHA before continuing.
+cd /opt/stacks/hosting-agent
+test -f .env
+test -f vercel-private.env
+cp -a /opt/hms-source/client-websites/hosting-agent/. /opt/stacks/hosting-agent/
+docker compose config --quiet
+docker compose up -d --build
+curl -fsS https://deploy.housemysite.com/health
+```
+
+If a `test` fails, stop at that command; do not bypass it or regenerate existing keys. Run blocks interactively in order, or start with `set -e` in a dedicated shell. The update path assumes the earlier network enrollment/builder setup passed; a health response alone does not prove client hosting. All real VPS commands remain Hamza/Grok Bot operator work.
+
+### Test organisation
+
+The full `node --test tests/*.cjs` command now covers the self-contained app/SQL/protocol/UI suites and is part of Typecheck CI. Stale dependency mocks were updated to the current guarded interfaces and current SEO task UI; production auth/SEO/extension behaviour is unchanged.
+
+Three existing non-unit scripts were moved to `local-checks/` with their assertions retained: `prepare-browser-runtime.cjs` (browser bootstrap, not a test), `operator-auth-browser.cjs` (built Next + Chromium + companion automation repository), and `backup-python-integration.cjs` (the existing cross-language signed gateway test, extracted from `tests/server.test.cjs`). Their explicit prerequisites are not provided by `npm ci` in this repo. Run separately when those environments are available:
+
+```sh
+node local-checks/prepare-browser-runtime.cjs
+HMS_AUTOMATION_SOURCE=/absolute/path/to/automation-repo node local-checks/operator-auth-browser.cjs
+HMS_RECOVERY_SOURCE=/absolute/path/to/automation-repo node --test local-checks/backup-python-integration.cjs
+```
+
+The operator browser additionally requires a built isolated app, Playwright and the existing pinned `@sparticuz/chromium`/`tar-fs` bootstrap dependencies. Do not supply production credentials. These separate integration checks are not claimed as locally passed. The new client browser fixture remains in Typecheck CI. The local system Chromium launch still fails with `socket() failed: Operation not permitted`; its bundle and React behaviour checks can run here. Actual VPS Docker/Traefik/custom-domain/provider acceptance remains an operator check, with no real bank transfer, renewal, live DNS mutation or customer-data deletion performed during this PR follow-up.
+
+### Follow-up local results (21 November 2026)
+
+- Full `node --test tests/*.cjs`: **119 passed, 0 failed, 0 skipped**.
+- `npm run typecheck`, `npm run lint`, isolated optimized production build: passed. Lint retains the four existing legacy hook warnings.
+- The additive domain migration suite passed on disposable PostgreSQL, including both existing registrar and all three website migrations, client isolation, record/value scope, operation locking, admin reconciliation and browser privilege denial. Existing payment/credit/usage suites also passed in the full test run.
+- Agent TypeScript check and **9** fake-Docker HTTP/routing/security tests passed; **3** Python archive/quota tests passed.
+- Client browser bundle passed. Actual local Chromium remains blocked by the process-socket permission; no screenshot/visual pass is claimed. The separate operator/companion-repository integration scripts were not run.
+- No live SQL/DNS/provider mutation, VPS install, real transfer, renewal or paid scheduler was run. Check current GitHub Actions/Vercel status separately from these local results.

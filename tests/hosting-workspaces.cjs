@@ -20,6 +20,8 @@ function load(filename) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
   }).outputText;
   const localRequire = (name) => {
+    if(name==='server-only'||name.endsWith('.css'))return {};
+    if(name==='@/lib/hosting/websites/store')return {pendingWebsitePayments:async()=>0};
     if (name === 'next/navigation') return {
       usePathname: () => pathname,
       unstable_rethrow: () => {},

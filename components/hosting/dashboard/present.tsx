@@ -1,4 +1,7 @@
 import Link from "next/link";
+import {CopyValue} from "./CopyValue";
+import {StorageMeter} from "./StorageMeter";
+import {previewHost} from "@/lib/hosting/apps/validate";
 import { gbLabel } from "@/lib/hosting/websites/types";
 import type { ReactNode } from "react";
 import { dnsPlan } from "@/lib/hosting/apps/dns";
@@ -89,6 +92,8 @@ export function AppCard({ base, app, domain }: {
     app: HostingApp;
     domain?: string;
 }) {
+    const host=domain||(/^w-[a-f0-9]{32}$/.test(app.name)?previewHost(app.name):app.name);
+    if(base.startsWith('/client'))return <Link className="website-project" href={`${base}/${app.id}`}><div><span className="website-project-icon" aria-hidden="true">{app.display_name.slice(0,1).toUpperCase()}</span><Pill value={app.status}/></div><h3>{app.display_name}</h3><p className="website-card-domain">{host}</p><p>{app.source_kind==='git'?app.source_url.replace('https://github.com/',''):'Direct upload'}</p><StorageMeter used={app.storage_used_bytes} limit={Number(app.storage_limit_bytes)}/><footer><span>{app.framework}</span><span>{app.storage_reported_at?`Last deploy ${new Date(app.storage_reported_at).toISOString().slice(0,16).replace('T',' ')} UTC`:'No successful deploy yet'}</span></footer></Link>;
     return <Link className="hms-app-card" href={`${base}/${app.id}`}><span className="hms-app-mark" aria-hidden="true">{app.display_name.slice(0, 1).toUpperCase()}</span><span><strong>{app.display_name}</strong><small>{domain || app.name} · {app.framework}</small></span><Pill value={app.status}/></Link>;
 }
 export function AppsList({ base, apps, domains, action }: {
@@ -97,7 +102,7 @@ export function AppsList({ base, apps, domains, action }: {
     domains: Record<string, string>;
     action?: ReactNode;
 }) {
-    return <div className="hms-dash"><header className="hms-dash-head"><div><p className="hms-kicker">Apps</p><h1>Your websites</h1></div>{action ?? <Link className="hms-dash-primary" href={`${base}/new`}>Add New Website</Link>}</header>{apps.length ? <section className="hms-card-grid">{apps.map((app) => <AppCard key={app.id} base={base} app={app} domain={domains[app.id]}/>)}</section> : <EmptyState title="Nothing deployed" body="Each app is one container on the VPS, with its own domain and environment." href={`${base}/new`} action="Add New Website"/>}</div>;
+    return <div className="hms-dash"><header className="hms-dash-head"><div><p className="hms-kicker">Apps</p><h1>Your websites</h1></div>{action ?? <Link className="hms-dash-primary" href={`${base}/new`}>Add New Website</Link>}</header>{apps.length ? <section className={base.startsWith('/client')?"website-project-grid":"hms-card-grid"}>{apps.map((app) => <AppCard key={app.id} base={base} app={app} domain={domains[app.id]}/>)}</section> : <EmptyState title="Nothing deployed" body="Each app is one container on the VPS, with its own domain and environment." href={`${base}/new`} action="Add New Website"/>}</div>;
 }
 const TABS = ["overview", "deployments", "logs", "domains", "env", "settings"] as const;
 export function AppDetail({ base, app, tab, domains, deployments, envNames, logs, notice, children, }: {
@@ -117,12 +122,12 @@ export function AppDetail({ base, app, tab, domains, deployments, envNames, logs
     const primary = domains.find((domain) => domain.is_primary) ?? domains[0];
     const current = TABS.includes(tab as typeof TABS[number]) ? tab : "overview";
     return <div className="hms-dash">
-    <header className="hms-dash-head"><div><p className="hms-kicker">{app.framework}</p><h1>{app.display_name}</h1><p>{primary?.hostname ?? "No domain yet"} · {app.name}</p></div><Pill value={app.status}/></header>
+    <header className="hms-dash-head"><div><p className="hms-kicker">{app.framework}</p><h1>{app.display_name}</h1><p>{primary?.hostname ?? "Default URL pending"}</p></div><Pill value={app.status}/></header>
     {notice ? <p className="hms-banner" role="alert">{notice}</p> : null}
     {app.last_error ? <p className="hms-banner" role="status">{hostingMessage(app.last_error)}</p> : null}
     <nav className="hms-tabs" aria-label="App sections">{TABS.map((item) => <Link key={item} href={`${base}/${app.id}?tab=${item}`} aria-current={item === current ? "page" : undefined}>{item}</Link>)}</nav>
-    {current === "overview" ? <section className="hms-panel"><div className="hms-kv"><span>Status</span><Pill value={app.status}/></div><div className="hms-kv"><span>Deployment source</span><code>{app.source_url}</code></div><div className="hms-kv"><span>Content storage</span><span>{gbLabel(app.storage_used_bytes)} / {gbLabel(Number(app.storage_limit_bytes))}</span></div><p className="website-note">1 GB included. Extra storage is charged only for actual content size and time, up to the cap you selected.</p></section> : null}
-    {current === "deployments" ? <section className="hms-panel">{deployments.length ? deployments.map((item) => <article key={item.id} className="hms-deploy"><div><Pill value={item.status}/><time>{new Date(item.created_at).toLocaleString()}</time></div>{item.error ? <p>{hostingMessage(item.error)}</p> : null}{item.log_excerpt ? <pre>{item.log_excerpt}</pre> : null}</article>) : <p className="hms-muted">No builds yet.</p>}{logs?.build ? <pre>{logs.build}</pre> : null}</section> : null}
+    {current === "overview" ? <section className="hms-panel"><div className="hms-kv"><span>Status</span><Pill value={app.status}/></div><div className="hms-kv"><span>Deployment source</span><code>{app.source_url}</code></div><StorageMeter used={app.storage_used_bytes} limit={Number(app.storage_limit_bytes)}/><p className="website-note">1 GB included. Extra storage is charged only for actual content size and time, up to the cap you selected.</p></section> : null}
+    {current === "deployments" ? <section className="hms-panel">{deployments.length ? deployments.map((item) => <article key={item.id} className="hms-deploy"><div><Pill value={item.status}/><Link href={`${base}/${app.id}?tab=logs`}>View logs →</Link><time>{new Date(item.created_at).toLocaleString()}</time></div>{item.error ? <p>{hostingMessage(item.error)}</p> : null}{item.log_excerpt ? <pre>{item.log_excerpt}</pre> : null}</article>) : <p className="hms-muted">No builds yet.</p>}{logs?.build ? <pre>{logs.build}</pre> : null}</section> : null}
     {current === "logs" ? <section className="hms-panel"><h2>Build</h2><pre>{logs?.build || "No build log yet."}</pre><h2>Runtime</h2><pre>{logs?.runtime || "No runtime log yet."}</pre></section> : null}
     {current === "domains" ? <DomainList domains={domains}/> : null}
     {current === "env" ? <section className="hms-panel"><p className="hms-muted">Values are encrypted and are not shown again.</p>{envNames.length ? <ul className="hms-feed">{envNames.map((item) => <li key={item.id}><code>{item.name}</code></li>)}</ul> : <p className="hms-muted">No variables yet.</p>}</section> : null}
@@ -135,8 +140,8 @@ export function DomainList({ domains }: {
     if (!domains.length)
         return <section className="hms-panel"><h2>Domains</h2><p className="hms-muted">Add a domain to get the exact DNS record and start the certificate.</p></section>;
     return <section className="hms-panel"><h2>Domains</h2><ul className="hms-domain-list">{domains.map((domain) => {
-            const plan = dnsPlan(domain.hostname, domain.verification_token);
-            return <li key={domain.id}><div><strong>{domain.hostname}</strong>{domain.is_primary ? <em>Primary</em> : null}<Pill value={domain.status}/></div>{domain.detail ? <p>{domain.detail}</p> : null}{plan ? <div className="hms-dns">{plan.records.map((record) => <p key={record.type + record.name}><span>{record.type}</span><code>{record.name}</code><code>{record.value}</code><small>{record.note}</small></p>)}</div> : null}</li>;
+            const plan = domain.is_preview || (domain.group_host && domain.hostname !== domain.group_host) ? null : dnsPlan(domain.hostname, domain.verification_token);
+            return <li key={domain.id}><div><strong>{domain.hostname}</strong>{domain.is_primary ? <em>Primary</em> : null}<Pill value={domain.status}/></div>{domain.is_preview?<p className="website-note">Default preview URL · available after deployment. No client DNS records needed.</p>:null}{domain.dns_setup_detail?<p className="website-note">{domain.dns_setup_detail}</p>:null}{domain.detail ? <p>{domain.detail}</p> : null}{domain.status==='active'?<a href={`https://${domain.hostname}`} target="_blank" rel="noreferrer">Visit website ↗</a>:null}{plan ? <div className="hms-dns">{plan.records.map((record) => <p key={record.type + record.name}><span>{record.type}</span><CopyValue value={record.name} label={`${record.type} name`}/><CopyValue value={record.value} label={`${record.type} value`}/><small>{record.note}</small></p>)}</div> : null}</li>;
         })}</ul></section>;
 }
 export function ComingSoon({ title, body, alternate }: {

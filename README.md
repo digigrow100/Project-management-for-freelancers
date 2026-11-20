@@ -615,3 +615,11 @@ branch. They are not live just because the source exists. See the
 [release and VPS runbook](docs/client-websites.md) for migration order, private
 env setup, Grok Bot commands, security boundaries and remaining acceptance checks.
 No real price or bank account is invented. Existing hosting records remain separate.
+
+PR #275 follow-up adds client domain pairs, copyable DNS, pre-deploy verification,
+per-site preview URLs and guarded REST v2 Dynadot additions. Final migration order
+is the two website migrations above followed by
+`20261120202602_website_domains_and_preview.sql`. See the runbook's follow-up
+section for MySecureCloudHost wildcard DNS, unchanged private env requirements,
+VPS installation/update commands and separate integration-test prerequisites.
+These changes remain PR-only until the owner releases them.

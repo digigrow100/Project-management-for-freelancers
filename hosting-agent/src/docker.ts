@@ -155,7 +155,7 @@ export class DockerClient {
         if (framework === 'static' && !readable(join(artifact, 'index.html')))
             throw Error('index_html_required');
         const staticSite = ['static', 'react', 'vue'].includes(framework);
-        const dockerfile = staticSite ? 'FROM nginxinc/nginx-unprivileged:stable-alpine\nCOPY artifact/ /usr/share/nginx/html/\nUSER 1000:1000\nEXPOSE 8080\n' : framework === 'nuxt' ? 'FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY --chown=1000:1000 artifact/ /app/\nENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NITRO_HOST=0.0.0.0\nUSER 1000:1000\nCMD ["node","server/index.mjs"]\n' : 'FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY --chown=1000:1000 artifact/app/ /app/\nENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0\nUSER 1000:1000\nCMD ["npm","start"]\n';
+        const dockerfile = staticSite ? 'FROM nginxinc/nginx-unprivileged:stable-alpine\nCOPY --chown=1000:1000 artifact/ /usr/share/nginx/html/\nUSER 1000:1000\nEXPOSE 8080\n' : framework === 'nuxt' ? 'FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY --chown=1000:1000 artifact/ /app/\nENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NITRO_HOST=0.0.0.0\nUSER 1000:1000\nCMD ["node","server/index.mjs"]\n' : 'FROM node:22-bookworm-slim\nWORKDIR /app\nCOPY --chown=1000:1000 artifact/app/ /app/\nENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0\nUSER 1000:1000\nCMD ["npm","start"]\n';
         writeFileSync(join(context, 'Dockerfile'), dockerfile, { mode: 0o600 });
         const tar = spawn('tar', ['-C', context, '-cf', '-', '.'], { stdio: ['ignore', 'pipe', 'pipe'] });
         const result = await this.response('POST', `/build?t=${encodeURIComponent(tag)}&dockerfile=Dockerfile&rm=1&networkmode=none`, tar.stdout, { 'content-type': 'application/x-tar' });

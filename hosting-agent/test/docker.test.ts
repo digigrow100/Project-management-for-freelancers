@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { DockerClient } from '../src/docker.ts';
 import { uploadManifest, MAX_UPLOAD } from '../shared/uploadPolicy.ts';
+import {readFileSync} from 'node:fs';
 import { routeLabels } from '../src/files.ts';
 test('runtime requests enforce read-only roots, health-gated routing and fixed CPU/memory/cache limits', async () => {
     let payload: Record<string, any> | null = null;
@@ -41,4 +42,13 @@ test('exact decimal upload limit is enforced across all files without buffering 
     assert.equal(uploadManifest([{ path: 'index.html', size: MAX_UPLOAD }]).total, MAX_UPLOAD);
     assert.throws(() => uploadManifest([{ path: 'index.html', size: MAX_UPLOAD }, { path: 'asset.css', size: 1 }]), /upload_limit/);
     assert.throws(() => uploadManifest([{ path: '.env', size: 1 }]), /manifest/);
+});
+
+test('preview routing uses websecure/le and static artifacts belong to runtime UID 1000',()=>{
+ const name='hms-w-11111111111141118111111111111111-12345678',host='w-11111111111141118111111111111111.deploy.housemysite.com';
+ const labels=routeLabels(name,8080,[{host}]);
+ assert.equal(labels[`traefik.http.routers.${name}.entrypoints`],'websecure');
+ assert.equal(labels[`traefik.http.routers.${name}.tls.certresolver`],'le');
+ assert.equal(labels[`traefik.http.routers.${name}.rule`],`Host(\`${host}\`)`);
+ assert.match(readFileSync(new URL('../src/docker.ts',import.meta.url),'utf8'),/COPY --chown=1000:1000 artifact\/ \/usr\/share\/nginx\/html\//);
 });

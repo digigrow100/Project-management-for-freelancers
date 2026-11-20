@@ -19,3 +19,5 @@ export default async function ClientAppPage({ params, searchParams }: {
         notice: query.error ? hostingMessage(query.error) : undefined,
     });
 }
+
+export const maxDuration = 60;

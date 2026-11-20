@@ -12,10 +12,15 @@ export type Framework = (typeof FRAMEWORKS)[number];
 export function appNameOk(name: string) {
     return APP_NAME.test(name) && !RESERVED.has(name);
 }
+export function previewHost(name: string) {
+    if (!/^w-[a-f0-9]{32}$/.test(name)) throw Error('invalid_website');
+    return `${name}.deploy.housemysite.com`;
+}
+export function isPreviewHost(host: string) { return /^w-[a-f0-9]{32}\.deploy\.housemysite\.com$/.test(host); }
 export function domainOk(host: string) {
     if (!DOMAIN.test(host))
         return false;
-    return host !== "housemysite.com" && !host.endsWith(".housemysite.com") && !host.endsWith(".local") && !host.endsWith(".localhost") && !host.endsWith(".internal") && !host.endsWith(".invalid");
+    return isPreviewHost(host) || host !== "housemysite.com" && !host.endsWith(".housemysite.com") && !host.endsWith(".local") && !host.endsWith(".localhost") && !host.endsWith(".internal") && !host.endsWith(".invalid");
 }
 export function envNameOk(name: string) {
     return ENV_NAME.test(name) && !BLOCKED_ENV.test(name);

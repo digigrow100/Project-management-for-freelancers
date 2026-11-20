@@ -20,15 +20,16 @@ async function run() {
   let releaseUpload, uploadStarted;
   let uploads = 0;
   const uploadReady = new Promise(resolve => uploadStarted = resolve);
-  const context = {crypto,Headers,Date,console,navigator:{},chrome:{
+  const context = {crypto,Headers,Response,AbortSignal,Date,console,setTimeout,clearTimeout,navigator:{},chrome:{
     storage:{local:{get: async keys => Object.fromEntries(keys.map(k=>[k,structuredClone(storage[k])])),set:async data=>Object.assign(storage,structuredClone(data)),setAccessLevel:async()=>{}}},
     idle:{setDetectionInterval(){},queryState:async()=> 'active',onStateChanged:noop},
     windows:{getLastFocused:async()=>({id:1,focused:true}),onFocusChanged:noop},
     tabs:{query:async()=>[{url:'https://example.com',title:'Work'}],onActivated:noop,onUpdated:noop},
     alarms:{create(){},clear:async()=>{},onAlarm:noop},runtime:{onInstalled:noop,onStartup:noop,onMessage:noop}},
-    fetch:async url=> {if(url.endsWith('/health'))return {ok:false}; uploads++;uploadStarted();await new Promise(r=>releaseUpload=r);return {ok:true};}
+    fetch:async url=> {if(url.endsWith('/health'))return Response.json({ok:true}); uploads++;uploadStarted();await new Promise(r=>releaseUpload=r);return {ok:true};}
   };
   vm.createContext(context);
+  context.importScripts=(...names)=>names.forEach(name=>vm.runInContext(fs.readFileSync('chrome-extension/'+name,'utf8'),context));
   vm.runInContext(fs.readFileSync('chrome-extension/service-worker.js','utf8'),context);
   storage.currentInterval={activityType:'active',startedAt:new Date(Date.now()-10000).toISOString()};
   await vm.runInContext('Promise.all([track(() => closeCurrentInterval(Date.now(), "pause")),track(() => closeCurrentInterval(Date.now(), "pause"))])',context);
@@ -46,4 +47,4 @@ async function run() {
   assert.equal(storage.activityQueue.at(-1).durationSeconds,90,'A long unobserved gap must not become hours of work');
   console.log('Passed: pagination, partial failure, concurrent pause, concurrent upload, preservation of queued work.');
 }
-run().catch(e=>{console.error(e);process.exitCode=1;});
+require('node:test').test('work-time queue regression uses the current request gate',run);

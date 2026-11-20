@@ -52,7 +52,7 @@ export async function recentDeployments(clientId: string | null) {
     return (result.data ?? []) as HostingDeployment[];
 }
 export async function listDomains(appId: string) {
-    const result = await getSupabase().from(domains).select("id,app_id,hostname,verification_token,is_primary,status,detail,last_checked_at,created_at").eq("app_id", appId).order("created_at");
+    const result = await getSupabase().from(domains).select("id,app_id,hostname,verification_token,is_primary,status,detail,last_checked_at,created_at,group_host,is_preview,dns_verified_at,dns_setup_detail").eq("app_id", appId).order("created_at");
     if (result.error)
         throw new Error(storageCode(result.error));
     return (result.data ?? []) as HostingAppDomain[];

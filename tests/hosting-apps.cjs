@@ -48,10 +48,11 @@ test("every domain requires its own TXT proof before the VPS routes it", async (
   const plan = dns.dnsPlan("example.com", token);
   assert.equal(plan.records[0].type, "A");
   assert.equal(plan.records[0].value, "62.171.130.156");
-  assert.equal(plan.records[1].type, "TXT");
+  assert.equal(plan.records[1].type, "CNAME");
+  assert.equal(plan.records[2].type,"TXT");
   const www = dns.dnsPlan("www.example.com", token);
-  assert.equal(www.records[0].type, "CNAME");
-  assert.equal(www.records[0].value, "example.com");
+  assert.equal(www.records[1].type, "CNAME");
+  assert.equal(www.records[1].value, "example.com");
   assert.equal(dns.dnsPlan("localhost", token), null);
 });
 

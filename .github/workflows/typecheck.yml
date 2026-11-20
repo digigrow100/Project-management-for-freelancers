@@ -26,6 +26,7 @@ jobs:
       - run: node node_modules/typescript/bin/tsc -p hosting-agent/tsconfig.json
       - run: node --experimental-strip-types --test hosting-agent/test/*.test.ts
       - run: python3 -m unittest discover -s tests -p test_website_archives.py -v
+      - run: node --test tests/*.cjs
       - run: npm run typecheck
       - run: npm run lint
       - run: node tests/hosting-workspaces.cjs

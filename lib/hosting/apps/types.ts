@@ -36,6 +36,10 @@ export type HostingDeployment = {
     finished_at: string | null;
 };
 export type HostingAppDomain = {
+    dns_setup_detail?: string | null;
+    group_host?: string | null;
+    is_preview?: boolean;
+    dns_verified_at?: string | null;
     id: string;
     app_id: string;
     hostname: string;

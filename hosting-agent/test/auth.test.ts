@@ -43,6 +43,7 @@ test('agent accepts a signed GitHub deployment once and binds the immutable clie
         const state = await (await fetch(base + `/v1/apps/${name}`, { headers: signed('GET', `/v1/apps/${name}`) })).json();
         assert.equal(state.usedBytes, 7);
         assert.equal(state.clientId, clientId);
+        assert(state.domains.some((d:{host:string})=>d.host===`${name}.deploy.housemysite.com`));
         assert(!('env' in state));
     });
 });
@@ -85,4 +86,23 @@ test('nonce replay protection survives an agent process restart', () => {
     finally {
         rmSync(root, { recursive: true, force: true });
     }
+});
+
+test('the agent rejects another website preview and preserves its own preview when custom domains change', async()=>{
+ await fixture(async(base,root,calls)=>{
+  const foreign='w-'+ 'f'.repeat(32)+'.deploy.housemysite.com';
+  let body=JSON.stringify({...spec,domains:[{host:foreign,token:'a'.repeat(48)}],source:{kind:'git',url:'https://github.com/fixture/site',ref:'main'}});
+  assert.equal((await fetch(base+'/v1/apps',{method:'POST',headers:signed('POST','/v1/apps',body),body})).status,400);
+  assert.deepEqual(calls,[]);
+  body=JSON.stringify({...spec,source:{kind:'git',url:'https://github.com/fixture/site',ref:'main'}});
+  assert.equal((await fetch(base+'/v1/apps',{method:'POST',headers:signed('POST','/v1/apps',body),body})).status,202);
+  const path=`/v1/apps/${name}/domains`;
+  body=JSON.stringify({domains:[{host:'example.com',token:'a'.repeat(48)}]});
+  assert.equal((await fetch(base+path,{method:'POST',headers:signed('POST',path,body),body})).status,200);
+  const state=readState(join(root,'data'),name);
+  assert(state?.domains.some(d=>d.host===`${name}.deploy.housemysite.com`));
+  assert(state?.domains.some(d=>d.host==='example.com'));
+  body=JSON.stringify({domains:[{host:foreign,token:'a'.repeat(48)}]});
+  assert.equal((await fetch(base+path,{method:'POST',headers:signed('POST',path,body),body})).status,400);
+ });
 });

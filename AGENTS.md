@@ -182,7 +182,8 @@ into unpaid billing records. No automatic debit, refund, renewal or paid schedul
 Default optional extra cap is 1 GB; match portal/VPS capacity before raising it.
 
 New migrations NOT APPLIED: `20261118180000_hosting_apps.sql` (unmerged #268
-baseline), then `20261119142249_website_bank_payments_and_storage.sql`. RLS is
+baseline), `20261119142249_website_bank_payments_and_storage.sql`, then
+`20261120202602_website_domains_and_preview.sql`. RLS is
 on; browser roles have no table/RPC privileges. Service-only invoker functions
 recheck database actor/client/admin authority, credit ownership, retries and exact
 current-deployment receipts. No live data is deleted. Screenshot bucket stays
@@ -194,9 +195,28 @@ HOSTING_WEBSITE_MAX_EXTRA_GB=1. No env settings have been applied. The agent use
 separate private control/fetch/build/runtime boundaries, non-root read-only apps,
 quotas and health-gated replacement. GitHub is supported, with an encrypted
 read-only repo token for private repositories. GitLab, arbitrary Dockerfile/image,
-monorepo workspaces, writable app disks, app reassignment/deletion, automatic
-DNS-provider changes and CrowdSec unban are not enabled. Every domain needs its
-own TXT ownership proof. No static Traefik config is overwritten.
+monorepo workspaces, writable app disks, app reassignment/deletion and CrowdSec
+unban are not enabled. Custom domains are atomic apex/www pairs with a shared
+apex TXT proof. They can be saved/verified before deployment; routing/HTTPS
+activate on the signed successful receipt or explicit refresh/verify. Default
+`w-<app UUID without hyphens>.deploy.housemysite.com` URLs are allocated by a
+trigger and pinned to that exact app on the agent. The MySecureCloudHost records
+`deploy A` and `*.deploy A` point to 62.171.130.156; never write housemysite.com
+through Dynadot. No static Traefik security config is overwritten.
+
+`lib/hosting/apps/domain-workflow.ts` handles saved proof/routing/TLS states.
+`lib/hosting/registrar/website-dns.ts` reuses the REST v2 client and appends only
+A + www CNAME + proof TXT for production-account domains using Dynadot DNS.
+Client automation additionally requires the apex to be admin-assigned to that
+client in existing hosting_domains. Unassigned/external-DNS domains get clear
+manual instructions. Server-only service-role invoker RPCs bind every exact
+record/value to the owned app and share the existing global registrar operation
+lock. Every sent change is journaled in registrar_operations with website_app_id;
+unknown outcomes block writes, with read-only reconciliation by the guarded
+owner action. No zone replacement, provider delete, nameserver switch or renewal
+is part of this workflow. Legacy set_dns2 always appends and rejects truncation.
+Upload pages alone receive the validated agent origin in CSP. Static runtime
+COPY uses UID/GID 1000 ownership, preserving readable uploaded content.
 
 `/api/hosting-websites/receipts` is a machine boundary: exact body-bound HMAC and
 timestamp are checked BEFORE DB access. Login middleware permits delivery, not
@@ -204,12 +224,16 @@ unauthenticated DB access. Agent outbox retries receipts if the browser closes.
 Client-preview pages have no provider-backed GET mutations; POST writes recheck
 authority. Secret env/repo tokens are excluded from browser props/logs/chat.
 
-Checks: tests/website-*, tests/hosting-apps.cjs, hosting-agent/test and
+Checks: full `node --test tests/*.cjs`, tests/website-*, tests/hosting-apps.cjs, hosting-agent/test and
 local-checks/website-browser.cjs. Chromium cannot launch in this workspace due
 to its process socket restriction. Do not claim a visual browser pass or live
 Docker acceptance. Grok Bot runs the documented VPS commands. This PR preparation
 does not merge/deploy, apply live SQL, create production credentials or clients,
-or submit a real payment.
+or submit a real payment. Browser bootstrap/operator acceptance scripts now live
+under local-checks/; the actual companion Python gateway check was extracted to
+local-checks/backup-python-integration.cjs with its assertions retained. Those
+require explicit browser/companion repo prerequisites; see the runbook. They are
+separate from the self-contained root Node test glob, not claimed locally passed.
 
 
 ### App Hosting plan contracts
@@ -1221,6 +1245,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-21: PR #275 follow-up on the same feature branch: fixed navigation fixture compatibility, client card/storage/billing/domain polish, scoped upload CSP and static-file ownership; atomic apex/www domains with copyable DNS, pre-deploy proof, default preview routing, guarded additive REST v2 Dynadot records and owner reconciliation. Added third migration and fixture/SQL/agent regressions. No main merge/live DB/VPS/DNS changes; #268/#274 untouched. See docs/client-websites.md for final order and commands.
 
 - 2026-11-19: Prepared client website dashboard, bank/admin approval, one-site credits, direct 1-GB uploads/GitHub, opt-in measured storage billing and signed Contabo runtime. Selectively replaces unmerged #268 without its auth regressions. New migrations/env/runbook only; no production merge, SQL apply or VPS change. See docs/client-websites.md.
 

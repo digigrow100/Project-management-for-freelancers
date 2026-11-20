@@ -13,3 +13,5 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Receipt unavailable' }, { status: 503 });
     }
 }
+
+export const maxDuration = 60;

@@ -4,7 +4,7 @@ import { connect } from 'node:tls';
 import { ORIGIN_IPV4 } from './validate';
 const resolver = new Resolver({ timeout: 3000, tries: 1 });
 resolver.setServers(['1.1.1.1', '8.8.8.8']);
-export async function lookupHostname(hostname: string) { const [addresses, ipv6, txt] = await Promise.all([resolver.resolve4(hostname).catch(() => [] as string[]), resolver.resolve6(hostname).catch(() => [] as string[]), resolver.resolveTxt(`_hms-verify.${hostname}`).catch(() => [] as string[][])]); return { addresses, ipv6, txt: txt.map(p => p.join('')) }; }
+export async function lookupHostname(hostname: string, proofHost = hostname) { const [addresses, ipv6, txt] = await Promise.all([resolver.resolve4(hostname).catch(() => [] as string[]), resolver.resolve6(hostname).catch(() => [] as string[]), resolver.resolveTxt(`_hms-verify.${proofHost}`).catch(() => [] as string[][])]); return { addresses, ipv6, txt: txt.map(p => p.join('')) }; }
 export function certificateReady(hostname: string) {
     return new Promise<{
         ok: boolean;

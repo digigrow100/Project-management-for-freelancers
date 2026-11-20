@@ -12,3 +12,5 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'The server report is not available yet. Your last website has been kept.' }, { status: 400, headers: { 'Cache-Control': 'private, no-store' } });
     }
 }
+
+export const maxDuration = 60;

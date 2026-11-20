@@ -7,7 +7,7 @@ test('website access scopes every lookup and denies suspended/admin-preview writ
  mode='preview';await assert.rejects(m.websiteAccess('/client/apps',id,true),/read only/);mode='suspended';await assert.rejects(m.websiteAccess('/client/apps',id,true),/read only/);assert.equal(lookups.length,1);assert.equal(rates,1);await assert.rejects(m.websiteActor('/hosting/apps',true),/admin denied/);
 });
 test('deployment receipts authenticate their exact body and time before database access',async()=>{
- const helper=load('lib/hosting/websites/receipt.ts',{'@/lib/supabaseClient':{getSupabase:()=>{throw Error('No DB expected');}}});
+ const helper=load('lib/hosting/websites/receipt.ts',{'@/lib/hosting/apps/domain-workflow':{activateWebsiteDomains:async()=>{}},'@/lib/supabaseClient':{getSupabase:()=>{throw Error('No DB expected');}}});
  const key='fixture-only-random-receipt-key-32-characters',time=String(Date.now()),body=Buffer.from('{"status":"running"}');
  const headers=new Headers({'x-hms-time':time,'x-hms-receipt':helper.receiptSignature(body,time,key)});
  assert(helper.receiptAuthorized(body,headers,key));assert(!helper.receiptAuthorized(Buffer.from('{}'),headers,key));assert(!helper.receiptAuthorized(body,headers,key,Date.now()+600000));assert(!helper.receiptAuthorized(body,headers,''));

@@ -58,10 +58,12 @@ export function dnsPlan(hostname: string, token: string): {
 } | null {
     if (!domainOk(hostname))
         return null;
-    const www = hostname.startsWith("www.") && domainOk(hostname.slice(4));
+    const host = hostname.startsWith('www.') ? hostname.slice(4) : hostname;
+    if (host === 'housemysite.com' || host.endsWith('.housemysite.com')) return null;
     const records: DnsRecord[] = [
-        { type: www ? "CNAME" : "A", host: hostname, name: hostname, value: www ? hostname.slice(4) : ORIGIN_IPV4, note: "Full hostname shown. Your DNS panel may ask for @ or the relative subdomain." },
-        { type: "TXT", host: `_hms-verify.${hostname}`, name: `_hms-verify.${hostname}`, value: token, note: "Required ownership proof for this website, including when the A record already points at our VPS." },
+        {type:'A',host,name:host,value:ORIGIN_IPV4,note:'Use @ for the zone apex. For Cloudflare, use DNS only during initial verification.'},
+        {type:'CNAME',host:`www.${host}`,name:`www.${host}`,value:host,note:'Use www as the name. Both names are saved together.'},
+        {type:'TXT',host:`_hms-verify.${host}`,name:`_hms-verify.${host}`,value:token,note:'Ownership proof for this website and its www alias. Use _hms-verify for the zone apex.'},
     ];
     return { records };
 }

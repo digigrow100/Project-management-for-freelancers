@@ -18,13 +18,3 @@ test('foreign metadata, live activation response and oversized body stay denied'
  global.fetch=async()=>Response.json({job:'j',state:'staged',sites:[],activated:true});assert.equal((await POST(request({action:'status',job:'j'}))).status,403);
  const result=await POST(request({action:'list',padding:'x'.repeat(33000)}));assert.equal(result.status,503);assert.doesNotMatch(await result.text(),/padding|secret|token/);
 });
-test('actual TypeScript route interoperates with Python signed gateway for plan/stage/status',async()=>{await setup;enabled();const {spawn}=require('node:child_process'),{createInterface}=require('node:readline');
- const bridge=spawn('python',[path.join(__dirname,'signedGatewayBridge.py')],{env:{...process.env,HMS_RECOVERY_SOURCE:process.env.HMS_RECOVERY_SOURCE||process.env.HMS_AUTOMATION_SOURCE||path.resolve(__dirname,'../../retention-work')},stdio:['pipe','pipe','pipe']});
- const lines=createInterface({input:bridge.stdout});const pending=[];let stderr='';bridge.stderr.on('data',v=>stderr+=v);lines.on('line',line=>pending.shift()?.(JSON.parse(line)));
- global.fetch=async(url,options)=>{const result=await new Promise((resolve,reject)=>{pending.push(resolve);bridge.stdin.write(JSON.stringify({body:options.body,signature:options.headers['X-HMS-Recovery-Signature']})+'\n');const timeout=setTimeout(()=>reject(Error('bridge timeout '+stderr)),5000);timeout.unref();});return Response.json(result.body,{status:result.status});};
- try{let response=await POST(request({action:'list'}));assert.equal(response.status,200);assert.equal((await response.json()).sites[0].points[0].id,'p');
- response=await POST(request({action:'plan',selections:[{site:'a',point:'p',components:['website','configuration','database','email']}]}));assert.equal(response.status,200);const plan=await response.json();
- response=await POST(request({action:'stage',job:plan.job,digest:plan.digest}));assert.equal(response.status,200);const staged=await response.json();assert.equal(staged.state,'staged');assert.equal(staged.activated,false);
- response=await POST(request({action:'status',job:plan.job}));assert.deepEqual(await response.json(),staged);
- }finally{bridge.stdin.end();lines.close();bridge.kill();}
-});

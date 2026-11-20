@@ -30,3 +30,9 @@ export async function adminWebsitePayments(page = 1) {
     return { settings, requests: raw.map(r => ({ ...r, client_name: r.client?.name ?? 'Client' })), pendingTotal: pending.count ?? 0, bills: (bills.data ?? []) as StorageBill[] };
 }
 export async function pendingWebsitePayments() { const r = await getSupabase().from('freelance_hq_website_payment_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'); check(r.error); return r.count ?? 0; }
+
+export async function clientStorageRates(clientId:string){
+ const r=await getSupabase().from('freelance_hq_website_credits').select('app_id,currency,extra_gb_month_minor').eq('client_id',clientId).not('app_id','is',null);
+ if(r.error)throw Error('Storage rates could not be loaded.');
+ return (r.data??[]) as {app_id:string;currency:string;extra_gb_month_minor:number}[];
+}

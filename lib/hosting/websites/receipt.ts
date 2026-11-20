@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHmac, timingSafeEqual, createHash } from 'node:crypto';
+import { activateWebsiteDomains } from '@/lib/hosting/apps/domain-workflow';
 import { getSupabase } from '@/lib/supabaseClient';
 export function receiptSignature(body: Uint8Array, timestamp: string, key: string) { return createHmac('sha256', key).update(`HMS-WEBSITE-RECEIPT-v1\n${timestamp}\n${createHash('sha256').update(body).digest('hex')}`).digest('hex'); }
 export function receiptAuthorized(body: Uint8Array, headers: Headers, key: string, now = Date.now()) {
@@ -32,4 +33,5 @@ export async function recordReceipt(raw: unknown) {
     const saved = await getSupabase().rpc('freelance_hq_website_record_deploy', { p_actor: deployment.data.requested_by, p_app: r.appId, p_deployment: r.deploymentId, p_status: r.status, p_bytes: r.status === 'running' ? r.usedBytes : null, p_reported_at: r.deployedAt ?? new Date().toISOString(), p_admin: deployment.data.requested_as_admin });
     if (saved.error)
         throw new Error('Receipt could not be saved.');
+    if(r.status==='running')await activateWebsiteDomains(r.appId!);
 }

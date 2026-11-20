@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { WebsiteSettings } from '@/lib/hosting/websites/types';
 import { price } from '@/lib/hosting/websites/types';
@@ -10,6 +10,7 @@ export function AddWebsiteDialog({ settings, credits, pending, readOnly = false 
     pending: boolean;
     readOnly?: boolean;
 }) {
+    const titleId=useId();
     const dialog = useRef<HTMLDialogElement>(null), router = useRouter();
     const [busy, setBusy] = useState(false), [error, setError] = useState(''), [sent, setSent] = useState(false), key = useRef('');
     function open() {
@@ -45,14 +46,14 @@ export function AddWebsiteDialog({ settings, credits, pending, readOnly = false 
         }
     }
     return <><button type="button" className="hms-dash-primary" onClick={open} disabled={readOnly}>+ Add New Website</button>
- <dialog ref={dialog} className="website-dialog" aria-labelledby="website-checkout-title" onCancel={e => {
+ <dialog ref={dialog} className="website-dialog" aria-labelledby={titleId} onCancel={e => {
             if (busy)
                 e.preventDefault();
         }} onClick={e => {
             if (e.target === e.currentTarget && !busy)
                 dialog.current?.close();
         }}>
-  <div className="website-dialog-content"><header><div><p className="hms-kicker">New website</p><h2 id="website-checkout-title">Add a new website</h2></div><button type="button" className="website-close" aria-label="Close payment dialog" disabled={busy} onClick={() => dialog.current?.close()}>×</button></header>
+  <div className="website-dialog-content"><header><div><p className="hms-kicker">New website</p><h2 id={titleId}>Add a new website</h2></div><button type="button" className="website-close" aria-label="Close payment dialog" disabled={busy} onClick={() => dialog.current?.close()}>×</button></header>
    {credits > 0 ? <section className="website-checkout-success"><h3>Your website is approved</h3><p>You have {credits} unused website {credits === 1 ? 'credit' : 'credits'}. Each includes one website and 1 GB of content storage.</p><Link className="hms-dash-primary" href="/client/apps/new">Continue to website setup →</Link></section>
             : sent || pending ? <section className="website-checkout-success" role="status"><h3>Payment waiting for review</h3><p>The admin has your bank-transfer notice. Your website credit will appear here after approval. You can check the result in Website billing.</p><Link href="/client/website-billing">View payment status →</Link></section>
                 : !settings?.enabled ? <section><h3>Checkout is not available yet</h3><p>The admin needs to configure the website price and bank account. No payment has been requested.</p><Link href="/client/tickets">Contact support →</Link></section>

@@ -12,7 +12,7 @@ import { routeLabels } from './files.ts';
 import { enqueue, hasQueueCapacity } from './jobs.ts';
 import { RateLimiter } from './rateLimit.ts';
 import { appDir, atomicJson, readState, writeState, readBuildLog, writeBuildLog, measureTree, availableDisk, type AppState } from './state.ts';
-import { appNameOk, domainOk, envNameOk, envValueOk, frameworkOk, gitUrlOk, gitRefOk } from './validate.ts';
+import { appNameOk, domainOk, previewHost, isPreviewHost, envNameOk, envValueOk, frameworkOk, gitUrlOk, gitRefOk } from './validate.ts';
 import { uploadManifest, type UploadFile, MAX_UPLOAD } from '../shared/uploadPolicy.ts';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 type Spec = AppState & {
@@ -62,13 +62,14 @@ function parseSpec(value: Record<string, unknown>): Spec {
         return { name: item.name, value: item.value };
     });
     const domains = value.domains ?? [];
-    if (!Array.isArray(domains) || domains.length > 10)
+    if (!Array.isArray(domains) || domains.length > 11)
         throw Error('invalid_domain');
-    const checked = domains.map(d => {
-        if (!d || !domainOk(String(d.host)) || !/^[a-f0-9]{48}$/.test(String(d.token)))
+    const checked = domains.filter(d => d?.host !== previewHost(name)).map(d => {
+        if (!d || !domainOk(String(d.host)) || (isPreviewHost(String(d.host)) && d.host !== previewHost(name)) || !/^[a-f0-9]{48}$/.test(String(d.token)))
             throw Error('invalid_domain');
         return { host: String(d.host), token: String(d.token) };
     });
+    checked.push({host: previewHost(name), token: '0'.repeat(48)});
     return { name, appId, clientId, deploymentId, framework, port: ['static', 'react', 'vue'].includes(framework) ? 8080 : 3000, cpu: 1, memoryMb: 512, storageLimitBytes: limit, env: pairs, status: 'building', usedBytes: null, deployedAt: null, container: null, image: `hms-websites/${name}:${deploymentId}`, domains: checked, error: null, updatedAt: new Date().toISOString() };
 }
 async function body(req: IncomingMessage, limit: number) {
@@ -397,8 +398,10 @@ export function createAgentServer(deps: AgentDeps) {
         if (method === 'POST' && action === 'domains') {
             if (state.status !== 'running' || !state.container)
                 throw Error('website_not_running');
-            const domains = data.domains;
-            if (!Array.isArray(domains) || domains.length > 10 || domains.some(d => !domainOk(String(d.host)) || !/^[a-f0-9]{48}$/.test(String(d.token))))
+            const requested = data.domains;
+            if (!Array.isArray(requested)) throw Error('invalid_domain');
+            const domains = [...requested.filter(d => d?.host !== previewHost(name)), {host: previewHost(name), token: '0'.repeat(48)}];
+            if (!Array.isArray(domains) || domains.length > 11 || domains.some(d => !domainOk(String(d.host)) || (isPreviewHost(String(d.host)) && d.host !== previewHost(name)) || !/^[a-f0-9]{48}$/.test(String(d.token))))
                 throw Error('invalid_domain');
             // Portal has verified per-site DNS TXT proof; the signed list is authoritative.
             const candidate = `hms-${name}-${randomBytes(4).toString('hex')}`, env = (state as Spec).env ?? [];
