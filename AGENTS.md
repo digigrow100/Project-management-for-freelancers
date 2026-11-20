@@ -225,7 +225,8 @@ Client-preview pages have no provider-backed GET mutations; POST writes recheck
 authority. Secret env/repo tokens are excluded from browser props/logs/chat.
 
 Checks: full `node --test tests/*.cjs`, tests/website-*, tests/hosting-apps.cjs, hosting-agent/test and
-local-checks/website-browser.cjs. Chromium cannot launch in this workspace due
+local-checks/website-browser.cjs. Bank dialog selectors must be scoped to the
+open dialog because Overview can render both a header and an empty-state CTA. Chromium cannot launch in this workspace due
 to its process socket restriction. Do not claim a visual browser pass or live
 Docker acceptance. Grok Bot runs the documented VPS commands. This PR preparation
 does not merge/deploy, apply live SQL, create production credentials or clients,
@@ -1245,6 +1246,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-21: PR #275 browser CI selectors now scope bank text/reference to the open dialog, avoiding the closed empty-state dialog.
 
 - 2026-11-21: PR #275 follow-up on the same feature branch: fixed navigation fixture compatibility, client card/storage/billing/domain polish, scoped upload CSP and static-file ownership; atomic apex/www domains with copyable DNS, pre-deploy proof, default preview routing, guarded additive REST v2 Dynadot records and owner reconciliation. Added third migration and fixture/SQL/agent regressions. No main merge/live DB/VPS/DNS changes; #268/#274 untouched. See docs/client-websites.md for final order and commands.
 
