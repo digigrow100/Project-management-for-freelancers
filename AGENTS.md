@@ -203,6 +203,12 @@ activate on the signed successful receipt or explicit refresh/verify. Default
 trigger and pinned to that exact app on the agent. The MySecureCloudHost records
 `deploy A` and `*.deploy A` point to 62.171.130.156; never write housemysite.com
 through Dynadot. No static Traefik security config is overwritten.
+Setup scripts treat Docker's nullable IPAM/Config/Labels/Networks fields safely;
+null host/none network IPAM does not bypass checks on other real subnets. The
+Compose network-only override preserves implicit default and existing networks,
+and refuses missing services or network_mode before writing. Regression:
+`python3 -m unittest discover -s tests -p test_hosting_agent_setup.py -v`
+uses mocked Docker/Compose responses only, with no root or live changes.
 
 `lib/hosting/apps/domain-workflow.ts` handles saved proof/routing/TLS states.
 `lib/hosting/registrar/website-dns.ts` reuses the REST v2 client and appends only
@@ -1248,6 +1254,8 @@ Only expand the search when the direct code path is insufficient.
 ---
 
 # Recent App Updates
+
+- 2026-11-21: Fixed hosting-agent setup crashes on nullable Docker IPAM/inspect fields. Added safe Compose network normalization and refusal before writing incompatible overrides. Twelve fixture-only setup regressions run in CI; same PR #275, no merge or VPS execution.
 
 - 2026-11-21: PR #275 CI browser fixture passed desktop/mobile checkout; reviewed its screenshots, tightened mobile tab spacing and serialized per-website agent mutations with an overlap regression.
 

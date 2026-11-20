@@ -298,3 +298,16 @@ the agent. Mobile tab spacing was tightened after that review. Per-website agent
 control mutations now reject overlapping routing/lifecycle/deploy requests before
 Docker work, with a concurrency regression (10 agent tests total). Local Chromium
 remains restricted; the browser pass refers to GitHub's fixture runner.
+
+### VPS setup null-field fix
+
+Docker's built-in `host` and `none` networks can return `IPAM.Config=null`.
+The installer now treats null/missing IPAM, Config and empty subnet entries as
+having no configured subnet, while still rejecting real overlapping IPv4 ranges.
+Preflight also handles null Image/Config/Cmd/Labels/NetworkSettings/Networks.
+The persistence helper preserves explicit networks (including null options),
+shorthand lists and the implicit default network. Missing Compose services or
+incompatible network_mode stop before writing the additive override.
+Twelve fixture-only Python tests cover these cases in Typecheck CI. No live VPS
+command, credential generation, network/firewall change or data deletion is run
+by those tests. Existing setup commands and migration/env requirements are unchanged.

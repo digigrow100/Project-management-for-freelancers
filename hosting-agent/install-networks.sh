@@ -12,8 +12,9 @@ ids=subprocess.check_output(['docker','network','ls','-q'],text=True).split()
 items=json.loads(subprocess.check_output(['docker','network','inspect',*ids],text=True)) if ids else []
 for desired,name in [('172.31.240.0/24','hms-runtime'),('172.31.241.0/24','hms-build')]:
  for n in items:
-  for c in n.get('IPAM',{}).get('Config',[]):
-   subnet=c.get('Subnet')
+  # Docker's built-in host/none networks have Config=null; IPAM may also be null.
+  for c in ((n.get('IPAM') or {}).get('Config') or []):
+   subnet=(c or {}).get('Subnet')
    if subnet and ipaddress.ip_network(subnet).version==4 and ipaddress.ip_network(subnet).overlaps(ipaddress.ip_network(desired)) and not(n['Name']==name and subnet==desired):sys.exit('Network overlap detected. Choose and review different subnets before proceeding.')
 PY
 docker network inspect hms-runtime >/dev/null 2>&1 || docker network create --subnet 172.31.240.0/24 --opt com.docker.network.bridge.name=br-hms-runtime hms-runtime
