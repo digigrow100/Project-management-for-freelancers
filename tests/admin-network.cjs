@@ -16,7 +16,7 @@ export const createAuthClient=()=>({auth:{
  signInWithPassword:async()=>{s.signedIn=true;return {data:{user:{id:'fixture-actor'}},error:null}},
  signOut:async()=>{s.signedOut++;s.signedIn=false;return {error:null}},
  resetPasswordForEmail:async(email,options)=>{s.reset={email,redirectTo:options&&options.redirectTo};const failure=s.resetError===true?{name:'AuthApiError',message:'rejected'}:s.resetError;return {error:failure||null}},
- updateUser:async(body)=>{s.updated=body;return {error:s.updateError?{message:'rejected'}:null}},
+ updateUser:async(body)=>{if(s.aal!=='aal2')return {error:{status:401,code:'insufficient_aal'}};s.updated=body;return {error:s.updateError?{message:'rejected'}:null}},
  mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:s.aal||'aal2'},error:null})}
 }});
 export const createServerClient=createAuthClient;
@@ -84,7 +84,7 @@ test('middleware blocks admin paths before Auth while keeping team, customer and
  assert.equal((await middleware(req('/hosting','192.0.2.10'))).status,307); // IP is not authentication
  s.signedIn=true;for(const p of ['/','/today','/settings','/client'])assert.equal((await middleware(req(p))).status,200,p);
 });
-test('password reset emails the confirm link and saves a new password before the authenticator step',async()=>{
+test('password reset emails the confirm link and requires the authenticator before saving a new password',async()=>{
  configure();
  const fs=require('node:fs');
  const form=fs.readFileSync(path.join(__dirname,'../app/login/auth-forms.tsx'),'utf8');
@@ -134,8 +134,8 @@ test('password reset emails the confirm link and saves a new password before the
  await assert.rejects(passwords.requestPasswordResetAction(blank),/Email%20is%20required/);
  const update=new FormData();update.set('password','long-fixture-password');update.set('confirmPassword','long-fixture-password');
  s.aal='aal1';s.updated=null;
- await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/login/security'});
- assert.deepEqual(s.updated,{password:'long-fixture-password'});
+ await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/login/security?next=%2Flogin%2Freset-password'});
+ assert.equal(s.updated,null,'AAL1 recovery must not submit a password that Supabase will reject');
  s.aal='aal2';s.updated=null;
  await assert.rejects(passwords.updatePasswordAction(update),{message:'redirect:/'});
  assert.deepEqual(s.updated,{password:'long-fixture-password'});

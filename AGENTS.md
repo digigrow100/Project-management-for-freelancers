@@ -1028,11 +1028,26 @@ failures stay on the generic completion message. The recovery link is
 on the hosting host.
 The link target is `{site origin}/auth/confirm?next=/login/reset-password`.
 `/auth/confirm` exchanges the code or token hash and opens
-`/login/reset-password`, where the new password is saved before any
-authenticator check. An account that already has an authenticator is then
-sent to `/login/security`; the authenticator is not removed. `/sw.js` and
+`/login/reset-password`. Accounts with a verified authenticator must reach
+AAL2 before the password form opens or `updateUser` runs. Verification at
+`/login/security` returns only to the exact allowlisted
+`/login/reset-password` path; passwords never travel through that redirect,
+cookies, or hidden fields. The authenticator is retained. The reset request
+form releases its duplicate-submit lock after errors, completion, and
+same-page redirects, while preserving Next.js navigation exceptions.
+Confirmation failures log only safe error name, status, code, and flow.
+`/sw.js` and
 `/manifest.json` are served without a login redirect, and the service worker
 does not intercept form posts.
+
+Hosting sessions retain their existing 24-hour maximum in
+`freelance_hq_hosting_session_active`. An expired/revoked session goes through
+`/auth/session-expired`, which rechecks the session and clears only this
+browser's project Auth cookies before returning to `/login?expired=1`.
+An active session survives a stale expiry URL. Auth/database outages fail
+closed without logging the user out. Session expiry does not change the
+stored password or remove the authenticator. Admin network checks remain
+required throughout the recovery and expiry paths.
 
 # Security Rules
 
@@ -1169,9 +1184,11 @@ Only expand the search when the direct code path is insufficient.
 
 # Recent App Updates
 
+- Fixed the expired-session login loop by clearing only the invalid browser session, and corrected MFA password recovery to verify before saving and then return to the password form. Reset buttons also unlock after repeated failures. Added regressions and CI coverage; no Auth schema, password, factor, or SMTP credential changes are part of this source fix.
+
 - Password reset now records the Supabase Auth failure as name, status, and code only, and tells the person to wait when Auth rate-limits the email or that the email could not be sent when Auth returns 500 or 504. The address is not logged. Sending still depends on the Supabase Auth mail settings.
 
-- Password reset now shows a sending state and an inline error, saves the new password before the authenticator step, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. The recovery link still lands on `/auth/confirm` and then `/login/reset-password`.
+- Password reset shows a sending state and an inline error, verifies an enrolled authenticator before saving the new password, and serves `/sw.js` without a login redirect so a stuck service worker can be replaced. The recovery link lands on `/auth/confirm` and then `/login/reset-password` through the MFA return flow when needed.
 
 - Added owner Dynadot REST v2 connection, paginated registrar inventory, guarded domain changes, renewal review, durable audit and uncertain-result reconciliation. Legacy inventory and customer assignment stay separate. Provider acceptance awaits credentials.
 

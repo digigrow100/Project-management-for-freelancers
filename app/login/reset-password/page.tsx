@@ -1,9 +1,21 @@
 import Link from "next/link";
 import { Leaf } from "lucide-react";
 import { NewPasswordForm } from "../auth-forms";
+import { createAuthClient } from "@/lib/supabase/server";
+import { requireAdminNetworkForUser } from "@/lib/security/adminNetwork";
+import { redirect } from "next/navigation";
 
 export default async function ResetPasswordPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string }> }) {
   const searchParams = await queryParams;
+  const auth = await createAuthClient();
+  const { data: { user } } = await auth.auth.getUser();
+  if (!user) redirect("/login/forgot-password?error=" + encodeURIComponent("Open the reset link from your email, or request a new one."));
+  await requireAdminNetworkForUser(user.id);
+  if (user.factors?.some(factor => factor.status === "verified")) {
+    const level = await auth.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (level.error) throw new Error("Security verification is temporarily unavailable. Try again later.");
+    if (level.data?.currentLevel !== "aal2") redirect("/login/security?next=%2Flogin%2Freset-password");
+  }
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-950 px-4">
       <div className="w-full max-w-sm rounded-xl2 border border-base-700/60 bg-base-850 p-6 shadow-card">
