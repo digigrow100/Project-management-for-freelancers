@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { unstable_rethrow } from "next/navigation";
 import { requestPasswordResetAction, updatePasswordAction } from "./actions";
 
 function PendingButton({ idle, busy, locked = false }: { idle: string; busy: string; locked?: boolean }) {
@@ -55,7 +56,18 @@ export function PasswordResetRequestForm({ serverError }: { serverError?: string
   const held = useRef(false);
   return (
     <form
-      action={requestPasswordResetAction}
+      action={async (formData) => {
+        try {
+          await requestPasswordResetAction(formData);
+        } catch (error) {
+          unstable_rethrow(error);
+          setLocalError("Could not complete this request. Please try again later.");
+        } finally {
+          // Same-page redirects can preserve this component and its ref.
+          held.current = false;
+          setLocked(false);
+        }
+      }}
       noValidate
       className="flex flex-col gap-3"
       onSubmit={(event) => {
@@ -77,12 +89,6 @@ export function PasswordResetRequestForm({ serverError }: { serverError?: string
         // click or Enter cannot send another reset and spend a rate-limit slot.
         held.current = true;
         setLocked(true);
-        const button = event.currentTarget.querySelector("button[type=submit]");
-        if (button instanceof HTMLButtonElement) {
-          button.disabled = true;
-          button.setAttribute("aria-busy", "true");
-          button.textContent = "Sending reset link…";
-        }
       }}
     >
       <div>

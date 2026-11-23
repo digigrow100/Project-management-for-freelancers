@@ -10,7 +10,7 @@ const gate=load('lib/security/mfa.ts',{'./adminNetwork':{requireAdminNetworkForU
 await gate.requireHostingSession();await assert.rejects(gate.requireHostingSession(true),e=>e.redirect==='/login/security');
 enrolled=true;await assert.rejects(gate.requireHostingSession(),e=>e.redirect==='/login/security');await assert.rejects(gate.requireEnrolledMfa());
 aal='aal2';await gate.requireHostingSession(true);await gate.requireEnrolledMfa();
-active=false;await assert.rejects(gate.requireHostingSession(),e=>e.redirect.includes('expired'));active=true;dbError=true;await assert.rejects(gate.requireHostingSession());dbError=false;
+active=false;await assert.rejects(gate.requireHostingSession(),e=>e.redirect==='/auth/session-expired');active=true;dbError=true;await assert.rejects(gate.requireHostingSession(),/Session verification is temporarily unavailable/);dbError=false;
 userMismatch=true;const prior=calls;await assert.rejects(gate.requireHostingSession());assert.equal(calls,prior);userMismatch=false;
 validated=false;await assert.rejects(gate.requireHostingSession(),e=>e.redirect==='/login');validated=true;
 aal='aal1';await gate.requireHostingSession(false,true); // verification route may verify MFA, but must have a live session

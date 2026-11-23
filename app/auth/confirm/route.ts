@@ -1,6 +1,7 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthClient } from "@/lib/supabase/server";
+import { passwordResetAuthLog } from "@/lib/security/passwordResetLimit";
 
 // Handles both Supabase recovery-link styles:
 // - token_hash + type=recovery (custom email templates)
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       if (!error) {
         return NextResponse.redirect(new URL(next, request.url));
       }
+      console.error("auth_confirmation_failed", { flow: "pkce", ...passwordResetAuthLog(error) });
     }
 
     if (tokenHash && type) {
@@ -34,8 +36,10 @@ export async function GET(request: NextRequest) {
       if (!error) {
         return NextResponse.redirect(new URL(next, request.url));
       }
+      console.error("auth_confirmation_failed", { flow: "otp", ...passwordResetAuthLog(error) });
     }
-  } catch {
+  } catch (error) {
+    console.error("auth_confirmation_failed", passwordResetAuthLog(error));
     // Falls through to the error redirect below.
   }
 

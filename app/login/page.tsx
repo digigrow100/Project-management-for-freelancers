@@ -4,7 +4,7 @@ import { loginAction } from "./actions";
 import { headers } from "next/headers";
 import { isHostingPortalHost } from "@/lib/hosting/portalHost";
 
-export default async function LoginPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({ searchParams: queryParams }: { searchParams: Promise<{ error?: string; expired?: string }> }) {
   const searchParams = await queryParams;
   const hosting = isHostingPortalHost((await headers()).get("host"));
   return (
@@ -18,6 +18,11 @@ export default async function LoginPage({ searchParams: queryParams }: { searchP
         </div>
 
         <form action={loginAction} className="flex flex-col gap-3">
+          {searchParams.expired === "1" && (
+            <p role="status" className="rounded-md border border-base-600 px-3 py-2 text-xs text-neutral-300">
+              Your session expired. Sign in again with your existing password.
+            </p>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-400">Email</label>
             <input

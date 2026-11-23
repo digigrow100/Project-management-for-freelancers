@@ -130,6 +130,14 @@ export async function updatePasswordAction(formData: FormData) {
     const {data:{user}}=await supabase.auth.getUser();
     if(!user)redirect(`/login/reset-password?error=${encodeURIComponent("Open the reset link from your email, then choose a new password.")}`);
     await requireAdminNetworkForUser(user.id);
+    // Supabase requires AAL2 before changing an MFA-enrolled user's password,
+    // including sessions created by a recovery email. Never carry the entered
+    // password through the verification step; return to a fresh password form.
+    if(user.factors?.some(factor=>factor.status==="verified")){
+      const level=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if(level.error)throw level.error;
+      if(level.data?.currentLevel!=="aal2")redirect("/login/security?next=%2Flogin%2Freset-password");
+    }
     try {await rateLimit("password",user.id,5,900);} catch {redirect("/login/reset-password?error="+encodeURIComponent("Please wait before changing your password again."));}
 
     const { error } = await supabase.auth.updateUser({ password });
@@ -140,14 +148,6 @@ export async function updatePasswordAction(formData: FormData) {
       // "request a new link" would throw away a perfectly good session along
       // with whatever they'd already typed.
       redirect(`/login/reset-password?error=${encodeURIComponent("Could not complete this request. Please try again later.")}`);
-    }
-
-    // The recovery link signs the user in at the first assurance level. Save
-    // the password before asking for an authenticator, then send them to
-    // verify it. The authenticator itself is left in place.
-    if(user.factors?.some(factor=>factor.status==="verified")){
-      const level=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if(level.error||level.data?.currentLevel!=="aal2")redirect("/login/security");
     }
 
     // verifyOtp already signed them in via the recovery link, so they're
